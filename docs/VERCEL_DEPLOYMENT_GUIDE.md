@@ -53,7 +53,8 @@ Use this when you want Vercel to build the Vite frontend and route API requests 
    - Publish static files from `frontend/dist`
    - Run the FastAPI backend serverlessly via `api/index.py`
    - Handle client-side routing for SPA without 404 errors.
-   - Limit the API function to 60 seconds. Keep request work below that limit; long document indexing and batch jobs belong in a durable worker/queue.
+
+Vercel detects the FastAPI application through the explicit `tool.vercel.entrypoint = "api.index:app"` setting in `pyproject.toml`. The project intentionally does not use a `functions` pattern in `vercel.json`, because that causes a function-pattern validation error in Vercel's integrated FastAPI build.
 
 Do not set the Vercel Root Directory to `frontend` for this option: that uses `frontend/vercel.json`, which intentionally serves only the SPA and does not deploy the Python API.
 
