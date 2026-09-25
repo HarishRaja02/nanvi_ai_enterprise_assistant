@@ -501,13 +501,190 @@ export function getDemoFallbackResponse<T>(path: string, init?: RequestInit): T 
       // Keep default query
     }
 
-    const demoAnswer = `### Nanvi AI Enterprise Intelligence\n\nI have received your inquiry: **"${query}"**.\n\nYou are viewing the live **Cloud Demo** of Nanvi AI.\n\n* **Role-Based Access Control (RBAC):** Your user role permissions are actively enforced.\n* **RAG Pipeline:** When paired with the Python backend via \`VITE_API_BASE_URL\`, queries cross-reference documents (PDFs, Excel, Word), mailboxes, and SQL tables with zero data exfiltration.\n* **Source Grounding:** Every insight includes cryptographic transparency references to the underlying enterprise documents.`;
+    const qLower = query.toLowerCase();
+    let answer = "";
+    let capability = "knowledge";
+    let sources: any[] = [];
+    let trace: string[] = [
+      "Zero-Trust RBAC policy evaluation: User role authorized for tenant queries",
+      "Scanning indexed enterprise documents and connected data stores",
+      "Grounding response with cryptographic source attestation",
+    ];
 
-    const chatRes: ChatResponse = {
-      conversation_id: conversationId,
-      answer: demoAnswer,
-      capability: "knowledge",
-      sources: [
+    if (qLower.includes("email") || qLower.includes("inbox") || qLower.includes("mail") || qLower.includes("message")) {
+      capability = "email";
+      answer = `### 📬 Executive Mailbox Briefing (3 Unread Messages)
+
+I have checked your connected Google Workspace inbox for **Executive Leadership**:
+
+1. **Board Meeting Pre-Read: Q3 Operations & Financial Performance**
+   * **Sender:** Sarah Jenkins (VP Operations) \`<s.jenkins@nanvi.enterprise>\`
+   * **Received:** Today, 08:30 AM
+   * **Key Highlights:** Attached slide deck for Thursday's board sync. Annual Recurring Revenue (ARR) is up **14.2%** quarter-over-quarter; enterprise client retention is at **98.4%**. Action requested: Review slide 5 (H2 hiring plan) before 3:00 PM.
+
+2. **Security Audit & Compliance Sign-Off (SOC2 Type II)**
+   * **Sender:** DevSecOps Team \`<security@nanvi.enterprise>\`
+   * **Received:** Yesterday, 05:15 PM
+   * **Key Highlights:** Annual penetration testing completed with **zero critical findings**. Zero-Trust role-based access rules and cryptographic audit trails successfully validated for enterprise SOC2 compliance.
+
+3. **Vendor Contract Renewal: Cloud Infrastructure**
+   * **Sender:** Legal & Procurement \`<procurement@nanvi.enterprise>\`
+   * **Received:** Yesterday, 02:40 PM
+   * **Key Highlights:** Proposed 3-year enterprise commit tier reduces annualized compute and database costs by **22%**. Contract document generated and awaiting CEO signature.
+
+---
+*Would you like me to draft an approval response to Sarah Jenkins, or prepare an executive summary of the cloud contract?*`;
+
+      sources = [
+        {
+          reference_id: "demo-email-1",
+          source_type: "email",
+          display_name: "Executive Briefing: Q3 Performance",
+          title: "Operations & Leadership Sync",
+          timestamp: new Date().toISOString(),
+        },
+        {
+          reference_id: "demo-email-2",
+          source_type: "email",
+          display_name: "SOC2 Compliance Attestation",
+          title: "Security & Governance Audit Report",
+          timestamp: new Date(Date.now() - 86400000).toISOString(),
+        },
+        {
+          reference_id: "demo-doc-1",
+          source_type: "file",
+          display_name: "Enterprise_Strategic_Plan_2026.pdf",
+          title: "Enterprise Strategy & Operations",
+          location: "CompanyData/Projects/Enterprise_Strategic_Plan_2026.pdf",
+          page: 2,
+        },
+      ];
+      trace.push("Cross-referenced Google Workspace mail stream with Enterprise Directory");
+    } else if (qLower.includes("revenue") || qLower.includes("finance") || qLower.includes("financial") || qLower.includes("arr") || qLower.includes("profit") || qLower.includes("budget") || qLower.includes("q3")) {
+      capability = "analytics";
+      answer = `### 📊 Q3 Financial & Strategic Performance Summary
+
+Based on authorized enterprise records in **CompanyData/Finance**:
+
+* **Annual Recurring Revenue (ARR):** **$24.8M** (+14.2% YoY growth, exceeding consensus target).
+* **Net Revenue Retention (NRR):** **118%** sustained across enterprise-tier accounts.
+* **Operating Margin:** **23.5%**, outperforming the initial Q3 forecast target of 21.0%.
+* **Gross Margin:** **78.2%**, maintained through optimized cloud database operations.
+
+**Key Financial Takeaways:**
+1. **Enterprise Expansion:** 3 Fortune 500 pilots converted into multi-year commercial commitments.
+2. **Cash Runway:** Current cash reserves provide **28 months** of operational runway without external financing.
+3. **Budget Variance:** Operational expenditures tracked 4.1% below forecasted quarterly ceiling.
+
+---
+*Would you like an export of the variance breakdown or a department-by-department allocation report?*`;
+
+      sources = [
+        {
+          reference_id: "demo-doc-1",
+          source_type: "file",
+          display_name: "Enterprise_Strategic_Plan_2026.pdf",
+          title: "Enterprise Strategy & Operations",
+          location: "CompanyData/Projects/Enterprise_Strategic_Plan_2026.pdf",
+          page: 4,
+        },
+        {
+          reference_id: "demo-doc-finance",
+          source_type: "file",
+          display_name: "Q3_Consolidated_Financial_Model.xlsx",
+          title: "Quarterly Financial Performance & Budget",
+          location: "CompanyData/Finance/Q3_Consolidated_Financial_Model.xlsx",
+          page: 1,
+        },
+      ];
+      trace.push("Extracted ledger balances and operational projections from financial models");
+    } else if (qLower.includes("contract") || qLower.includes("legal") || qLower.includes("agreement") || qLower.includes("nda") || qLower.includes("sla")) {
+      capability = "knowledge";
+      answer = `### 📑 Active Enterprise Contracts Overview
+
+Reviewing authorized agreements in **CompanyData/Contracts**:
+
+1. **Apex Global Logistics (Master Services Agreement MSA-2025-089)**
+   * **Total Value:** $1,200,000 / 3-Year Commitment
+   * **Status:** Fully executed. Includes 24/7 dedicated enterprise support and 99.95% uptime SLA.
+   * **Governing Jurisdiction:** Delaware, USA.
+
+2. **Meridian Health Systems (Business Associate Agreement BAA-2026-012)**
+   * **Total Value:** $850,000 / Annual Subscription
+   * **Status:** Active. HIPAA-compliant zero-trust encryption and encrypted audit logging confirmed.
+
+3. **Horizon Cloud Services (Vendor SLA-2024-441)**
+   * **Total Value:** $420,000 / Annual
+   * **Status:** Renewal review window opens in **45 days**. Procurement proposes auto-renewal with 22% compute discount.
+
+---
+*Would you like me to flag the renewal milestones in your calendar or inspect specific liability terms?*`;
+
+      sources = [
+        {
+          reference_id: "demo-doc-contract-1",
+          source_type: "file",
+          display_name: "Apex_Global_Logistics_MSA_Executed.pdf",
+          title: "Master Services Agreement: Apex Global",
+          location: "CompanyData/Contracts/Apex_Global_Logistics_MSA_Executed.pdf",
+          page: 1,
+        },
+        {
+          reference_id: "demo-doc-1",
+          source_type: "file",
+          display_name: "Enterprise_Strategic_Plan_2026.pdf",
+          title: "Enterprise Strategy & Operations",
+          location: "CompanyData/Projects/Enterprise_Strategic_Plan_2026.pdf",
+          page: 6,
+        },
+      ];
+      trace.push("Verified contract metadata against Zero-Trust RBAC access rules");
+    } else if (qLower.includes("team") || qLower.includes("employee") || qLower.includes("people") || qLower.includes("headcount") || qLower.includes("hr")) {
+      capability = "knowledge";
+      answer = `### 👥 Enterprise Organizational & Personnel Directory
+
+Authorized HR directory records in **CompanyData/HR**:
+
+* **Total Headcount:** **142 employees** across 5 global offices (San Francisco, New York, London, Singapore, Bangalore).
+* **Department Breakdown:**
+  * **Engineering & Infrastructure:** 52 members (36.6%)
+  * **Product, AI & Design:** 18 members (12.7%)
+  * **Enterprise Sales & Customer Success:** 34 members (23.9%)
+  * **Finance & Operations:** 22 members (15.5%)
+  * **Legal, Compliance & People Ops:** 16 members (11.3%)
+* **Active Requisitions:** 8 open positions prioritized for Cloud Security Engineers and Solutions Architects.
+* **Compliance Status:** 100% completion of Q3 enterprise data handling and Zero-Trust credential security training.`;
+
+      sources = [
+        {
+          reference_id: "demo-doc-hr",
+          source_type: "file",
+          display_name: "Organizational_Headcount_Q3.xlsx",
+          title: "Human Resources & Workforce Planning",
+          location: "CompanyData/HR/Organizational_Headcount_Q3.xlsx",
+          page: 1,
+        },
+      ];
+      trace.push("Retrieved organizational directory from authorized HR storage partition");
+    } else {
+      capability = "knowledge";
+      answer = `### ⚡ Nanvi AI Enterprise Analysis
+
+I have processed your inquiry: **"${query}"** against authorized enterprise repositories.
+
+* **Context Evaluation:** Cross-referenced enterprise documents, active connections, and team resources.
+* **Role-Based Access Control:** All retrieved sources adhere to your authorized user role permissions.
+* **Security & Transparency:** Cryptographic attestation references are cited below for full auditability.
+
+**Key Findings:**
+1. Relevant enterprise records for **"${query}"** are indexed and accessible in the company repository.
+2. Zero data exfiltration rules and SOC2 Type II cryptographic security invariants are enforced for all queries.
+3. You can connect additional live services (Google Workspace, PostgreSQL, Supabase, Slack, Jira) in the **Connections Hub**.
+
+---
+*How else can I assist you with this analysis or related operational workflows?*`;
+
+      sources = [
         {
           reference_id: "demo-doc-1",
           source_type: "file",
@@ -523,15 +700,18 @@ export function getDemoFallbackResponse<T>(path: string, init?: RequestInit): T 
           title: "Operations & Leadership Sync",
           timestamp: new Date().toISOString(),
         },
-      ],
-      trace: [
-        "Verified Zero-Trust RBAC user role permissions",
-        "Discovered 2 authorized reference sources matching query context",
-        "Synthesized answer with citation guarantees",
-      ],
+      ];
+    }
+
+    const chatRes: ChatResponse = {
+      conversation_id: conversationId,
+      answer,
+      capability,
+      sources,
+      trace,
       history: [
         { role: "user", content: query, created_at: new Date().toISOString() },
-        { role: "assistant", content: demoAnswer, created_at: new Date().toISOString() },
+        { role: "assistant", content: answer, created_at: new Date().toISOString() },
       ],
     };
     return chatRes as unknown as T;
@@ -557,15 +737,38 @@ export function getDemoFallbackResponse<T>(path: string, init?: RequestInit): T 
       // Keep default
     }
 
-    const spokenText = "Welcome to Nanvi Enterprise Assistant. Voice mode is active and listening.";
+    const qLower = query.toLowerCase();
+    let spokenText = "Welcome to Nanvi Enterprise Assistant. Voice mode is active.";
+    let answerText = `Voice session processed query: "${query}".`;
+    let importantPoints = ["Voice mode connected", "Zero-trust session established", "Ready for voice input"];
+
+    if (qLower.includes("email") || qLower.includes("mail") || qLower.includes("inbox")) {
+      spokenText = "You have three unread messages in your executive inbox, including Sarah's board meeting pre-read and the SOC 2 security compliance report.";
+      answerText = "Checked executive mailbox. Discovered 3 unread messages: Board Pre-read from Sarah Jenkins, SOC2 compliance report, and cloud vendor renewal contract.";
+      importantPoints = ["3 unread emails identified", "Board deck review requested by 3 PM", "SOC2 compliance verified"];
+    } else if (qLower.includes("revenue") || qLower.includes("finance") || qLower.includes("profit") || qLower.includes("q3")) {
+      spokenText = "Quarter 3 Annual Recurring Revenue is 24.8 million dollars, up 14.2 percent year over year, with an operating margin of 23.5 percent.";
+      answerText = "Q3 ARR reached $24.8M (+14.2% YoY). Net Revenue Retention is 118%, with 28 months of operational runway.";
+      importantPoints = ["$24.8M ARR (+14.2% YoY)", "118% Net Revenue Retention", "28 months cash runway"];
+    }
+
     const voiceRes: VoiceResponse = {
       conversation_id: conversationId,
-      answer: `Voice session activated. Processed query: "${query}".`,
+      answer: answerText,
       spoken_text: spokenText,
-      important_points: ["Voice mode connected", "Zero-trust session established", "Ready for voice input"],
+      important_points: importantPoints,
       capability: "voice",
-      sources: [],
-      trace: ["Audio input processed", "Neural core responded"],
+      sources: [
+        {
+          reference_id: "demo-doc-1",
+          source_type: "file",
+          display_name: "Enterprise_Strategic_Plan_2026.pdf",
+          title: "Enterprise Strategy & Operations",
+          location: "CompanyData/Projects/Enterprise_Strategic_Plan_2026.pdf",
+          page: 2,
+        },
+      ],
+      trace: ["Voice neural core synthesized response", "RBAC access rules verified"],
       history: [
         { role: "user", content: query, created_at: new Date().toISOString() },
         { role: "assistant", content: spokenText, created_at: new Date().toISOString() },
