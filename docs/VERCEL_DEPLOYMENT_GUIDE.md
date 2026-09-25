@@ -1,6 +1,6 @@
 # Vercel Deployment & Media Guide for Nanvi AI
 
-This guide explains how Nanvi is configured for **temporary Vercel deployment** while preserving the entire architecture intact for your **future official production deployment** (Render, Railway, AWS, Docker, VPS).
+This guide explains how Nanvi is configured for Vercel while preserving the architecture for a future official deployment (Render, Railway, AWS, Docker, VPS).
 
 ---
 
@@ -48,14 +48,17 @@ Use this when you want Vercel to build the Vite frontend and route API requests 
 
 1. In Vercel, import your repository.
 2. Leave **Root Directory** as `.` (root).
-3. The root [`vercel.json`](file:///c:/Users/haris/Desktop/nanvi_ai_enterprise_assistant_FINAL_HANDOVER/vercel.json) will automatically:
-   - Build the frontend: `cd frontend && npm install && npm run build`
+3. The root `vercel.json` will automatically:
+   - Build the frontend reproducibly: `cd frontend && npm ci && npm run build`
    - Publish static files from `frontend/dist`
-   - Run the FastAPI backend serverlessly via [`api/index.py`](file:///c:/Users/haris/Desktop/nanvi_ai_enterprise_assistant_FINAL_HANDOVER/api/index.py)
+   - Run the FastAPI backend serverlessly via `api/index.py`
    - Handle client-side routing for SPA without 404 errors.
+   - Limit the API function to 60 seconds. Keep request work below that limit; long document indexing and batch jobs belong in a durable worker/queue.
+
+Do not set the Vercel Root Directory to `frontend` for this option: that uses `frontend/vercel.json`, which intentionally serves only the SPA and does not deploy the Python API.
 
 ### Option B: Frontend-Only on Vercel + Backend on External Host (Recommended for heavy RAG/LangGraph)
-Because this enterprise assistant features document parsing (`pypdf`, `docx`, `pptx`), vector search, and long streaming responses, serverless functions can sometimes hit Vercel's 10s (Hobby) timeout limit.
+Because this enterprise assistant features document parsing (`pypdf`, `docx`, `pptx`), vector search, and long responses, a dedicated backend is the preferred architecture for sustained production workloads. Serverless functions are request-scoped and their filesystem and in-memory state are not durable.
 
 A recommended pattern is:
 1. Deploy the FastAPI backend on **Render**, **Railway**, **Fly.io**, or your **VPS**.
@@ -91,6 +94,25 @@ A recommended pattern is:
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_KEY` | Supabase service key |
 | `CORS_ORIGINS` | Comma-separated list of allowed frontend origins (e.g. `https://your-project.vercel.app`) |
+
+For a full-stack Vercel deployment, set `APP_ENV=production` explicitly for Production (and Preview if it is connected to real services). The function also defaults to production when Vercel provides its `VERCEL` environment marker, preventing development-only token routes from being enabled by accident. Configure the secrets only in Vercel Project Settings; never commit them to `.env` or `vercel.json`.
+
+### Durable-services requirement
+
+Vercel Functions have an ephemeral filesystem and do not share process memory reliably between requests. For a production full-stack deployment, provide `SUPABASE_DATABASE_URL` (or `DATABASE_URL`) so the application does not fall back to SQLite, and `REDIS_URL` for shared rate limiting. Do not rely on the local `backend/storage/` directory for persisted reports or email-account state. Use a database/object store for those assets, or select Option B and run the backend on a durable service.
+
+### Pre-deploy checks
+
+Run these before pushing:
+
+```powershell
+cd frontend
+npm ci
+npm run typecheck
+npm run build
+```
+
+After deployment, verify `https://<your-domain>/api/health` returns `{"status":"ok"}`, load a deep SPA URL directly (for example `/settings`), and inspect the Vercel Function logs for startup errors. The API’s error response is intentionally generic; detailed diagnostics are available only in Function logs.
 
 ---
 

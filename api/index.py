@@ -9,18 +9,21 @@ root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
-# Default APP_ENV to development if not configured, for safe local / dev runs
+# A Vercel deployment must never silently enable development-only routes.
+# Local runs retain the convenient development default.
 if not os.getenv("APP_ENV"):
-    os.environ["APP_ENV"] = "development"
+    os.environ["APP_ENV"] = "production" if os.getenv("VERCEL") else "development"
 
 try:
     from backend.main import app
 except Exception as exc:
-    import traceback
-    err_tb = traceback.format_exc()
+    # Do not return exception details, filesystem paths, or import paths to callers.
+    # Those can expose deployment internals when configuration is incomplete.
+    import logging
     from fastapi import FastAPI
     from fastapi.responses import JSONResponse
 
+    logging.exception("Backend initialization failed")
     app = FastAPI(title="Nanvi Vercel Fallback")
 
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
@@ -29,10 +32,6 @@ except Exception as exc:
             status_code=500,
             content={
                 "error": "Backend initialization failed on Vercel",
-                "detail": str(exc),
-                "traceback": err_tb,
-                "sys_path": sys.path,
-                "root_dir": str(root_dir),
-                "root_files": os.listdir(str(root_dir)) if root_dir.exists() else "not found",
+                "detail": "Check Vercel Function logs and required environment variables.",
             },
         )
