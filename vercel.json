@@ -5,12 +5,8 @@
   "outputDirectory": "frontend/dist",
   "framework": "vite",
   "functions": {
-    "api/**/*.py": {
-      "includeFiles": [
-        "backend/**",
-        "services/**",
-        "config/**"
-      ]
+    "api/index.py": {
+      "includeFiles": "{backend/**,services/**,config/**}"
     }
   },
   "rewrites": [
