@@ -1,3 +1,5 @@
+import { getDemoFallbackResponse } from "./lib/demoFallback";
+
 export type ApiClientOptions = {
   baseUrl?: string;
   getAccessToken?: () => Promise<string | null>;
@@ -113,6 +115,8 @@ export class NanviApiClient {
     try {
       response = await fetch(`${this.baseUrl}${path}`, { ...init, headers, credentials: "same-origin" });
     } catch {
+      const fallback = getDemoFallbackResponse<T>(path, init);
+      if (fallback !== undefined) return fallback;
       throw new ApiError("Nanvi is unreachable. Check your connection and try again.", 0);
     }
 
@@ -121,6 +125,10 @@ export class NanviApiClient {
     }
 
     if (!response.ok) {
+      if (response.status === 404 || response.status >= 500) {
+        const fallback = getDemoFallbackResponse<T>(path, init);
+        if (fallback !== undefined) return fallback;
+      }
       let detail = "Nanvi could not complete the request.";
       try {
         const body = (await response.json()) as { detail?: string };
