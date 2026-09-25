@@ -45,20 +45,20 @@ export function ActiveConnectionCard({ connection, onManage, onTest, testing }: 
             </div>
             <div>
               <h4 style={{ margin: 0, fontSize: "var(--text-base)", fontWeight: "var(--weight-semibold)", color: "var(--text)" }}>
-                {connection.display_name}
+                {connection?.display_name || connection?.provider || "Connection"}
               </h4>
               <p style={{ margin: "0.125rem 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-                {connection.account_identifier || connection.provider}
+                {connection?.account_identifier || connection?.provider || ""}
               </p>
             </div>
           </div>
 
           <div style={{ display: "flex", gap: "0.375rem", alignItems: "center" }}>
-            <Badge tone={connection.scope_level === "organization" ? "primary" : "neutral"}>
-              {connection.scope_level === "organization" ? "Org" : "Personal"}
+            <Badge tone={connection?.scope_level === "organization" ? "primary" : "neutral"}>
+              {connection?.scope_level === "organization" ? "Org" : "Personal"}
             </Badge>
             <Badge tone={isHealthy ? "success" : isError ? "danger" : "neutral"}>
-              {connection.status}
+              {connection?.status || "UNKNOWN"}
             </Badge>
           </div>
         </div>
@@ -125,9 +125,11 @@ type ProviderCatalogCardProps = {
 };
 
 export function ProviderCatalogCard({ provider, isConnected, onConnect }: ProviderCatalogCardProps) {
-  const isAvailable = provider.available;
-  const isComingSoon = provider.available_reason === "coming_soon" || !provider.available && provider.available_reason !== "not_configured";
-  const isSetupRequired = provider.available_reason === "not_configured";
+  const isAvailable = Boolean(provider?.available);
+  const isComingSoon = provider?.available_reason === "coming_soon" || (!provider?.available && provider?.available_reason !== "not_configured");
+  const isSetupRequired = provider?.available_reason === "not_configured";
+  const categoriesList = Array.isArray(provider?.categories) ? provider.categories.join(", ") : "";
+  const authLabel = provider?.auth_type === "oauth2" ? "OAuth 2.0" : (provider?.auth_type || "api_key").replace("_", " ");
 
   return (
     <div style={{
@@ -159,9 +161,9 @@ export function ProviderCatalogCard({ provider, isConnected, onConnect }: Provid
               <PlugIcon size={20} />
             </div>
             <div>
-              <h4 style={{ margin: 0, fontSize: "var(--text-base)", fontWeight: "var(--weight-semibold)" }}>{provider.name}</h4>
+              <h4 style={{ margin: 0, fontSize: "var(--text-base)", fontWeight: "var(--weight-semibold)" }}>{provider?.name || "Provider"}</h4>
               <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-                {provider.categories.join(", ")}
+                {categoriesList}
               </span>
             </div>
           </div>
@@ -189,7 +191,7 @@ export function ProviderCatalogCard({ provider, isConnected, onConnect }: Provid
           WebkitBoxOrient: "vertical",
           overflow: "hidden",
         }}>
-          {provider.description}
+          {provider?.description || ""}
         </p>
       </div>
 
@@ -201,7 +203,7 @@ export function ProviderCatalogCard({ provider, isConnected, onConnect }: Provid
         paddingTop: "0.75rem",
       }}>
         <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "capitalize" }}>
-          {provider.auth_type === "oauth2" ? "OAuth 2.0" : provider.auth_type.replace("_", " ")}
+          {authLabel}
         </span>
 
         {isAvailable ? (

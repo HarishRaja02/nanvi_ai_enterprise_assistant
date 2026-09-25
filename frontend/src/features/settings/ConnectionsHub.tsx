@@ -69,17 +69,18 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
 
   // Connected provider IDs set
   const connectedProviderIds = useMemo(() => {
-    return new Set(connections.map((c) => c.provider));
+    return new Set((connections || []).map((c) => c?.provider || ""));
   }, [connections]);
 
   // Filtered active connections
   const filteredConnections = useMemo(() => {
-    return connections.filter((c) => {
+    return (connections || []).filter((c) => {
+      if (!c) return false;
       if (selectedScope !== "all" && c.scope_level !== selectedScope) return false;
       if (search) {
         const q = search.toLowerCase();
-        const name = c.display_name.toLowerCase();
-        const prov = c.provider.toLowerCase();
+        const name = (c.display_name || "").toLowerCase();
+        const prov = (c.provider || "").toLowerCase();
         const acc = (c.account_identifier || "").toLowerCase();
         if (!name.includes(q) && !prov.includes(q) && !acc.includes(q)) return false;
       }
@@ -89,15 +90,17 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
 
   // Filtered providers catalog
   const filteredProviders = useMemo(() => {
-    return providers.filter((p) => {
-      if (selectedCategory !== "All" && !p.categories.includes(selectedCategory)) {
+    return (providers || []).filter((p) => {
+      if (!p) return false;
+      const cats = Array.isArray(p.categories) ? p.categories : [];
+      if (selectedCategory !== "All" && !cats.includes(selectedCategory)) {
         return false;
       }
       if (search) {
         const q = search.toLowerCase();
-        const name = p.name.toLowerCase();
-        const desc = p.description.toLowerCase();
-        const cat = p.categories.join(" ").toLowerCase();
+        const name = (p.name || "").toLowerCase();
+        const desc = (p.description || "").toLowerCase();
+        const cat = cats.join(" ").toLowerCase();
         if (!name.includes(q) && !desc.includes(q) && !cat.includes(q)) return false;
       }
       return true;
@@ -192,7 +195,7 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
         >
           All Categories
         </button>
-        {categories.map((cat) => (
+        {(categories || []).map((cat) => (
           <button
             key={cat}
             type="button"
@@ -279,9 +282,9 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
           gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
           gap: "1rem",
         }}>
-          {filteredProviders.map((provider) => (
+          {filteredProviders.map((provider, idx) => (
             <ProviderCatalogCard
-              key={provider.id}
+              key={provider.id || provider.name || idx}
               provider={provider}
               isConnected={connectedProviderIds.has(provider.id)}
               onConnect={(p) => setConnectProvider(p)}
