@@ -42,11 +42,23 @@ export function useSession() {
   const checkExistingSession = useCallback(async () => {
     setChecking(true);
     setAuthError("");
-    if (!getStoredToken()) {
+    const storedToken = getStoredToken();
+    if (!storedToken) {
       setIdentity(null);
       setLoggedOut(false);
       setChecking(false);
       return;
+    }
+    if (DEMO_MODE && storedToken.startsWith("demo_session_")) {
+      try {
+        const decoded = JSON.parse(decodeURIComponent(escape(atob(storedToken.replace("demo_session_", "")))));
+        setIdentity(decoded);
+        setLoggedOut(false);
+        setChecking(false);
+        return;
+      } catch {
+        // Fall back to server check
+      }
     }
     try {
       setIdentity(await api.me());
@@ -92,6 +104,24 @@ export function useSession() {
       setIdentity(await api.me());
       setLoggedOut(false);
     } catch (error) {
+      // Graceful demo fallback: If backend server is offline or unreachable on static deployments,
+      // allow instant demo session so the user can experience the application interface and RBAC.
+      if (DEMO_MODE) {
+        const fallbackIdentity: UserIdentity = {
+          subject: `demo-${account.username}`,
+          issuer: "nanvi-demo",
+          name: account.name,
+          email: account.email,
+          tenant_id: "enterprise-tenant",
+          department: account.department,
+          roles: [account.role],
+        };
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(fallbackIdentity))));
+        setStoredToken(`demo_session_${encoded}`);
+        setIdentity(fallbackIdentity);
+        setLoggedOut(false);
+        return;
+      }
       clearStoredToken();
       setAuthError(
         error instanceof ApiError && error.status === 0
