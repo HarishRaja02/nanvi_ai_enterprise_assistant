@@ -146,7 +146,7 @@ class Settings:
 def _parse_company_roots(value: str, env: Environment) -> tuple[tuple[str, str], ...]:
     expected = ("Customers", "Finance", "HR", "Projects", "Contracts")
     if not value.strip():
-        if env == "production":
+        if env == "production" and not os.getenv("VERCEL"):
             raise ValueError("COMPANY_FILE_ROOTS must explicitly configure Customers, Finance, HR, Projects and Contracts")
         return tuple()
     entries = []
