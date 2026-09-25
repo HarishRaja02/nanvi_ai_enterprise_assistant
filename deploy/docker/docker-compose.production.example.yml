@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.backend
+    env_file:
+      - ../../config/environments/production.env.example
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    networks: [internal]
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.frontend
+    restart: unless-stopped
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    networks: [edge]
+
+  # PostgreSQL and Redis should normally be managed services rather than
+  # co-located containers. They are deliberately not defined here.
+
+networks:
+  edge:
+  internal:
+    internal: true

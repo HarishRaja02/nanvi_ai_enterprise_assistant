@@ -1,0 +1,88 @@
+import { RoleProfile } from "../types";
+
+export const ENTERPRISE_ROLES: RoleProfile[] = [
+  {
+    id: "ceo",
+    title: "CEO",
+    department: "Executive",
+    username: "ceo",
+    iconName: "building",
+    description: "Full strategic intelligence and executive AI decision support",
+    permissions: [
+      "Executive Dashboard",
+      "Strategic Foresight",
+      "Company-wide Analytics",
+      "Board Briefings",
+    ],
+  },
+  {
+    id: "finance",
+    title: "Finance",
+    department: "Corporate",
+    username: "finance",
+    iconName: "dollar",
+    description: "Financial forecasting, corporate audit, and ledger intelligence",
+    permissions: [
+      "Capital Allocation",
+      "Audit Trail Access",
+      "Payroll & Projections",
+      "Fiscal AI Models",
+    ],
+  },
+  {
+    id: "hr",
+    title: "HR",
+    department: "People",
+    username: "hr",
+    iconName: "users",
+    description: "Talent acquisition, organizational health, and culture analytics",
+    permissions: [
+      "Talent Analytics",
+      "Performance Review AI",
+      "Compensation Bands",
+      "Staff Directory",
+    ],
+  },
+  {
+    id: "manager",
+    title: "Manager",
+    department: "Engineering",
+    username: "manager",
+    iconName: "chart",
+    description: "Sprint velocity, team resource management, and code intelligence",
+    permissions: [
+      "Sprint Orchestration",
+      "Repository Insights",
+      "Capacity Planning",
+      "Team Approvals",
+    ],
+  },
+  {
+    id: "employee",
+    title: "Employee",
+    department: "Operations",
+    username: "employee",
+    iconName: "user",
+    description: "Personal workflow acceleration, daily tasks, and knowledge base",
+    permissions: [
+      "Workplace Copilot",
+      "Document Synthesis",
+      "Personal Task Queue",
+      "Self-Service Portal",
+    ],
+  },
+  {
+    id: "itadmin",
+    title: "IT Admin",
+    department: "Infrastructure",
+    username: "itadmin",
+    iconName: "shield",
+    description: "Zero-Trust RBAC access policies, security perimeter, and API nodes",
+    permissions: [
+      "Zero-Trust Policy Engine",
+      "SAML / SCIM Config",
+      "Audit Log Streaming",
+      "Key Rotation & Encryption",
+    ],
+  },
+];

@@ -1,0 +1,196 @@
+{
+  "scenarios": [
+    {
+      "scenario": 1,
+      "question": "What happened with ABC Company this week?",
+      "expected": "Summarize current-week ABC activity from authorized company knowledge and email evidence.",
+      "actual": "ABC Company this week: customer requested October renewal, reported one unresolved support issue ABC-778, requested the latest SLA metrics, and asked for a CRM integration specification.\nticket,status,customer\nABC-778,open,ABC Company\nABC-779,open,ABC Company\nXYZ-301,closed,XYZ Industries\nTicket ABC-778 is still unresolved.",
+      "sources": [
+        "ABC_weekly_update.txt",
+        "ABC_open_tickets.csv",
+        "Support escalation"
+      ],
+      "authorization": "Employee in tenant; authorized Project/company sources and mailbox metadata.",
+      "accuracy": "PASS: contains ABC Company and ABC-778; corroborated by synthetic knowledge + email sources.",
+      "response_time_ms": 1.17,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 2,
+      "question": "Give me all pending customer issues from this week?",
+      "expected": "Return all pending/open customer issues in the UAT current-week dataset.",
+      "actual": "ticket,status,customer\nABC-778,open,ABC Company\nABC-779,open,ABC Company",
+      "sources": [
+        "ABC_open_tickets.csv",
+        "ABC_weekly_update.txt"
+      ],
+      "authorization": "Employee allowed to read company/project issue data.",
+      "accuracy": "PASS: both ABC-778 and ABC-779 present; closed XYZ-301 is not treated as pending.",
+      "response_time_ms": 0.28,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 3,
+      "question": "What did ABC Company ask for in their last 10 emails?",
+      "expected": "Return the latest 10 ABC messages and summarize their requests.",
+      "actual": [
+        "Let's arrange the quarterly business review.",
+        "Please update the billing contact on the contract.",
+        "Ticket ABC-778 is still unresolved.",
+        "Please schedule product training for our team.",
+        "We need the CRM integration specification.",
+        "Please complete our vendor security questionnaire.",
+        "Can you share the latest SLA metrics?",
+        "Add two project managers to the portal.",
+        "Please resend invoice INV-1001.",
+        "Please confirm the delivery date for the next shipment."
+      ],
+      "sources": [
+        "Quarterly review",
+        "Contract change",
+        "Support escalation",
+        "Training",
+        "Integration",
+        "Security questionnaire",
+        "SLA review",
+        "User access",
+        "Invoice copy",
+        "Delivery status"
+      ],
+      "authorization": "Employee has Mail.Read in the synthetic tenant.",
+      "accuracy": "PASS: exactly 10 synthetic ABC emails returned; representative requests include renewal, training and security questionnaire.",
+      "response_time_ms": 0.72,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 4,
+      "question": "Show me all invoices above $10,000 that are overdue.",
+      "expected": "Return only overdue invoices with amount > $10,000.",
+      "actual": [
+        [
+          "INV-1001",
+          "ABC Company",
+          12500,
+          "overdue",
+          "2026-09-05"
+        ],
+        [
+          "INV-1003",
+          "XYZ Industries",
+          25000,
+          "overdue",
+          "2026-08-20"
+        ]
+      ],
+      "sources": [
+        "Invoice register"
+      ],
+      "authorization": "Finance role + Finance department authorized for restricted Finance data.",
+      "accuracy": "PASS: INV-1001 ($12,500) and INV-1003 ($25,000); $8,500, paid, and open non-overdue records excluded.",
+      "response_time_ms": 0.29,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 5,
+      "question": "Compare this month's sales with last month.",
+      "expected": "Compute September 2026 versus August 2026 sales from the UAT sales register.",
+      "actual": {
+        "this_month": 65000,
+        "last_month": 48000,
+        "change": 17000
+      },
+      "sources": [
+        "Sales register"
+      ],
+      "authorization": "Employee authorized to read synthetic sales data.",
+      "accuracy": "PASS: September = $65,000; August = $48,000; change = +$17,000.",
+      "response_time_ms": 0.19,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 6,
+      "question": "Find all documents related to Project XYZ.",
+      "expected": "Return all relevant authorized Project XYZ documents.",
+      "actual": "Project XYZ requirements include CRM integration, security review, delivery milestones, and customer acceptance criteria.\nProject XYZ implementation plan covers integration testing, security review, and delivery milestones.",
+      "sources": [
+        "Project_XYZ_requirements.txt",
+        "Project_XYZ_plan.docx"
+      ],
+      "authorization": "Employee authorized for tenant/project documents.",
+      "accuracy": "PASS: Project_XYZ_requirements.txt and Project_XYZ_plan.docx retrieved; source references generated.",
+      "response_time_ms": 0.28,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 7,
+      "question": "Create an Excel report of all open tickets.",
+      "expected": "Create a valid Excel report containing all open tickets retrieved from authorized data.",
+      "actual": "Excel report created: 5562 bytes; rows contain ABC-778 and ABC-779.",
+      "sources": [
+        "ABC open tickets"
+      ],
+      "authorization": "Employee authorized for report creation and source FILE_READ.",
+      "accuracy": "PASS: generated XLSX reopened successfully and contains expected ticket rows.",
+      "response_time_ms": null,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 8,
+      "question": "What were our sales last quarter?",
+      "expected": "For current date 2026-09-18, report prior quarter Q2 2026 sales.",
+      "actual": {
+        "quarter": "Q2 2026",
+        "total": 100000
+      },
+      "sources": [
+        "Sales register"
+      ],
+      "authorization": "Employee authorized to read synthetic sales data.",
+      "accuracy": "PASS: Q2 2026 total = $100,000 from April-June synthetic rows.",
+      "response_time_ms": 0.26,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 9,
+      "question": "Generate a report from retrieved information.",
+      "expected": "Generate a report whose contents are based on previously retrieved authorized information and retain provenance.",
+      "actual": "PDF report created: 2067 bytes from 2 retrieved documents.",
+      "sources": [
+        "Project_XYZ_requirements.txt",
+        "Project_XYZ_plan.docx"
+      ],
+      "authorization": "Employee authorized for report creation and both source documents.",
+      "accuracy": "PASS: report generated only after lineage authorization; two source references retained.",
+      "response_time_ms": null,
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": 10,
+      "question": "Verify source transparency.",
+      "expected": "Expose human-readable source metadata and safe openable references without raw SQL, IDs, or sensitive content.",
+      "actual": "[\n  {\n    \"reference_id\": \"72742cbb-894c-4aed-bb28-8c36fa40d1a7\",\n    \"source_type\": \"file\",\n    \"display_name\": \"Project_XYZ_requirements.txt\",\n    \"title\": \"Project_XYZ_requirements.txt\",\n    \"location\": null,\n    \"page\": null,\n    \"sheet\": null,\n    \"timestamp\": null,\n    \"mime_type\": null,\n    \"href\": \"/api/sources/72742cbb-894c-4aed-bb28-8c36fa40d1a7\"\n  },\n  {\n    \"reference_id\": \"546a322c-6fbe-4795-bdcd-a83c279e3721\",\n    \"source_type\": \"file\",\n    \"display_name\": \"Project_XYZ_plan.docx\",\n    \"title\": \"Project_XYZ_plan.docx\",\n    \"location\": null,\n    \"page\": null,\n    \"sheet\": null,\n    \"timestamp\": null,\n    \"mime_type\": null,\n    \"href\": \"/api/sources/546a322c-6fbe-4795-bdcd-a83c279e3721\"\n  }\n]",
+      "sources": [
+        "Project_XYZ_requirements.txt",
+        "Project_XYZ_plan.docx"
+      ],
+      "authorization": "References created only after authorization; resolution is re-authorized.",
+      "accuracy": "PASS: source names and /api/sources/<opaque-id> hrefs exposed; raw SQL is absent.",
+      "response_time_ms": 0.29,
+      "result": "ACCEPTED"
+    }
+  ],
+  "restricted": [
+    {
+      "scenario": "Restricted Finance knowledge",
+      "expected": "Employee cannot retrieve Finance-restricted data; Finance user can.",
+      "actual": "Employee hits=0; Finance hits=1; employee FINANCE_READ=False; finance DATABASE_READ=True",
+      "result": "ACCEPTED"
+    },
+    {
+      "scenario": "Cross-tenant data",
+      "expected": "Other tenant denied.",
+      "actual": "allowed=False",
+      "result": "ACCEPTED"
+    }
+  ]
+}

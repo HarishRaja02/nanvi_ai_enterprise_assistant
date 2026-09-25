@@ -1,0 +1,31 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+.env
+.env.*
+!.env.example
+
+node_modules/
+frontend/dist/
+
+.vscode/
+.idea/
+
+*.log
+.DS_Store
+Thumbs.db
+# Release/build artifacts
+build/
+*.egg-info/
+/dr_backups/
+/*.zip
+
+# Runtime and local storage
+backend/storage/*
+!backend/storage/.gitkeep

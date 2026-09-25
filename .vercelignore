@@ -1,0 +1,28 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test caches and test suites
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+test_doc/
+
+# Heavy local seed and docker files
+deploy/supabase_migration_and_seed.sql
+deploy/docker/
+dr_backups/
+
+# Node build dependencies
+node_modules/
+frontend/node_modules/
+
+# Logs and local runs
+*.log
+performance_results.json
+performance_benchmark.py
+business_uat_results.json
+backend/storage/*
+!backend/storage/.gitkeep
