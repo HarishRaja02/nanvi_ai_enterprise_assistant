@@ -2,6 +2,11 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Vercel's FastAPI detector only auto-discovers root/src/app entrypoints.
+# The deployed ASGI app lives at api/index.py, so make it explicit.
+[tool.vercel]
+entrypoint = "api.index:app"
+
 [project]
 name = "nanvi-ai-enterprise-assistant"
 version = "0.1.0"
