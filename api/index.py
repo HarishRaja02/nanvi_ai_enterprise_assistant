@@ -13,6 +13,26 @@ if str(root_dir) not in sys.path:
 if not os.getenv("APP_ENV"):
     os.environ["APP_ENV"] = "development"
 
-from backend.main import app
+try:
+    from backend.main import app
+except Exception as exc:
+    import traceback
+    err_tb = traceback.format_exc()
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
 
-# Vercel's @vercel/python runtime automatically discovers the `app` ASGI instance.
+    app = FastAPI(title="Nanvi Vercel Fallback")
+
+    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
+    async def fallback_handler(path: str):
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Backend initialization failed on Vercel",
+                "detail": str(exc),
+                "traceback": err_tb,
+                "sys_path": sys.path,
+                "root_dir": str(root_dir),
+                "root_files": os.listdir(str(root_dir)) if root_dir.exists() else "not found",
+            },
+        )

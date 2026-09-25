@@ -60,12 +60,19 @@ from backend.connections.routes import router as connections_router
 from backend.connections.oauth_routes import router as connections_oauth_router, auth_router as connections_auth_router
 
 app.include_router(router, prefix="/api")
+app.include_router(router)
 app.include_router(report_router, prefix="/api")
+app.include_router(report_router)
 app.include_router(source_router, prefix="/api")
+app.include_router(source_router)
 app.include_router(chat_router, prefix="/api")
+app.include_router(chat_router)
 app.include_router(voice_router, prefix="/api")
+app.include_router(voice_router)
 app.include_router(email_router, prefix="/api")
+app.include_router(email_router)
 app.include_router(settings_router, prefix="/api")
+app.include_router(settings_router)
 app.include_router(connections_router)
 app.include_router(connections_oauth_router)
 app.include_router(connections_auth_router)
@@ -75,4 +82,5 @@ app.include_router(connections_auth_router)
 if settings.app_env == "development" and settings.jwt_secret:
     from backend.api.dev_routes import router as dev_router
     app.include_router(dev_router, prefix="/api")
+    app.include_router(dev_router)
 

@@ -56,10 +56,13 @@ class UserEmailAccountService:
         self._init_db_schema()
 
     def _ensure_storage(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._path.exists():
-            with open(self._path, "w", encoding="utf-8") as f:
-                json.dump([], f)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            if not self._path.exists():
+                with open(self._path, "w", encoding="utf-8") as f:
+                    json.dump([], f)
+        except OSError:
+            pass
 
     def _init_db_schema(self) -> None:
         """Ensure public.user_email_accounts exists in target database."""
