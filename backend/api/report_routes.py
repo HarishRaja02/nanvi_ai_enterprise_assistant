@@ -22,7 +22,15 @@ def _safe_download_filename(title: str, extension: str) -> str:
 
 # Dependency wiring is intentionally explicit. Production should provide a shared
 # ReportStorage and AuditSink through the application's dependency container.
-_storage = SecureFileReportStorage("backend/storage/reports")
+import os
+from pathlib import Path
+
+if os.getenv("VERCEL"):
+    REPORT_STORAGE_ROOT = Path("/tmp/nanvi-reports")
+else:
+    REPORT_STORAGE_ROOT = Path("backend/storage/reports")
+
+_storage = SecureFileReportStorage(REPORT_STORAGE_ROOT)
 _audit = AuditLogger(InMemoryAuditSink())
 _service = ReportService(_storage, AuthorizationService(), _audit)
 
