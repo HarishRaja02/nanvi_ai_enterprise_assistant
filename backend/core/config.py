@@ -67,7 +67,7 @@ class Settings:
     allow_legacy_gmail_token: bool = False
     github_client_id: str = ""
     github_client_secret: str = ""
-    oauth_redirect_base_url: str = "http://127.0.0.1:8000"
+    oauth_redirect_base_url: str = ""
     demo_auth_enabled: bool = False
     
     
@@ -145,7 +145,7 @@ class Settings:
             allow_legacy_gmail_token=boolean("ALLOW_LEGACY_GMAIL_TOKEN", False),
             github_client_id=os.getenv("GITHUB_CLIENT_ID", "").strip(),
             github_client_secret=os.getenv("GITHUB_CLIENT_SECRET", "").strip(),
-            oauth_redirect_base_url=os.getenv("OAUTH_REDIRECT_BASE_URL", "http://127.0.0.1:8000").strip().rstrip("/"),
+            oauth_redirect_base_url=os.getenv("OAUTH_REDIRECT_BASE_URL", "").strip().rstrip("/"),
         )
 
 

@@ -43,7 +43,7 @@ async def google_auth_callback(code: str, state: str | None = None):
     oauth = get_google_oauth_service()
     account_service = get_user_email_account_service()
 
-    redirect_uri = settings.google_redirect_uri or "http://127.0.0.1:8000/api/auth/google/callback"
+    redirect_uri = settings.google_redirect_uri
 
     state_data = oauth.decode_state(state) if state else {}
     user_id = state_data.get("uid") or "ceo"
