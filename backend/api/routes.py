@@ -80,6 +80,6 @@ async def google_auth_callback(code: str, state: str | None = None):
     )
     account_service.save_account(account)
 
-    frontend_url = "http://127.0.0.1:5173/?mailbox_connected=true"
+    frontend_url = f"{settings.oauth_redirect_base_url}/?mailbox_connected=true"
     return RedirectResponse(url=frontend_url)
 

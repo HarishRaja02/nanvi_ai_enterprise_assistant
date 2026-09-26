@@ -64,12 +64,12 @@ def oauth_callback(
             state=state,
             redirect_uri=redirect_uri,
         )
-        target = redirect_after or "http://127.0.0.1:5173/settings?tab=connections"
+        target = redirect_after or f"{settings.oauth_redirect_base_url}/settings?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected={provider}&status=success")
     except Exception as exc:
         logger.error("OAuth callback failed for %s: %s", provider, exc)
-        target = "http://127.0.0.1:5173/settings?tab=connections"
+        target = f"{settings.oauth_redirect_base_url}/settings?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected={provider}&status=error&error={str(exc)}")
 
@@ -116,12 +116,12 @@ def github_auth_callback(
             state=state,
             redirect_uri=redirect_uri,
         )
-        target = redirect_after or "http://127.0.0.1:5173/settings?tab=connections"
+        target = redirect_after or f"{settings.oauth_redirect_base_url}/settings?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected=github&status=success")
     except Exception as exc:
         logger.error("GitHub callback error: %s", exc)
-        return RedirectResponse(url=f"http://127.0.0.1:5173/settings?tab=connections&connected=github&status=error&error={str(exc)}")
+        return RedirectResponse(url=f"{settings.oauth_redirect_base_url}/settings?tab=connections&connected=github&status=error&error={str(exc)}")
 
 
 # ── Top-level /api/auth/google routes (backward-compatibility alias) ──
@@ -166,10 +166,10 @@ def google_auth_callback(
             state=state,
             redirect_uri=redirect_uri,
         )
-        target = redirect_after or "http://127.0.0.1:5173/settings?tab=connections"
+        target = redirect_after or f"{settings.oauth_redirect_base_url}/settings?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected=google&status=success")
     except Exception as exc:
         logger.error("Google callback error: %s", exc)
-        return RedirectResponse(url=f"http://127.0.0.1:5173/settings?tab=connections&connected=google&status=error&error={str(exc)}")
+        return RedirectResponse(url=f"{settings.oauth_redirect_base_url}/settings?tab=connections&connected=google&status=error&error={str(exc)}")
 
