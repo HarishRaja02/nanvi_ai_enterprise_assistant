@@ -124,24 +124,40 @@ export class NanviApiClient {
       this.onUnauthorized?.();
     }
 
-    if (!response.ok) {
-      if (response.status === 404 || response.status >= 500) {
-        const fallback = getDemoFallbackResponse<T>(path, init);
-        if (fallback !== undefined) return fallback;
-      }
-      let detail = "Nanvi could not complete the request.";
-      try {
-        const body = (await response.json()) as { detail?: string };
-        if (typeof body.detail === "string" && body.detail.trim()) detail = body.detail;
-      } catch {
-        // Preserve the safe generic message when the backend returns non-JSON content.
-      }
-      const retryAfterHeader = response.headers.get("Retry-After");
-      const retryAfter = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : undefined;
-      if (response.status === 429) detail = `Too many requests. Please try again${retryAfter ? ` in ${retryAfter}s` : " shortly"}.`;
-      if (response.status >= 500) detail = "Nanvi is temporarily unavailable. Please try again.";
-      throw new ApiError(detail, response.status, Number.isFinite(retryAfter) ? retryAfter : undefined);
+if (!response.ok) {
+  let detail = "Nanvi could not complete the request.";
+
+  try {
+    const body = (await response.json()) as { detail?: string };
+
+    if (typeof body.detail === "string" && body.detail.trim()) {
+      detail = body.detail;
     }
+  } catch {
+    // Preserve the safe generic message when the backend returns non-JSON content.
+  }
+
+  const retryAfterHeader = response.headers.get("Retry-After");
+  const retryAfter = retryAfterHeader
+    ? Number.parseInt(retryAfterHeader, 10)
+    : undefined;
+
+  if (response.status === 429) {
+    detail = `Too many requests. Please try again${
+      retryAfter ? ` in ${retryAfter}s` : " shortly"
+    }.`;
+  }
+
+  if (response.status >= 500) {
+    detail = "Nanvi is temporarily unavailable. Please try again.";
+  }
+
+  throw new ApiError(
+    detail,
+    response.status,
+    Number.isFinite(retryAfter) ? retryAfter : undefined
+  );
+}
 
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
