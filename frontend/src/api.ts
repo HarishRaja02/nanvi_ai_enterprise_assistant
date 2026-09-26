@@ -230,10 +230,17 @@ if (!response.ok) {
     return this.request<DownloadUrlResponse>(`/reports/${encodeURIComponent(reportId)}/download-url`, { method: "POST" });
   }
 
-  devToken(role: string, department: string, name?: string, email?: string) {
-    return this.request<{ access_token: string; token_type: string; expires_in: number }>("/dev/token", {
+  devToken(username: string, password: string) {
+    return this.request<{
+      access_token: string;
+      token_type: string;
+      expires_in: number;
+    }>("/dev/token", {
       method: "POST",
-      body: JSON.stringify({ role, department, name: name ?? "Dev User", email: email ?? "dev@nanvi.local" }),
+      body: JSON.stringify({
+        username,
+        password,
+      }),
     });
   }
 

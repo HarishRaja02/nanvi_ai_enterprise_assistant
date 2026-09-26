@@ -99,29 +99,16 @@ export function useSession() {
       return;
     }
     try {
-      const token = await api.devToken(account.username, account.password);
+      const token = await api.devToken(
+              account.username,
+              account.password
+            );
       setStoredToken(token.access_token);
       setIdentity(await api.me());
       setLoggedOut(false);
     } catch (error) {
       // Graceful demo fallback: If backend server is offline or unreachable on static deployments,
       // allow instant demo session so the user can experience the application interface and RBAC.
-      if (DEMO_MODE) {
-        const fallbackIdentity: UserIdentity = {
-          subject: `demo-${account.username}`,
-          issuer: "nanvi-demo",
-          name: account.name,
-          email: account.email,
-          tenant_id: "enterprise-tenant",
-          department: account.department,
-          roles: [account.role],
-        };
-        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(fallbackIdentity))));
-        setStoredToken(`demo_session_${encoded}`);
-        setIdentity(fallbackIdentity);
-        setLoggedOut(false);
-        return;
-      }
       clearStoredToken();
       setAuthError(
         error instanceof ApiError && error.status === 0
