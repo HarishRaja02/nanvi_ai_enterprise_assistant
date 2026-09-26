@@ -99,7 +99,7 @@ export function useSession() {
       return;
     }
     try {
-      const token = await api.devToken(account.role, account.department, account.name, account.email);
+      const token = await api.devToken(account.username, account.password);
       setStoredToken(token.access_token);
       setIdentity(await api.me());
       setLoggedOut(false);

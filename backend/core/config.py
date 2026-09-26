@@ -46,13 +46,14 @@ class Settings:
     llm_provider: str
     llm_model: str
     groq_api_key: str
-    jwt_secret: str
+    
     google_client_id: str
     google_client_secret: str
     google_redirect_uri: str
     gmail_refresh_token: str
     gmail_access_token: str
-
+    jwt_secret: str
+    
     tavily_api_key: str
     supabase_url: str
     supabase_key: str
@@ -67,7 +68,11 @@ class Settings:
     github_client_id: str = ""
     github_client_secret: str = ""
     oauth_redirect_base_url: str = "http://127.0.0.1:8000"
-
+    demo_auth_enabled: bool = False
+    
+    
+    
+    
     @classmethod
     def from_env(cls) -> "Settings":
         env = os.getenv("APP_ENV", "development").strip().lower()
@@ -121,6 +126,7 @@ class Settings:
             llm_model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile").strip(),
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
             jwt_secret=os.getenv("JWT_SECRET", ""),
+            demo_auth_enabled=boolean("DEMO_AUTH_ENABLED", False),
             google_client_id=os.getenv("GOOGLE_CLIENT_ID", "").strip(),
             google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", "").strip(),
             google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173").strip(),

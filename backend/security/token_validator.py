@@ -45,7 +45,12 @@ class TokenValidator:
             raise AuthenticationError("Malformed access token")
 
         # Development-mode: accept locally-signed HS256 tokens
-        if settings.app_env == "development" and settings.jwt_secret:
+        # Development/demo mode: accept locally-signed HS256 tokens.
+        # Demo authentication is explicitly opt-in and disabled by default.
+        if (
+            (settings.app_env == "development" or settings.demo_auth_enabled)
+            and settings.jwt_secret
+        ):
             try:
                 header = jwt.get_unverified_header(token)
                 if header.get("alg") == "HS256":
