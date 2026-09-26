@@ -21,3 +21,14 @@ frontend/.env.test
 # Keep environment templates
 !.env.example
 !frontend/.env.example
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Frontend generated files
+frontend/node_modules/
+frontend/dist/
+
+# Vercel local artifacts
+.vercel/
+.vercel_python_packages/

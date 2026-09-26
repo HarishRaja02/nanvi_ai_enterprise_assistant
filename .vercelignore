@@ -26,3 +26,9 @@ performance_benchmark.py
 business_uat_results.json
 backend/storage/*
 !backend/storage/.gitkeep
+# Local Vercel build artifacts
+.vercel/
+.vercel_python_packages/
+# Local Vercel artifacts
+.vercel/
+.vercel_python_packages/
