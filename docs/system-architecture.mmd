@@ -1,0 +1,29 @@
+flowchart LR
+    U[User / Browser] --> FE[React Frontend]
+    FE --> API[FastAPI API]
+    API --> CTX[Request Context]
+    API --> AUTH[JWT/JWKS Authentication]
+    AUTH --> AUTHZ[RBAC + ABAC]
+    API --> ORCH[LangGraph Orchestrator]
+    ORCH --> GW[Secure Tool Gateway]
+    GW --> FILE[File Service]
+    FILE --> DOC[Document Parsers]
+    DOC --> RET[Retrieval Service]
+    GW --> DB[Database Service]
+    GW --> MAIL[Email Service]
+    GW --> REP[Report Service]
+    RET --> SRC[Source Reference Service]
+    DB --> SRC
+    MAIL --> SRC
+    REP --> SRC
+    AUTHZ --> AUD[Audit Logger]
+    GW --> AUD
+    API --> OBS[Structured Logs / Optional OTel]
+    ORCH --> OBS
+    GW --> OBS
+    DB --> OBS
+    MAIL --> OBS
+    FILE --> OBS
+    RET --> OBS
+    REP --> OBS
+    JOB[Redis Queue / Worker Contract] --> OBS

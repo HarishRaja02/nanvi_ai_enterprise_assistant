@@ -1,0 +1,39 @@
+# Runtime and local storage
+backend/storage/*
+backend/storage/user_email_accounts.json
+!backend/storage/.gitkeep
+
+# Vercel local files
+.vercel/
+.vercel/.env.preview.local
+.vercel_python_packages/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+frontend/.env.test
+
+# Keep environment templates
+!.env.example
+!frontend/.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Frontend generated files
+frontend/node_modules/
+frontend/dist/
+
+# Archives and project dumps
+*.zip
+*.tar.gz
+*.tgz
+project_for_deepseek.txt
