@@ -2,6 +2,10 @@
 backend/storage/*
 backend/storage/user_email_accounts.json
 !backend/storage/.gitkeep
+data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Vercel local files
 .vercel/

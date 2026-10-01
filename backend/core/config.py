@@ -111,6 +111,14 @@ class Settings:
         # 1. Database URL
         if not (self.database_url or self.supabase_database_url):
             errors.append("DATABASE_URL or SUPABASE_DATABASE_URL must be configured")
+        else:
+            target_db = self.supabase_database_url or self.database_url
+            if target_db and ("localhost" in target_db.lower() or "127.0.0.1" in target_db):
+                errors.append(
+                    "DATABASE_URL or SUPABASE_DATABASE_URL points to 'localhost' or '127.0.0.1'. "
+                    "Cloud deployments (Vercel, AWS, Azure) cannot connect to a local database. "
+                    "Please provide your Supabase cloud PostgreSQL connection string from Supabase -> Project Settings -> Database."
+                )
 
         # 2. Secret keys / auth
         if not self.jwt_secret and not (self.oidc_issuer_url and self.oidc_client_id and self.oidc_jwks_url):
@@ -191,7 +199,7 @@ class Settings:
             oidc_algorithms=tuple(x.strip() for x in os.getenv("OIDC_ALGORITHMS", "RS256").split(",") if x.strip()),
             company_file_roots=_parse_company_roots(os.getenv("COMPANY_FILE_ROOTS", "")),
             company_file_max_size_bytes=integer("COMPANY_FILE_MAX_SIZE_BYTES", 10 * 1024 * 1024),
-            database_url=os.getenv("DATABASE_URL", ""),
+            database_url=_sanitize_database_url(os.getenv("DATABASE_URL", "")),
             database_pool_min_size=integer("DATABASE_POOL_MIN_SIZE", 2),
             database_pool_max_size=integer("DATABASE_POOL_MAX_SIZE", 10),
             database_statement_timeout_ms=integer("DATABASE_STATEMENT_TIMEOUT_MS", 5000),
@@ -221,7 +229,7 @@ class Settings:
             tavily_api_key=os.getenv("TAVILY_API_KEY", "").strip(),
             supabase_url=os.getenv("SUPABASE_URL", "").strip(),
             supabase_key=os.getenv("SUPABASE_KEY", "").strip(),
-            supabase_database_url=os.getenv("SUPABASE_DATABASE_URL", "").strip(),
+            supabase_database_url=_sanitize_database_url(os.getenv("SUPABASE_DATABASE_URL", "")),
             retrieval_v2_enabled=boolean("RETRIEVAL_V2_ENABLED", True),
             groq_max_concurrency=integer("GROQ_MAX_CONCURRENCY", 3),
             groq_token_budget_ceiling=integer("GROQ_TOKEN_BUDGET_CEILING", 3500),
@@ -237,6 +245,21 @@ class Settings:
             realtime_voice_enabled=boolean("REALTIME_VOICE_ENABLED", bool(openai_api_key)),
             realtime_voice_model=os.getenv("REALTIME_VOICE_MODEL", "gpt-live-1").strip(),
         )
+
+
+def _sanitize_database_url(url: str) -> str:
+    url = url.strip()
+    if not url:
+        return ""
+    import urllib.parse
+    import re
+    match = re.match(r"^(postgres(?:ql)?://)([^:]+):(.*)@([^@]+)$", url)
+    if match:
+        scheme, user, password_raw, host_and_rest = match.groups()
+        if any(c in password_raw for c in "+?#") or ("%" in password_raw and not re.search(r"%[0-9a-fA-F]{2}", password_raw)):
+            encoded_pw = urllib.parse.quote_plus(password_raw)
+            return f"{scheme}{user}:{encoded_pw}@{host_and_rest}"
+    return url
 
 
 def _parse_company_roots(value: str) -> tuple[tuple[str, str], ...]:

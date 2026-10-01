@@ -101,11 +101,30 @@ class LocalAccountStore:
 
     def _connect(self):
         if self._dsn:
-            if self._pool is not None:
-                return self._pool.connection()
-            import psycopg
-            from psycopg.rows import dict_row
-            return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=5)
+            from backend.core.exceptions import DependencyUnavailableError
+            try:
+                if self._pool is not None:
+                    return self._pool.connection(timeout=3)
+                import psycopg
+                from psycopg.rows import dict_row
+                return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=3)
+            except Exception as exc:
+                if settings.is_production:
+                    sanitized_host = self._dsn.split("@")[-1] if "@" in self._dsn else "configured host"
+                    raise DependencyUnavailableError(
+                        f"PostgreSQL database connection failed for '{sanitized_host}': {exc}. "
+                        "In cloud deployment (Vercel/AWS/Azure), make sure SUPABASE_DATABASE_URL is set to your cloud PostgreSQL URI, not localhost.",
+                        dependency="database",
+                    ) from exc
+                import logging
+                logging.getLogger(__name__).warning("Could not connect to PostgreSQL/Supabase (%s). Using local SQLite fallback.", exc)
+                self._dsn = ""
+                if self._pool is not None:
+                    try:
+                        self._pool.close(timeout=0.5)
+                    except Exception:
+                        pass
+                    self._pool = None
 
         self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self._sqlite_path, timeout=10)
