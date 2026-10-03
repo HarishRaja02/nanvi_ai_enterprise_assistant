@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import string
+import sys
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -79,6 +81,14 @@ def _is_admin(user: UserIdentity) -> bool:
 def _get_filesystem_root_entries() -> list[dict[str, str | bool]]:
     """Return starting locations for browsing the backend machine's filesystem."""
     entries: list[dict[str, str | bool]] = []
+
+    # 1. Bundled CompanyData in repo (works seamlessly in Vercel and local)
+    project_root = Path(__file__).resolve().parents[2]
+    repo_data = project_root / "CompanyData"
+    if repo_data.is_dir():
+        entries.append({"name": "Bundled Company Data (Repository)", "path": str(repo_data), "is_dir": True})
+
+    # 2. Filesystem roots
     if os.name == "nt":
         for drive in string.ascii_uppercase:
             root = Path(f"{drive}:\\")
@@ -107,7 +117,18 @@ def _get_filesystem_root_entries() -> list[dict[str, str | bool]]:
 def _resolve_requested_path(path: str) -> Path:
     """Resolve a user-selected path without restricting it to configured roots."""
     try:
-        return Path(path).expanduser().resolve()
+        clean = path.strip()
+        # Aliases for repository bundled CompanyData
+        if clean.lower() in {"default", "reset", "companydata", "./companydata", "repo"}:
+            repo_data = Path(__file__).resolve().parents[2] / "CompanyData"
+            if repo_data.is_dir():
+                return repo_data
+        p = Path(clean)
+        if not p.is_absolute():
+            candidate = Path(__file__).resolve().parents[2] / clean
+            if candidate.exists() and candidate.is_dir():
+                return candidate.resolve()
+        return p.expanduser().resolve()
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -181,6 +202,16 @@ async def update_company_folder(
 
     p = _resolve_requested_path(new_path)
     if not p.exists():
+        is_windows_path = bool(re.match(r"^[a-zA-Z]:[\\/]", new_path))
+        is_cloud = settings.is_production or bool(os.getenv("VERCEL")) or sys.platform != "win32"
+        if is_windows_path and is_cloud:
+            err_msg = (
+                f"Folder does not exist on Vercel: {new_path}. "
+                "Local drive paths (like 'C:\\...') only exist on your personal computer and cannot be accessed by Vercel cloud servers. "
+                "Type 'CompanyData' or click 'Use Bundled Data' to use the repository's company documents."
+            )
+        else:
+            err_msg = f"Folder does not exist: {new_path}"
         return CompanyFolderUpdateResponse(
             status="error",
             path=new_path,
@@ -188,7 +219,7 @@ async def update_company_folder(
             folder_count=0,
             file_count=0,
             indexed_files=0,
-            message=f"Folder does not exist: {new_path}",
+            message=err_msg,
         )
 
     if not p.is_dir():

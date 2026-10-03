@@ -1,0 +1,51 @@
+customer_id,name,city,segment,industry,annual_value,status
+C-011-000,Customer 011-000,Mumbai,Enterprise,Healthcare,1564809,Active
+C-011-001,Customer 011-001,Bengaluru,Retail,Finance,245307,Inactive
+C-011-002,Customer 011-002,Bengaluru,Enterprise,Technology,359236,Active
+C-011-003,Customer 011-003,Mumbai,SMB,Technology,3573879,Inactive
+C-011-004,Customer 011-004,Mumbai,Retail,Healthcare,1087068,At Risk
+C-011-005,Customer 011-005,Bengaluru,SMB,Technology,4032228,At Risk
+C-011-006,Customer 011-006,Mumbai,Enterprise,Finance,1613822,Active
+C-011-007,Customer 011-007,Chennai,SMB,Finance,1063942,At Risk
+C-011-008,Customer 011-008,Bengaluru,Retail,Finance,3764957,Inactive
+C-011-009,Customer 011-009,Hyderabad,Enterprise,Technology,3118046,Active
+C-011-010,Customer 011-010,Bengaluru,Enterprise,Technology,868497,Active
+C-011-011,Customer 011-011,Bengaluru,SMB,Technology,4190424,Active
+C-011-012,Customer 011-012,Bengaluru,SMB,Technology,4056767,Active
+C-011-013,Customer 011-013,Chennai,Enterprise,Finance,3874560,Inactive
+C-011-014,Customer 011-014,Hyderabad,Enterprise,Technology,3092616,At Risk
+C-011-015,Customer 011-015,Chennai,SMB,Technology,612183,Inactive
+C-011-016,Customer 011-016,Chennai,Retail,Technology,3953082,Active
+C-011-017,Customer 011-017,Bengaluru,SMB,Technology,2974380,Inactive
+C-011-018,Customer 011-018,Chennai,Enterprise,Technology,1362321,Inactive
+C-011-019,Customer 011-019,Bengaluru,Enterprise,Healthcare,3925375,Inactive
+C-011-020,Customer 011-020,Mumbai,Enterprise,Technology,1813935,Inactive
+C-011-021,Customer 011-021,Chennai,SMB,Healthcare,4214969,Inactive
+C-011-022,Customer 011-022,Hyderabad,SMB,Finance,1523335,Inactive
+C-011-023,Customer 011-023,Bengaluru,Retail,Finance,1929621,At Risk
+C-011-024,Customer 011-024,Hyderabad,Retail,Finance,2952642,At Risk
+C-011-025,Customer 011-025,Mumbai,Retail,Healthcare,4762556,At Risk
+C-011-026,Customer 011-026,Bengaluru,Retail,Finance,3821707,At Risk
+C-011-027,Customer 011-027,Hyderabad,SMB,Technology,852823,Inactive
+C-011-028,Customer 011-028,Chennai,Enterprise,Healthcare,1521978,Active
+C-011-029,Customer 011-029,Chennai,SMB,Finance,2152665,Inactive
+C-011-030,Customer 011-030,Bengaluru,Retail,Finance,1768565,Inactive
+C-011-031,Customer 011-031,Mumbai,Retail,Finance,4369050,At Risk
+C-011-032,Customer 011-032,Mumbai,Enterprise,Healthcare,3274130,Inactive
+C-011-033,Customer 011-033,Chennai,Retail,Healthcare,571518,Inactive
+C-011-034,Customer 011-034,Mumbai,Retail,Healthcare,2779443,Active
+C-011-035,Customer 011-035,Chennai,Enterprise,Finance,2821261,Active
+C-011-036,Customer 011-036,Chennai,Enterprise,Technology,501022,At Risk
+C-011-037,Customer 011-037,Chennai,Retail,Finance,4641508,Active
+C-011-038,Customer 011-038,Hyderabad,SMB,Finance,4021904,Inactive
+C-011-039,Customer 011-039,Mumbai,Retail,Healthcare,2143826,Active
+C-011-040,Customer 011-040,Chennai,Retail,Finance,916552,Inactive
+C-011-041,Customer 011-041,Bengaluru,Retail,Healthcare,3101836,Active
+C-011-042,Customer 011-042,Mumbai,Enterprise,Healthcare,2130468,Inactive
+C-011-043,Customer 011-043,Hyderabad,SMB,Technology,1515391,Active
+C-011-044,Customer 011-044,Mumbai,Retail,Technology,2497698,Active
+C-011-045,Customer 011-045,Mumbai,SMB,Healthcare,4594823,Inactive
+C-011-046,Customer 011-046,Bengaluru,SMB,Healthcare,2407177,At Risk
+C-011-047,Customer 011-047,Hyderabad,Enterprise,Finance,4125635,Inactive
+C-011-048,Customer 011-048,Hyderabad,SMB,Healthcare,1091228,At Risk
+C-011-049,Customer 011-049,Mumbai,SMB,Healthcare,4472456,Inactive

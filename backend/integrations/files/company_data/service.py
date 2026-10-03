@@ -35,16 +35,34 @@ class CompanyDataService:
     _instances: dict[str, CompanyDataService] = {}
     _registry_lock = threading.Lock()
 
+    @classmethod
+    def resolve_default_root(cls, tenant_id: str = "default") -> Path:
+        """Resolve the best default company data root directory."""
+        persisted = get_persisted_folder(tenant_id)
+        if persisted is not None and persisted.exists() and persisted.is_dir():
+            return persisted
+
+        project_root = Path(__file__).resolve().parents[4]
+        repo_data = project_root / "CompanyData"
+        if repo_data.exists() and repo_data.is_dir():
+            return repo_data
+
+        win_fallback = Path("C:/CompanyData")
+        if win_fallback.exists() and win_fallback.is_dir():
+            return win_fallback
+
+        return repo_data
+
     def __init__(self, root_dir: str | Path | None = None, tenant_id: str = "default") -> None:
         self.tenant_id = str(tenant_id or "default").strip()
         if root_dir is not None:
-            self.root = Path(root_dir).resolve()
-        else:
-            persisted = get_persisted_folder(self.tenant_id)
-            if persisted is not None and persisted.exists():
-                self.root = persisted
+            candidate = Path(root_dir).resolve()
+            if candidate.exists() and candidate.is_dir():
+                self.root = candidate
             else:
-                self.root = Path("C:/CompanyData")
+                self.root = self.resolve_default_root(self.tenant_id)
+        else:
+            self.root = self.resolve_default_root(self.tenant_id)
 
         self._doc_service = create_default_document_service()
         self._chunks: list[CompanyChunk] = []
@@ -60,9 +78,7 @@ class CompanyDataService:
         with cls._registry_lock:
             instance = cls._instances.get(t_id)
             if instance is None:
-                persisted = get_persisted_folder(t_id)
-                fallback_path = cls._instances["default"].root if "default" in cls._instances else "C:/CompanyData"
-                target_path = root_dir if root_dir is not None else (persisted or fallback_path)
+                target_path = root_dir if root_dir is not None else cls.resolve_default_root(t_id)
                 instance = cls(target_path, tenant_id=t_id)
                 try:
                     instance.ensure_indexed()

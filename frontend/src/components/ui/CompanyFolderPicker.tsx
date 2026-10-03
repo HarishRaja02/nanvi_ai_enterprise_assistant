@@ -225,6 +225,14 @@ export function CompanyFolderPicker({ api }: Props) {
                 {saving ? "Saving…" : "Apply"}
               </button>
               <button
+                className="folder-picker-btn folder-picker-btn-secondary"
+                onClick={() => void saveFolder("CompanyData")}
+                disabled={saving}
+                title="Use repository bundled CompanyData folder (recommended on Vercel/cloud)"
+              >
+                Use Bundled Data
+              </button>
+              <button
                 className="folder-picker-btn folder-picker-btn-ghost"
                 onClick={() => {
                   setEditMode(false);
@@ -234,6 +242,14 @@ export function CompanyFolderPicker({ api }: Props) {
                 Cancel
               </button>
             </div>
+          )}
+          {editMode && inputPath.match(/^[a-zA-Z]:[\\/]/) &&
+            typeof window !== "undefined" &&
+            window.location.hostname !== "localhost" &&
+            window.location.hostname !== "127.0.0.1" && (
+              <div style={{ fontSize: "0.78rem", color: "#38bdf8", marginTop: "6px", padding: "4px 8px", background: "rgba(56, 189, 248, 0.08)", borderRadius: "6px" }}>
+                ℹ️ You are accessing a cloud deployment ({window.location.hostname}). Cloud servers cannot read your personal computer&apos;s C:\ drive. Click <strong>&quot;Use Bundled Data&quot;</strong> to index the repository&apos;s company documents.
+              </div>
           )}
         </div>
 
@@ -262,13 +278,23 @@ export function CompanyFolderPicker({ api }: Props) {
           </div>
         )}
         {!folderExists && currentPath && (
-          <div className="folder-picker-warning">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            Folder not found at this path
+          <div className="folder-picker-warning" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              Folder not found at this path
+            </div>
+            <button
+              className="folder-picker-btn folder-picker-btn-secondary"
+              style={{ padding: "3px 10px", fontSize: "0.75rem" }}
+              onClick={() => void saveFolder("CompanyData")}
+              disabled={saving}
+            >
+              Use Bundled CompanyData
+            </button>
           </div>
         )}
       </div>

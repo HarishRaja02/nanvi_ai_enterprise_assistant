@@ -1,0 +1,266 @@
+{
+  "company": "Apex Civil Infrastructure Pvt. Ltd.",
+  "projects": [
+    {
+      "id": "PRJ-CHB-001",
+      "name": "Chennai River Bridge",
+      "client": "Tamil Nadu Infrastructure Development Board",
+      "location": "Chennai, Tamil Nadu",
+      "manager": "Rajiv Menon",
+      "budget_inr": 1850000000,
+      "progress_pct": 68
+    },
+    {
+      "id": "PRJ-CFL-002",
+      "name": "Cooum Flyover",
+      "client": "Chennai Metropolitan Development Authority",
+      "location": "Chennai, Tamil Nadu",
+      "manager": "Priya Narayanan",
+      "budget_inr": 920000000,
+      "progress_pct": 54
+    },
+    {
+      "id": "PRJ-CVB-003",
+      "name": "Cauvery River Bridge",
+      "client": "Tamil Nadu Highways Department",
+      "location": "Trichy, Tamil Nadu",
+      "manager": "Suresh Balaji",
+      "budget_inr": 1320000000,
+      "progress_pct": 41
+    }
+  ],
+  "employees": [
+    {
+      "id": "EMP1001",
+      "name": "Arun Kumar",
+      "role": "Site Engineer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1002",
+      "name": "Meena Krishnan",
+      "role": "Structural Engineer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1003",
+      "name": "Karthik Iyer",
+      "role": "QA/QC Engineer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1004",
+      "name": "Divya Mohan",
+      "role": "Safety Officer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1005",
+      "name": "Vijay Reddy",
+      "role": "Planning Engineer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1006",
+      "name": "Sneha Menon",
+      "role": "Quantity Surveyor",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1007",
+      "name": "Prakash Rajan",
+      "role": "Survey Engineer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1008",
+      "name": "Anitha Kumar",
+      "role": "Store Manager",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1009",
+      "name": "Rahul Nair",
+      "role": "HR Executive",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1010",
+      "name": "Naveen Selvam",
+      "role": "Accounts Executive",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1011",
+      "name": "Keerthana Iyer",
+      "role": "Site Engineer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1012",
+      "name": "Manoj Reddy",
+      "role": "Structural Engineer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1013",
+      "name": "Lavanya Pillai",
+      "role": "QA/QC Engineer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1014",
+      "name": "Dinesh Prasad",
+      "role": "Safety Officer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1015",
+      "name": "Gokul Nair",
+      "role": "Planning Engineer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1016",
+      "name": "Priya Narayanan",
+      "role": "Quantity Surveyor",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1017",
+      "name": "Sanjay Kumar",
+      "role": "Survey Engineer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1018",
+      "name": "Harini Rajan",
+      "role": "Store Manager",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1019",
+      "name": "Mohan Iyer",
+      "role": "HR Executive",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1020",
+      "name": "Ramesh Selvam",
+      "role": "Accounts Executive",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1021",
+      "name": "Deepa Nair",
+      "role": "Site Engineer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1022",
+      "name": "Surya Kumar",
+      "role": "Structural Engineer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1023",
+      "name": "Pavithra Mohan",
+      "role": "QA/QC Engineer",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1024",
+      "name": "Ajay Reddy",
+      "role": "Safety Officer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1025",
+      "name": "Nithya Pillai",
+      "role": "Planning Engineer",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1026",
+      "name": "Bala Prasad",
+      "role": "Quantity Surveyor",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1027",
+      "name": "Shalini Kumar",
+      "role": "Survey Engineer",
+      "project": "PRJ-CVB-003"
+    },
+    {
+      "id": "EMP1028",
+      "name": "Vignesh Rajan",
+      "role": "Store Manager",
+      "project": "PRJ-CHB-001"
+    },
+    {
+      "id": "EMP1029",
+      "name": "Asha Nair",
+      "role": "HR Executive",
+      "project": "PRJ-CFL-002"
+    },
+    {
+      "id": "EMP1030",
+      "name": "Suresh Balaji",
+      "role": "Accounts Executive",
+      "project": "PRJ-CVB-003"
+    }
+  ],
+  "vendors": [
+    {
+      "id": "VEN001",
+      "name": "Sri Ganesh ReadyMix",
+      "category": "Concrete"
+    },
+    {
+      "id": "VEN002",
+      "name": "Southern Steel Works",
+      "category": "Rebar & Steel"
+    },
+    {
+      "id": "VEN003",
+      "name": "Metro Formwork Systems",
+      "category": "Formwork"
+    },
+    {
+      "id": "VEN004",
+      "name": "Kaveri Aggregates",
+      "category": "Aggregates"
+    },
+    {
+      "id": "VEN005",
+      "name": "SafeBuild PPE Solutions",
+      "category": "Safety"
+    },
+    {
+      "id": "VEN006",
+      "name": "Prime Heavy Machinery",
+      "category": "Equipment"
+    },
+    {
+      "id": "VEN007",
+      "name": "Delta Electricals",
+      "category": "Electrical"
+    },
+    {
+      "id": "VEN008",
+      "name": "AquaLab Testing Services",
+      "category": "Testing"
+    }
+  ],
+  "key_relationships": [
+    {
+      "project": "PRJ-CHB-001",
+      "work_area": "Pier P-07",
+      "pour": "POUR-CHB-071",
+      "inspection": "IR-003",
+      "vendor": "VEN001",
+      "ncr": "NCR-2026-001"
+    }
+  ]
+}

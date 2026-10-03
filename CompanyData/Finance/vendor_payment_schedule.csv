@@ -1,0 +1,6 @@
+Vendor Name,Category,Invoice ID,Amount ($),Invoice Date,Due Date,Payment Status
+Amazon Web Services,Cloud Infrastructure,INV-2026-0891,42500.00,2026-02-28,2026-03-30,Scheduled
+Datadog Inc.,Monitoring & APM,INV-DD-4412,6800.00,2026-03-01,2026-03-31,Approved
+KPMG LLP,Audit & Tax Advisory,INV-KPMG-918,28000.00,2026-02-15,2026-03-17,Paid
+GitHub Enterprise,Developer Tooling,INV-GH-7712,12400.00,2026-01-10,2026-02-09,Paid
+Zoom Video Comm,Collaboration,INV-ZM-3301,3400.00,2026-03-05,2026-04-04,Pending Review

@@ -1,0 +1,101 @@
+transaction_id,date,account_id,transaction_type,category,merchant,amount,currency,status
+TX-12-0000,2026-11-30,ACC-1487,Credit,Travel,CloudNova,36241.26,INR,Failed
+TX-12-0001,2026-06-14,ACC-2389,Credit,Office,Metro Supplies,94369.92,INR,Completed
+TX-12-0002,2026-03-21,ACC-1607,Debit,Utilities,CloudNova,6240.69,INR,Failed
+TX-12-0003,2026-11-08,ACC-5845,Credit,Marketing,SecureNet,87593.75,INR,Failed
+TX-12-0004,2026-07-21,ACC-6139,Credit,Software,OfficeHub,87367.28,INR,Failed
+TX-12-0005,2026-09-18,ACC-7618,Credit,Payroll,DataBridge,92053.01,INR,Failed
+TX-12-0006,2026-10-02,ACC-8244,Credit,Consulting,SecureNet,78855.32,INR,Pending
+TX-12-0007,2025-07-22,ACC-2380,Debit,Utilities,OfficeHub,88109.37,INR,Pending
+TX-12-0008,2025-05-10,ACC-9860,Credit,Travel,CloudNova,52094.92,INR,Failed
+TX-12-0009,2026-07-20,ACC-6582,Debit,Software,CloudNova,31294.02,INR,Failed
+TX-12-0010,2026-08-30,ACC-5979,Credit,Utilities,CloudNova,25943.15,INR,Failed
+TX-12-0011,2025-03-03,ACC-5255,Credit,Software,CloudNova,84174.19,INR,Failed
+TX-12-0012,2025-05-08,ACC-1085,Credit,Office,DataBridge,44928.81,INR,Failed
+TX-12-0013,2026-08-19,ACC-9737,Debit,Office,OfficeHub,56603.16,INR,Pending
+TX-12-0014,2026-11-14,ACC-3293,Credit,Utilities,SecureNet,78500.45,INR,Completed
+TX-12-0015,2025-04-18,ACC-4154,Credit,Marketing,CloudNova,32851.91,INR,Completed
+TX-12-0016,2026-03-12,ACC-2342,Debit,Software,Metro Supplies,82860.92,INR,Completed
+TX-12-0017,2026-05-03,ACC-2279,Credit,Payroll,Prime Telecom,21556.96,INR,Pending
+TX-12-0018,2026-08-26,ACC-7468,Credit,Utilities,Metro Supplies,55940.95,INR,Failed
+TX-12-0019,2026-03-10,ACC-9020,Credit,Consulting,DataBridge,99651.53,INR,Completed
+TX-12-0020,2026-06-02,ACC-8499,Debit,Payroll,Prime Telecom,12799.69,INR,Failed
+TX-12-0021,2025-05-01,ACC-8461,Credit,Software,SecureNet,69477.62,INR,Completed
+TX-12-0022,2026-07-27,ACC-2945,Credit,Software,CloudNova,36996.27,INR,Pending
+TX-12-0023,2026-08-09,ACC-9565,Debit,Software,OfficeHub,29030.1,INR,Pending
+TX-12-0024,2026-01-19,ACC-8961,Debit,Consulting,DataBridge,30395.68,INR,Completed
+TX-12-0025,2026-08-27,ACC-5999,Credit,Travel,DataBridge,42233.52,INR,Failed
+TX-12-0026,2026-05-16,ACC-9970,Credit,Software,CloudNova,308.37,INR,Pending
+TX-12-0027,2026-05-08,ACC-8411,Credit,Consulting,Metro Supplies,57348.6,INR,Pending
+TX-12-0028,2026-09-13,ACC-3269,Credit,Consulting,Metro Supplies,13367.68,INR,Failed
+TX-12-0029,2026-04-05,ACC-6328,Debit,Consulting,Prime Telecom,14983.36,INR,Failed
+TX-12-0030,2026-10-01,ACC-4814,Credit,Office,Prime Telecom,41021.87,INR,Completed
+TX-12-0031,2026-11-18,ACC-5544,Debit,Consulting,DataBridge,89015.31,INR,Failed
+TX-12-0032,2025-01-26,ACC-6060,Debit,Payroll,Prime Telecom,57242.28,INR,Completed
+TX-12-0033,2025-07-17,ACC-9877,Debit,Utilities,Prime Telecom,95521.32,INR,Completed
+TX-12-0034,2026-05-03,ACC-1305,Debit,Payroll,Prime Telecom,50313.62,INR,Completed
+TX-12-0035,2025-01-20,ACC-4371,Debit,Consulting,SecureNet,27568.76,INR,Failed
+TX-12-0036,2026-03-31,ACC-9741,Credit,Marketing,Prime Telecom,8556.33,INR,Completed
+TX-12-0037,2026-05-19,ACC-1381,Credit,Marketing,DataBridge,86211.24,INR,Pending
+TX-12-0038,2025-01-25,ACC-6199,Credit,Office,CloudNova,85978.88,INR,Completed
+TX-12-0039,2025-04-12,ACC-5675,Debit,Travel,OfficeHub,54223.75,INR,Completed
+TX-12-0040,2025-06-07,ACC-7672,Debit,Software,Prime Telecom,30748.74,INR,Pending
+TX-12-0041,2025-07-05,ACC-1958,Credit,Marketing,CloudNova,2814.4,INR,Pending
+TX-12-0042,2025-05-26,ACC-6311,Credit,Marketing,CloudNova,41341.0,INR,Completed
+TX-12-0043,2025-07-27,ACC-4874,Credit,Utilities,Prime Telecom,24038.33,INR,Pending
+TX-12-0044,2025-04-28,ACC-6215,Credit,Utilities,Metro Supplies,27001.82,INR,Completed
+TX-12-0045,2026-05-11,ACC-4829,Debit,Office,Prime Telecom,2987.75,INR,Failed
+TX-12-0046,2026-11-23,ACC-3057,Credit,Utilities,Metro Supplies,10240.79,INR,Pending
+TX-12-0047,2025-03-27,ACC-9199,Debit,Consulting,DataBridge,84643.16,INR,Pending
+TX-12-0048,2026-07-08,ACC-5016,Credit,Utilities,Metro Supplies,98532.34,INR,Completed
+TX-12-0049,2025-01-02,ACC-5739,Debit,Software,CloudNova,81283.11,INR,Pending
+TX-12-0050,2025-10-07,ACC-7228,Credit,Consulting,SecureNet,59826.99,INR,Completed
+TX-12-0051,2026-08-23,ACC-5609,Debit,Travel,SecureNet,84084.35,INR,Failed
+TX-12-0052,2026-07-31,ACC-2469,Credit,Payroll,CloudNova,7086.53,INR,Completed
+TX-12-0053,2026-07-24,ACC-8077,Debit,Utilities,Prime Telecom,99882.24,INR,Pending
+TX-12-0054,2026-11-30,ACC-5282,Credit,Office,DataBridge,94546.31,INR,Failed
+TX-12-0055,2025-11-26,ACC-8533,Credit,Software,SecureNet,34228.82,INR,Completed
+TX-12-0056,2026-10-24,ACC-8807,Debit,Software,SecureNet,92233.55,INR,Completed
+TX-12-0057,2026-02-28,ACC-9011,Credit,Utilities,CloudNova,55623.49,INR,Failed
+TX-12-0058,2026-10-29,ACC-1507,Credit,Payroll,CloudNova,7844.56,INR,Pending
+TX-12-0059,2026-01-21,ACC-6864,Credit,Travel,SecureNet,82763.94,INR,Completed
+TX-12-0060,2025-05-08,ACC-4161,Credit,Software,DataBridge,46322.98,INR,Failed
+TX-12-0061,2025-01-21,ACC-6862,Debit,Software,Prime Telecom,75866.26,INR,Failed
+TX-12-0062,2025-11-07,ACC-4623,Debit,Marketing,OfficeHub,80860.61,INR,Completed
+TX-12-0063,2025-10-15,ACC-4425,Debit,Travel,SecureNet,49334.5,INR,Pending
+TX-12-0064,2025-04-24,ACC-9197,Credit,Travel,Prime Telecom,87004.63,INR,Completed
+TX-12-0065,2026-11-07,ACC-3875,Debit,Utilities,DataBridge,73907.6,INR,Failed
+TX-12-0066,2025-03-08,ACC-4734,Credit,Travel,SecureNet,12830.35,INR,Completed
+TX-12-0067,2026-11-26,ACC-5143,Credit,Software,Metro Supplies,53340.86,INR,Failed
+TX-12-0068,2026-11-21,ACC-1849,Credit,Marketing,Metro Supplies,94313.11,INR,Pending
+TX-12-0069,2025-05-05,ACC-8644,Credit,Office,Prime Telecom,68049.33,INR,Completed
+TX-12-0070,2025-08-18,ACC-7882,Credit,Office,CloudNova,4791.77,INR,Pending
+TX-12-0071,2025-07-19,ACC-1415,Debit,Payroll,Metro Supplies,33537.11,INR,Completed
+TX-12-0072,2025-09-13,ACC-6394,Credit,Software,SecureNet,19767.99,INR,Failed
+TX-12-0073,2025-04-10,ACC-8077,Debit,Utilities,SecureNet,2884.49,INR,Pending
+TX-12-0074,2025-09-14,ACC-8759,Debit,Office,CloudNova,24790.64,INR,Pending
+TX-12-0075,2026-06-17,ACC-2194,Credit,Consulting,CloudNova,79431.7,INR,Failed
+TX-12-0076,2026-04-03,ACC-2401,Debit,Software,Metro Supplies,57935.55,INR,Pending
+TX-12-0077,2025-03-08,ACC-2015,Credit,Software,OfficeHub,78286.36,INR,Failed
+TX-12-0078,2026-10-04,ACC-2668,Debit,Utilities,CloudNova,43240.72,INR,Pending
+TX-12-0079,2026-01-26,ACC-7735,Debit,Consulting,Prime Telecom,40228.14,INR,Failed
+TX-12-0080,2026-10-01,ACC-7290,Credit,Consulting,Metro Supplies,1159.59,INR,Failed
+TX-12-0081,2026-09-27,ACC-1425,Credit,Utilities,OfficeHub,10217.66,INR,Failed
+TX-12-0082,2025-07-17,ACC-1201,Debit,Utilities,DataBridge,10889.86,INR,Failed
+TX-12-0083,2025-05-10,ACC-5198,Credit,Marketing,Metro Supplies,63772.64,INR,Failed
+TX-12-0084,2026-09-28,ACC-4983,Debit,Consulting,CloudNova,44517.97,INR,Completed
+TX-12-0085,2025-05-11,ACC-8140,Credit,Office,Prime Telecom,31235.52,INR,Failed
+TX-12-0086,2025-05-30,ACC-6057,Credit,Office,OfficeHub,14826.17,INR,Completed
+TX-12-0087,2026-06-15,ACC-3369,Debit,Travel,Prime Telecom,58685.35,INR,Failed
+TX-12-0088,2025-02-25,ACC-4201,Debit,Payroll,DataBridge,42263.91,INR,Completed
+TX-12-0089,2025-12-16,ACC-8794,Credit,Utilities,SecureNet,19016.62,INR,Pending
+TX-12-0090,2026-08-16,ACC-6499,Credit,Marketing,OfficeHub,56653.08,INR,Completed
+TX-12-0091,2025-04-18,ACC-1691,Credit,Travel,CloudNova,45484.78,INR,Failed
+TX-12-0092,2025-08-17,ACC-8643,Debit,Travel,Metro Supplies,69352.73,INR,Failed
+TX-12-0093,2025-12-06,ACC-7158,Debit,Marketing,DataBridge,80746.4,INR,Completed
+TX-12-0094,2026-01-07,ACC-6863,Debit,Utilities,CloudNova,1088.22,INR,Completed
+TX-12-0095,2025-10-25,ACC-6896,Debit,Software,DataBridge,44096.77,INR,Completed
+TX-12-0096,2025-10-18,ACC-5292,Debit,Office,Prime Telecom,17497.25,INR,Completed
+TX-12-0097,2025-07-02,ACC-3884,Credit,Software,CloudNova,19679.16,INR,Failed
+TX-12-0098,2025-05-21,ACC-2818,Credit,Travel,OfficeHub,37954.38,INR,Pending
+TX-12-0099,2025-09-03,ACC-7100,Debit,Utilities,Prime Telecom,37027.1,INR,Pending

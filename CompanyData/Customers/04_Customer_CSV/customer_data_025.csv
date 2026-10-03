@@ -1,0 +1,51 @@
+customer_id,name,city,segment,industry,annual_value,status
+C-025-000,Customer 025-000,Hyderabad,Retail,Finance,3916876,At Risk
+C-025-001,Customer 025-001,Mumbai,SMB,Healthcare,2516351,Inactive
+C-025-002,Customer 025-002,Mumbai,Enterprise,Finance,1818945,Inactive
+C-025-003,Customer 025-003,Hyderabad,Retail,Technology,3897760,At Risk
+C-025-004,Customer 025-004,Chennai,Retail,Finance,2038831,At Risk
+C-025-005,Customer 025-005,Hyderabad,SMB,Healthcare,3331416,Active
+C-025-006,Customer 025-006,Chennai,Enterprise,Technology,1178577,At Risk
+C-025-007,Customer 025-007,Bengaluru,SMB,Technology,3648312,Active
+C-025-008,Customer 025-008,Hyderabad,SMB,Healthcare,3751216,Active
+C-025-009,Customer 025-009,Bengaluru,Enterprise,Technology,4090635,At Risk
+C-025-010,Customer 025-010,Bengaluru,SMB,Healthcare,2279054,Inactive
+C-025-011,Customer 025-011,Chennai,SMB,Technology,4533025,At Risk
+C-025-012,Customer 025-012,Chennai,Enterprise,Healthcare,4385676,Inactive
+C-025-013,Customer 025-013,Chennai,SMB,Technology,3471258,Active
+C-025-014,Customer 025-014,Hyderabad,Enterprise,Finance,1287065,At Risk
+C-025-015,Customer 025-015,Bengaluru,SMB,Technology,430100,Active
+C-025-016,Customer 025-016,Mumbai,SMB,Healthcare,696942,At Risk
+C-025-017,Customer 025-017,Mumbai,Enterprise,Healthcare,2094830,Active
+C-025-018,Customer 025-018,Hyderabad,Enterprise,Healthcare,4824681,Active
+C-025-019,Customer 025-019,Hyderabad,Enterprise,Finance,1970656,Active
+C-025-020,Customer 025-020,Mumbai,Retail,Technology,4628068,Inactive
+C-025-021,Customer 025-021,Bengaluru,Retail,Healthcare,4648055,At Risk
+C-025-022,Customer 025-022,Mumbai,SMB,Healthcare,3738934,At Risk
+C-025-023,Customer 025-023,Chennai,Enterprise,Healthcare,3470578,Inactive
+C-025-024,Customer 025-024,Mumbai,Retail,Technology,1861511,Inactive
+C-025-025,Customer 025-025,Mumbai,Retail,Finance,957110,Active
+C-025-026,Customer 025-026,Bengaluru,Enterprise,Healthcare,633223,Inactive
+C-025-027,Customer 025-027,Mumbai,SMB,Technology,3476569,Active
+C-025-028,Customer 025-028,Hyderabad,Enterprise,Finance,3917491,At Risk
+C-025-029,Customer 025-029,Bengaluru,Enterprise,Finance,1170917,Active
+C-025-030,Customer 025-030,Mumbai,SMB,Finance,100401,Active
+C-025-031,Customer 025-031,Hyderabad,SMB,Finance,1056366,Inactive
+C-025-032,Customer 025-032,Hyderabad,Enterprise,Finance,4993397,Active
+C-025-033,Customer 025-033,Mumbai,Retail,Finance,2566779,At Risk
+C-025-034,Customer 025-034,Hyderabad,Enterprise,Healthcare,1141731,At Risk
+C-025-035,Customer 025-035,Hyderabad,Retail,Healthcare,4694997,Inactive
+C-025-036,Customer 025-036,Bengaluru,Retail,Technology,915333,Inactive
+C-025-037,Customer 025-037,Hyderabad,SMB,Technology,4105502,Inactive
+C-025-038,Customer 025-038,Mumbai,Retail,Finance,3376741,At Risk
+C-025-039,Customer 025-039,Chennai,SMB,Finance,4805508,At Risk
+C-025-040,Customer 025-040,Hyderabad,SMB,Finance,3451031,Inactive
+C-025-041,Customer 025-041,Chennai,Enterprise,Finance,4873590,At Risk
+C-025-042,Customer 025-042,Chennai,Enterprise,Healthcare,2102956,Inactive
+C-025-043,Customer 025-043,Bengaluru,Retail,Finance,4150467,Active
+C-025-044,Customer 025-044,Chennai,Retail,Finance,4965877,Active
+C-025-045,Customer 025-045,Hyderabad,SMB,Technology,1700239,Inactive
+C-025-046,Customer 025-046,Mumbai,Enterprise,Finance,786765,At Risk
+C-025-047,Customer 025-047,Mumbai,Enterprise,Healthcare,672905,Inactive
+C-025-048,Customer 025-048,Bengaluru,SMB,Finance,3105118,Inactive
+C-025-049,Customer 025-049,Mumbai,Retail,Technology,166285,At Risk

@@ -1,0 +1,6 @@
+Milestone ID,Phase Name,Target Date,Status,Owner,Impact / Downtime
+MIG-01,PostgreSQL 16 Multi-AZ failover cluster,2026-02-10,Done,IT / DevOps,None (Zero Downtime)
+MIG-02,Redis Sentinel HA caching layer,2026-02-24,Done,IT / DevOps,None
+MIG-03,Enterprise folder storage C:\CompanyData,2026-03-15,Done,Platform Lead,None
+MIG-04,Kubernetes cluster autoscale tier,2026-04-10,Planned,DevOps,30 mins maintenance
+MIG-05,Global CDN & edge security headers,2026-04-25,Planned,Security Team,None

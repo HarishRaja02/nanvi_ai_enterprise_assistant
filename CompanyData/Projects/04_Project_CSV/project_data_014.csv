@@ -1,0 +1,51 @@
+project_id,name,owner,budget,status,priority
+P-014-000,AI Assistant,Product,9851466,Completed,Medium
+P-014-001,CRM Upgrade,Operations,18976597,In Progress,Medium
+P-014-002,CRM Upgrade,Operations,16728399,Completed,High
+P-014-003,Data Platform,Operations,2663246,Completed,High
+P-014-004,CRM Upgrade,AI,12472472,Completed,Medium
+P-014-005,Analytics Dashboard,Product,7110607,At Risk,Low
+P-014-006,Data Platform,Operations,16760687,Completed,Low
+P-014-007,Data Platform,Operations,12325431,Planning,High
+P-014-008,Analytics Dashboard,AI,16932738,At Risk,Medium
+P-014-009,CRM Upgrade,AI,7931989,At Risk,High
+P-014-010,Data Platform,Engineering,5483375,Planning,High
+P-014-011,Data Platform,Product,8036744,Completed,Medium
+P-014-012,Analytics Dashboard,AI,3587564,Completed,Medium
+P-014-013,Data Platform,Operations,13454778,In Progress,Medium
+P-014-014,AI Assistant,Engineering,2655544,Planning,Medium
+P-014-015,CRM Upgrade,Product,3075535,In Progress,Low
+P-014-016,CRM Upgrade,Operations,9530780,In Progress,High
+P-014-017,Data Platform,Engineering,9369768,In Progress,Medium
+P-014-018,CRM Upgrade,Product,16077773,Planning,Low
+P-014-019,AI Assistant,Engineering,12744725,In Progress,Medium
+P-014-020,Analytics Dashboard,AI,14846660,Planning,High
+P-014-021,CRM Upgrade,Engineering,18748750,Planning,Medium
+P-014-022,Analytics Dashboard,Product,3700718,Completed,Medium
+P-014-023,AI Assistant,Product,4815198,Completed,High
+P-014-024,AI Assistant,Engineering,15303969,Planning,High
+P-014-025,CRM Upgrade,Product,2093914,Completed,High
+P-014-026,AI Assistant,Operations,1406974,Completed,Low
+P-014-027,Analytics Dashboard,Operations,3544489,At Risk,High
+P-014-028,CRM Upgrade,Product,15523189,Completed,Low
+P-014-029,AI Assistant,Operations,2162771,At Risk,High
+P-014-030,AI Assistant,Operations,19697110,At Risk,High
+P-014-031,Data Platform,AI,10249195,Planning,High
+P-014-032,Data Platform,AI,6286908,In Progress,High
+P-014-033,AI Assistant,Operations,11563177,At Risk,Medium
+P-014-034,Analytics Dashboard,Operations,9451617,Completed,Medium
+P-014-035,Analytics Dashboard,Operations,1220122,At Risk,High
+P-014-036,Analytics Dashboard,Engineering,2445343,In Progress,Medium
+P-014-037,Data Platform,Engineering,19668426,Planning,High
+P-014-038,CRM Upgrade,Operations,1874497,Planning,Low
+P-014-039,Data Platform,Engineering,2799181,In Progress,Low
+P-014-040,Data Platform,Operations,15995384,Planning,Low
+P-014-041,AI Assistant,Product,15494831,In Progress,High
+P-014-042,AI Assistant,AI,9813546,Planning,Low
+P-014-043,CRM Upgrade,Operations,726518,At Risk,Medium
+P-014-044,Analytics Dashboard,Operations,14445887,In Progress,High
+P-014-045,AI Assistant,Product,16042795,Completed,High
+P-014-046,Analytics Dashboard,Operations,11503735,In Progress,High
+P-014-047,CRM Upgrade,Operations,13040769,Planning,High
+P-014-048,Data Platform,Engineering,14451584,At Risk,Low
+P-014-049,Data Platform,Product,10194520,Planning,High
