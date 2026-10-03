@@ -616,6 +616,32 @@ if (!response.ok) {
     return this.request<LocalAgentTokenResponse>("/local-agent/token", { method: "POST" });
   }
 
+  async downloadLocalAgentPackage(token?: string): Promise<void> {
+    const bearer = this.getAccessToken ? await this.getAccessToken() : null;
+    const url = token
+      ? `${this.baseUrl}/local-agent/download?token=${encodeURIComponent(token)}`
+      : `${this.baseUrl}/local-agent/download`;
+
+    const headers: Record<string, string> = {};
+    if (bearer) {
+      headers["Authorization"] = `Bearer ${bearer}`;
+    }
+
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      throw new ApiError("Failed to download local agent package.", res.status);
+    }
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = "Nanvi_Windows_Agent.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+  }
+
   getLocalAgentStatus() {
     return this.request<LocalAgentStatusResponse>("/local-agent/status", {}, true);
   }

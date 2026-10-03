@@ -37,6 +37,8 @@ export function CompanyFolderPicker({ api }: Props) {
   const [customLocalFolder, setCustomLocalFolder] = useState("");
   const [addingFolder, setAddingFolder] = useState(false);
   const [addFolderMsg, setAddFolderMsg] = useState<string | null>(null);
+  const [downloadingAgent, setDownloadingAgent] = useState(false);
+  const [showAdvancedCli, setShowAdvancedCli] = useState(false);
 
   // Fetch current folder on mount and listen to updates
   useEffect(() => {
@@ -136,6 +138,40 @@ export function CompanyFolderPicker({ api }: Props) {
       const res = await api.addLocalFolder(customLocalFolder.trim());
       setAddFolderMsg(res.message || "✓ Folder registered. Local agent will index it on next heartbeat.");
       setCustomLocalFolder("");
+      setTimeout(() => {
+        api.getLocalAgentStatus().then((s) => setAgentStatus(s)).catch(() => {});
+      }, 1500);
+    } catch (err: any) {
+      setAddFolderMsg(`Error: ${err?.message || "Failed to add folder"}`);
+    } finally {
+      setAddingFolder(false);
+    }
+  };
+
+  const handleDownloadAgent = async () => {
+    setDownloadingAgent(true);
+    try {
+      await api.downloadLocalAgentPackage(pairingToken || undefined);
+      setMessage({
+        text: "✓ Nanvi_Windows_Agent.zip downloaded! Extract the folder and double-click Start_Nanvi_Agent.bat.",
+        type: "success",
+      });
+    } catch (err: any) {
+      setMessage({
+        text: `Download failed: ${err?.message || "Please try again."}`,
+        type: "error",
+      });
+    } finally {
+      setDownloadingAgent(false);
+    }
+  };
+
+  const handleQuickAdd = async (folderPath: string) => {
+    setAddingFolder(true);
+    setAddFolderMsg(null);
+    try {
+      const res = await api.addLocalFolder(folderPath);
+      setAddFolderMsg(res.message || `✓ Added ${folderPath}. Agent will index it immediately.`);
       setTimeout(() => {
         api.getLocalAgentStatus().then((s) => setAgentStatus(s)).catch(() => {});
       }, 1500);
@@ -414,121 +450,181 @@ export function CompanyFolderPicker({ api }: Props) {
       {/* ------------------------------------------------------------- */}
       {/* Local File Agent Section (Windows / Local Machine Folders)    */}
       {/* ------------------------------------------------------------- */}
-      <div className="local-agent-card" style={{ marginTop: "24px", padding: "20px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "12px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+      <div
+        className="local-agent-card"
+        style={{
+          marginTop: "24px",
+          padding: "24px",
+          background: "linear-gradient(180deg, rgba(15, 23, 42, 0.75) 0%, rgba(30, 41, 59, 0.6) 100%)",
+          border: "1px solid rgba(56, 189, 248, 0.3)",
+          borderRadius: "14px",
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.25)",
+        }}
+      >
+        {/* Top Header with Status */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 600, color: "#f8fafc" }}>
-                My Computer Local Agent (Windows)
-              </h4>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+              <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: 700, color: "#f8fafc", letterSpacing: "-0.01em" }}>
+                Search Files on My Computer (Windows)
+              </h3>
               <span
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: "6px",
-                  padding: "2px 10px",
+                  gap: "8px",
+                  padding: "4px 14px",
                   borderRadius: "20px",
-                  fontSize: "0.75rem",
+                  fontSize: "0.85rem",
                   fontWeight: 600,
-                  background: agentStatus?.is_online ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                  background: agentStatus?.is_online ? "rgba(34, 197, 94, 0.2)" : "rgba(148, 163, 184, 0.15)",
                   color: agentStatus?.is_online ? "#4ade80" : "#94a3b8",
-                  border: `1px solid ${agentStatus?.is_online ? "rgba(34, 197, 94, 0.3)" : "rgba(148, 163, 184, 0.3)"}`,
+                  border: `1px solid ${agentStatus?.is_online ? "rgba(34, 197, 94, 0.4)" : "rgba(148, 163, 184, 0.3)"}`,
                 }}
               >
                 <span
                   style={{
-                    width: "8px",
-                    height: "8px",
+                    width: "10px",
+                    height: "10px",
                     borderRadius: "50%",
                     background: agentStatus?.is_online ? "#22c55e" : "#94a3b8",
-                    boxShadow: agentStatus?.is_online ? "0 0 8px #22c55e" : "none",
+                    boxShadow: agentStatus?.is_online ? "0 0 10px #22c55e" : "none",
                   }}
                 />
-                {agentStatus?.is_online ? "Agent Online" : "Agent Offline"}
+                {agentStatus?.is_online ? "✓ Connected to Your Computer" : "○ Not Connected Yet"}
               </span>
             </div>
-            <p style={{ margin: "6px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
-              Search any folder from your Windows computer (e.g. <code>C:\Projects</code>, <code>C:\abc</code>, <code>C:\CompanyData</code>) directly through Nanvi.
+            <p style={{ margin: "8px 0 0", fontSize: "0.92rem", color: "#cbd5e1", lineHeight: 1.5, maxWidth: "680px" }}>
+              Allow Nanvi to safely search documents on your personal computer (PDF, Word, Excel, and text files). Your files stay private on your computer.
             </p>
           </div>
 
+          {/* 1-Click Download Button */}
           <button
             className="folder-picker-btn folder-picker-btn-primary"
-            onClick={fetchPairingToken}
-            disabled={agentLoading}
+            style={{
+              padding: "10px 20px",
+              fontSize: "0.95rem",
+              fontWeight: 600,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              borderRadius: "8px",
+              boxShadow: "0 2px 8px rgba(14, 165, 233, 0.3)",
+            }}
+            onClick={handleDownloadAgent}
+            disabled={downloadingAgent}
           >
-            {pairingToken ? "Regenerate Token" : "Connect Local Folders"}
+            {downloadingAgent ? (
+              "Preparing Download..."
+            ) : (
+              <>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download Windows Helper (1-Click)
+              </>
+            )}
           </button>
         </div>
 
-        {/* Pairing Token & Setup Instructions */}
-        {pairingToken && (
-          <div style={{ marginTop: "16px", padding: "14px", background: "rgba(30, 41, 59, 0.7)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#e2e8f0" }}>Your Local Agent Pairing Token:</span>
-              <button
-                className="folder-picker-btn folder-picker-btn-secondary"
-                style={{ padding: "3px 10px", fontSize: "0.75rem" }}
-                onClick={() => {
-                  navigator.clipboard.writeText(pairingToken);
-                  setTokenCopied(true);
-                  setTimeout(() => setTokenCopied(false), 2500);
-                }}
-              >
-                {tokenCopied ? "✓ Copied!" : "Copy Token"}
-              </button>
+        {/* 2-Step Friendly Setup Guide */}
+        {!agentStatus?.is_online && (
+          <div
+            style={{
+              marginTop: "20px",
+              padding: "18px 20px",
+              background: "rgba(30, 41, 59, 0.7)",
+              borderRadius: "10px",
+              border: "1px solid rgba(56, 189, 248, 0.2)",
+            }}
+          >
+            <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#f8fafc", marginBottom: "12px" }}>
+              How to Connect (Takes less than 1 minute):
             </div>
-            <code style={{ display: "block", padding: "8px 12px", background: "rgba(15, 23, 42, 0.8)", borderRadius: "6px", fontSize: "0.75rem", wordBreak: "break-all", color: "#38bdf8" }}>
-              {pairingToken}
-            </code>
-            <div style={{ marginTop: "12px", fontSize: "0.8rem", color: "#94a3b8" }}>
-              <strong>How to connect your folders:</strong>
-              <div style={{ marginTop: "8px", display: "flex", gap: "8px", alignItems: "center" }}>
-                <button
-                  className="folder-picker-btn folder-picker-btn-primary"
-                  style={{ padding: "4px 12px", fontSize: "0.8rem" }}
-                  onClick={() => {
-                    const server = typeof window !== "undefined" ? window.location.origin : "https://nanviaienterpriseassistant.vercel.app";
-                    const cmd = `cd /d "%USERPROFILE%\\Desktop\\nanvi_ai_enterprise_assistant" && python local_agent/nanvi_local_agent.py --server ${server} --token ${pairingToken}`;
-                    navigator.clipboard.writeText(cmd);
-                    setTokenCopied(true);
-                    setTimeout(() => setTokenCopied(false), 2500);
-                  }}
-                >
-                  {tokenCopied ? "✓ Command Copied!" : "📋 Copy Terminal Command"}
-                </button>
-                <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
-                  (or double-click <code>local_agent\run_local_agent.bat</code>)
-                </span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
+              <div style={{ padding: "12px 14px", background: "rgba(15, 23, 42, 0.6)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.15)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ background: "#0ea5e9", color: "#fff", width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}>1</span>
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#f1f5f9" }}>Click &quot;Download Windows Helper&quot;</span>
+                </div>
+                <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                  Click the blue button above. A pre-configured file named <code>Nanvi_Windows_Agent.zip</code> will download to your computer.
+                </p>
               </div>
-              <ol style={{ margin: "8px 0 0 16px", padding: 0, lineHeight: 1.6 }}>
-                <li>Navigate to your project directory and run the agent:
-                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9", fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
-                    cd /d &quot;%USERPROFILE%\Desktop\nanvi_ai_enterprise_assistant&quot; && python local_agent/nanvi_local_agent.py --server {typeof window !== "undefined" ? window.location.origin : "https://nanviaienterpriseassistant.vercel.app"} --token {pairingToken.slice(0, 16)}...
-                  </pre>
-                </li>
-                <li>In the agent console, approve any folder on your PC:
-                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9" }}>
-                    add C:\CompanyData
-                  </pre>
-                  (e.g. <code>add D:\Projects</code>, <code>add C:\abc</code>, etc.)
-                </li>
-              </ol>
+
+              <div style={{ padding: "12px 14px", background: "rgba(15, 23, 42, 0.6)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.15)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+                  <span style={{ background: "#0ea5e9", color: "#fff", width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.8rem", fontWeight: 700 }}>2</span>
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem", color: "#f1f5f9" }}>Double-Click &quot;Start_Nanvi_Agent.bat&quot;</span>
+                </div>
+                <p style={{ margin: 0, fontSize: "0.84rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                  Open your <strong>Downloads</strong> folder, extract the zip, and double-click <strong>Start_Nanvi_Agent.bat</strong>. This page will turn green automatically!
+                </p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Interactive Add Local Folder Input */}
-        <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(30, 41, 59, 0.6)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
-          <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#e2e8f0", marginBottom: "6px" }}>
-            Add Any Local Folder to Index:
+        {/* Folder Selection Section */}
+        <div style={{ marginTop: "22px", padding: "18px 20px", background: "rgba(30, 41, 59, 0.7)", borderRadius: "10px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+          <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#f8fafc", marginBottom: "6px" }}>
+            Add Folders for Nanvi to Search:
           </div>
-          <div style={{ display: "flex", gap: "8px" }}>
+          <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#94a3b8" }}>
+            Choose a common folder below or enter any specific folder path on your computer.
+          </p>
+
+          {/* Preset Buttons for Easy 1-Click Adding */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+            <span style={{ fontSize: "0.8rem", color: "#94a3b8", alignSelf: "center", marginRight: "4px" }}>Quick Add:</span>
+            <button
+              className="folder-picker-btn folder-picker-btn-secondary"
+              style={{ fontSize: "0.82rem", padding: "5px 12px" }}
+              onClick={() => handleQuickAdd("C:\\Users\\%USERNAME%\\Documents")}
+              disabled={addingFolder}
+              title="Add Documents folder"
+            >
+              📁 Documents
+            </button>
+            <button
+              className="folder-picker-btn folder-picker-btn-secondary"
+              style={{ fontSize: "0.82rem", padding: "5px 12px" }}
+              onClick={() => handleQuickAdd("C:\\Users\\%USERNAME%\\Desktop")}
+              disabled={addingFolder}
+              title="Add Desktop folder"
+            >
+              📁 Desktop
+            </button>
+            <button
+              className="folder-picker-btn folder-picker-btn-secondary"
+              style={{ fontSize: "0.82rem", padding: "5px 12px" }}
+              onClick={() => handleQuickAdd("C:\\Users\\%USERNAME%\\Downloads")}
+              disabled={addingFolder}
+              title="Add Downloads folder"
+            >
+              📁 Downloads
+            </button>
+            <button
+              className="folder-picker-btn folder-picker-btn-secondary"
+              style={{ fontSize: "0.82rem", padding: "5px 12px" }}
+              onClick={() => handleQuickAdd("CompanyData")}
+              disabled={addingFolder}
+              title="Add CompanyData folder"
+            >
+              📁 CompanyData
+            </button>
+          </div>
+
+          {/* Custom Path Input Row */}
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
             <input
               type="text"
               className="folder-picker-input"
-              style={{ flex: 1, fontSize: "0.82rem", padding: "6px 12px" }}
-              placeholder="e.g. C:\Users\haris\Downloads\companydata_bridge_construction_120_files\companydata_bridge_construction\CompanyData"
+              style={{ flex: 1, minWidth: "260px", fontSize: "0.9rem", padding: "8px 14px" }}
+              placeholder="Or paste any folder path, e.g. C:\CompanyData or D:\Projects"
               value={customLocalFolder}
               onChange={(e) => setCustomLocalFolder(e.target.value)}
               onKeyDown={(e) => {
@@ -539,17 +635,69 @@ export function CompanyFolderPicker({ api }: Props) {
               className="folder-picker-btn folder-picker-btn-primary"
               onClick={handleAddLocalFolder}
               disabled={addingFolder || !customLocalFolder.trim()}
-              style={{ whiteSpace: "nowrap" }}
+              style={{ padding: "8px 18px", fontSize: "0.9rem", fontWeight: 600, whiteSpace: "nowrap" }}
             >
               {addingFolder ? "Adding..." : "+ Add Folder"}
             </button>
           </div>
+
           {addFolderMsg && (
-            <div style={{ marginTop: "6px", fontSize: "0.78rem", color: addFolderMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>
+            <div
+              style={{
+                marginTop: "10px",
+                fontSize: "0.85rem",
+                fontWeight: 500,
+                color: addFolderMsg.startsWith("✓") ? "#4ade80" : "#f87171",
+              }}
+            >
               {addFolderMsg}
             </div>
           )}
         </div>
+
+        {/* Collapsible Advanced / Terminal Setup for IT/Power Users */}
+        <div style={{ marginTop: "14px", textAlign: "right" }}>
+          <button
+            type="button"
+            style={{
+              background: "none",
+              border: "none",
+              color: "#94a3b8",
+              fontSize: "0.8rem",
+              cursor: "pointer",
+              textDecoration: "underline",
+              padding: 0,
+            }}
+            onClick={() => {
+              setShowAdvancedCli(!showAdvancedCli);
+              if (!pairingToken) fetchPairingToken();
+            }}
+          >
+            {showAdvancedCli ? "Hide Advanced Command-Line Details" : "⚙️ Advanced Command-Line Details"}
+          </button>
+        </div>
+
+        {showAdvancedCli && pairingToken && (
+          <div style={{ marginTop: "10px", padding: "14px", background: "rgba(15, 23, 42, 0.8)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "0.82rem", fontWeight: 600, color: "#cbd5e1" }}>Personal Pairing Token:</span>
+              <button
+                className="folder-picker-btn folder-picker-btn-secondary"
+                style={{ padding: "2px 8px", fontSize: "0.75rem" }}
+                onClick={() => {
+                  navigator.clipboard.writeText(pairingToken);
+                  setTokenCopied(true);
+                  setTimeout(() => setTokenCopied(false), 2500);
+                }}
+              >
+                {tokenCopied ? "✓ Copied!" : "Copy Token"}
+              </button>
+            </div>
+            <code style={{ display: "block", padding: "6px 10px", background: "rgba(0, 0, 0, 0.5)", borderRadius: "4px", fontSize: "0.72rem", wordBreak: "break-all", color: "#38bdf8" }}>
+              {pairingToken}
+            </code>
+          </div>
+        )}
 
         {/* Connected Folders List */}
         <div style={{ marginTop: "18px" }}>

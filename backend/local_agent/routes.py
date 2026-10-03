@@ -4,9 +4,9 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 
-from backend.security.dependencies import get_current_user
+from backend.security.dependencies import get_current_user, get_optional_current_user
 from backend.security.models import UserIdentity
 from .models import (
     AddFolderRequest,
@@ -47,6 +47,45 @@ def _extract_agent_identity(
 
 def _get_user_id(user: UserIdentity) -> str:
     return str(getattr(user, "subject", None) or getattr(user, "user_id", "default"))
+
+
+@router.get("/download")
+async def download_agent_package(
+    request: Request,
+    token: str | None = None,
+    user: UserIdentity | None = Depends(get_optional_current_user),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> Response:
+    """Download a pre-configured 1-click Windows zip package for the user."""
+    from .packager import generate_agent_zip
+
+    server_url = str(request.base_url).rstrip("/")
+    pairing_token = ""
+    display_name = ""
+
+    if user:
+        resp = service.create_pairing_token(user, server_url)
+        pairing_token = resp.token
+        display_name = resp.display_name
+    elif token:
+        try:
+            payload = service.verify_agent_token(token)
+            pairing_token = token
+            display_name = payload.get("display_name", "")
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid download token.")
+    else:
+        raise HTTPException(status_code=401, detail="Authentication required to download agent package.")
+
+    zip_bytes = generate_agent_zip(server_url, pairing_token, display_name)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="Nanvi_Windows_Agent.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/token", response_model=LocalAgentTokenResponse)
