@@ -611,6 +611,28 @@ if (!response.ok) {
     });
   }
 
+  // Local Agent Integration
+  getLocalAgentToken() {
+    return this.request<LocalAgentTokenResponse>("/local-agent/token", { method: "POST" });
+  }
+
+  getLocalAgentStatus() {
+    return this.request<LocalAgentStatusResponse>("/local-agent/status");
+  }
+
+  removeLocalFolder(folderId: string) {
+    return this.request<{ status: string; message: string }>(`/local-agent/folders/${encodeURIComponent(folderId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  testSearchLocalAgent(query: string) {
+    return this.request<{ query: string; total_hits: number; chunks: any[] }>("/local-agent/search", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+  }
+
   listProviders() {
     return this.request<{ providers: ProviderPublic[] }>("/connections/providers");
   }
@@ -723,6 +745,35 @@ export type BrowseDirectoryResponse = {
   parent?: string | null;
   entries: BrowseDirectoryEntry[];
   error?: string;
+};
+
+export type LocalFolderInfo = {
+  folder_id: string;
+  folder_path: string;
+  display_name: string;
+  file_count: number;
+  chunk_count: number;
+  status: string;
+  last_synced_at?: string | null;
+};
+
+export type LocalAgentStatusResponse = {
+  is_online: boolean;
+  last_heartbeat?: string | null;
+  agent_version?: string | null;
+  connected_folders: LocalFolderInfo[];
+  total_files: number;
+  total_chunks: number;
+  pairing_command?: string;
+};
+
+export type LocalAgentTokenResponse = {
+  token: string;
+  expires_in_days: number;
+  server_url: string;
+  tenant_id: string;
+  user_id: string;
+  display_name: string;
 };
 
 export type ProviderPublic = {

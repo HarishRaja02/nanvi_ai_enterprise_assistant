@@ -102,6 +102,40 @@ class SourceReferenceService:
                 break
         token = re.sub(r"^\d+-", "", token).strip().casefold()
 
+        # 0. Check Local Agent files
+        try:
+            from backend.local_agent.service import get_local_agent_store
+            local_store = get_local_agent_store()
+            user_data = local_store._data.get((user.tenant_id, user.user_id), {})
+            for c in user_data.get("chunks", []):
+                fn = c.get("filename", "").casefold()
+                cid = c.get("chunk_id", "").casefold()
+                rel = c.get("relative_path", "").casefold()
+                if token and (token in fn or token in cid or token in rel):
+                    folder_name = c.get("folder_name", "Local")
+                    citation = f"{folder_name}/{c.get('relative_path')}"
+                    ref = SourceReference(
+                        reference_id=reference_id,
+                        source_type=SourceType.FILE,
+                        display_name=f"[Local] {citation}",
+                        title=c.get("filename"),
+                        location=citation,
+                        page=c.get("page"),
+                        sheet=c.get("sheet"),
+                    )
+                    self._store.save(
+                        reference=ref,
+                        owner_id=user.user_id,
+                        tenant_id=user.tenant_id,
+                        source_id=reference_id,
+                        source_type="file",
+                        department=user.department,
+                        restricted_department=None,
+                    )
+                    return self._store.get(reference_id)
+        except Exception as exc:
+            _log.debug("Local agent dynamic lookup check: %s", exc)
+
         # 1. Try to resolve against CompanyDataService
         try:
             from backend.integrations.files.company_data_service import CompanyDataService

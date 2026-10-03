@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { NanviApiClient, BrowseDirectoryEntry } from "../../api";
+import type { NanviApiClient, BrowseDirectoryEntry, LocalAgentStatusResponse } from "../../api";
 
 type Props = {
   api: NanviApiClient;
@@ -25,6 +25,15 @@ export function CompanyFolderPicker({ api }: Props) {
   // Manual input state
   const [inputPath, setInputPath] = useState("");
   const [editMode, setEditMode] = useState(false);
+
+  // Local Agent state
+  const [agentStatus, setAgentStatus] = useState<LocalAgentStatusResponse | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [pairingToken, setPairingToken] = useState<string | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   // Fetch current folder on mount and listen to updates
   useEffect(() => {
@@ -68,6 +77,69 @@ export function CompanyFolderPicker({ api }: Props) {
       window.removeEventListener("nanvi:company-folder-updated", onExternalUpdate);
     };
   }, [api]);
+
+  // Poll Local Agent status periodically
+  useEffect(() => {
+    let cancelled = false;
+    const checkStatus = () => {
+      api.getLocalAgentStatus()
+        .then((res) => {
+          if (!cancelled) setAgentStatus(res);
+        })
+        .catch(() => {});
+    };
+    checkStatus();
+    const timer = setInterval(checkStatus, 6000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [api]);
+
+  const fetchPairingToken = async () => {
+    setAgentLoading(true);
+    try {
+      const res = await api.getLocalAgentToken();
+      setPairingToken(res.token);
+    } catch (err) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Failed to generate pairing token.",
+        type: "error",
+      });
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
+  const handleDisconnectFolder = async (folderId: string) => {
+    try {
+      await api.removeLocalFolder(folderId);
+      const updated = await api.getLocalAgentStatus();
+      setAgentStatus(updated);
+      setMessage({ text: "Folder disconnected successfully.", type: "success" });
+    } catch (err) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Failed to disconnect folder.",
+        type: "error",
+      });
+    }
+  };
+
+  const handleSearchLocal = async () => {
+    if (!searchQuery.trim()) return;
+    setSearchLoading(true);
+    try {
+      const res = await api.testSearchLocalAgent(searchQuery.trim());
+      setSearchResults(res.chunks);
+    } catch (err) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Search failed.",
+        type: "error",
+      });
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const saveFolder = useCallback(
     async (path: string) => {
@@ -317,6 +389,188 @@ export function CompanyFolderPicker({ api }: Props) {
           {message.text}
         </div>
       )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* Local File Agent Section (Windows / Local Machine Folders)    */}
+      {/* ------------------------------------------------------------- */}
+      <div className="local-agent-card" style={{ marginTop: "24px", padding: "20px", background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "12px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px" }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <h4 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 600, color: "#f8fafc" }}>
+                My Computer Local Agent (Windows)
+              </h4>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "2px 10px",
+                  borderRadius: "20px",
+                  fontSize: "0.75rem",
+                  fontWeight: 600,
+                  background: agentStatus?.is_online ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                  color: agentStatus?.is_online ? "#4ade80" : "#94a3b8",
+                  border: `1px solid ${agentStatus?.is_online ? "rgba(34, 197, 94, 0.3)" : "rgba(148, 163, 184, 0.3)"}`,
+                }}
+              >
+                <span
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    background: agentStatus?.is_online ? "#22c55e" : "#94a3b8",
+                    boxShadow: agentStatus?.is_online ? "0 0 8px #22c55e" : "none",
+                  }}
+                />
+                {agentStatus?.is_online ? "Agent Online" : "Agent Offline"}
+              </span>
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
+              Search any folder from your Windows computer (e.g. <code>C:\Projects</code>, <code>C:\abc</code>, <code>C:\CompanyData</code>) directly through Nanvi.
+            </p>
+          </div>
+
+          <button
+            className="folder-picker-btn folder-picker-btn-primary"
+            onClick={fetchPairingToken}
+            disabled={agentLoading}
+          >
+            {pairingToken ? "Regenerate Token" : "Connect Local Folders"}
+          </button>
+        </div>
+
+        {/* Pairing Token & Setup Instructions */}
+        {pairingToken && (
+          <div style={{ marginTop: "16px", padding: "14px", background: "rgba(30, 41, 59, 0.7)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#e2e8f0" }}>Your Local Agent Pairing Token:</span>
+              <button
+                className="folder-picker-btn folder-picker-btn-secondary"
+                style={{ padding: "3px 10px", fontSize: "0.75rem" }}
+                onClick={() => {
+                  navigator.clipboard.writeText(pairingToken);
+                  setTokenCopied(true);
+                  setTimeout(() => setTokenCopied(false), 2500);
+                }}
+              >
+                {tokenCopied ? "✓ Copied!" : "Copy Token"}
+              </button>
+            </div>
+            <code style={{ display: "block", padding: "8px 12px", background: "rgba(15, 23, 42, 0.8)", borderRadius: "6px", fontSize: "0.75rem", wordBreak: "break-all", color: "#38bdf8" }}>
+              {pairingToken}
+            </code>
+            <div style={{ marginTop: "12px", fontSize: "0.8rem", color: "#94a3b8" }}>
+              <strong>How to connect your folders:</strong>
+              <ol style={{ margin: "6px 0 0 16px", padding: 0, lineHeight: 1.6 }}>
+                <li>On your Windows PC, open Command Prompt or run <code>local_agent/run_local_agent.bat</code>:
+                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9" }}>
+                    python local_agent/nanvi_local_agent.py --server {typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000"} --token {pairingToken.slice(0, 12)}...
+                  </pre>
+                </li>
+                <li>In the agent console, add any folder:
+                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9" }}>
+                    add C:\Projects
+                  </pre>
+                  (or <code>add C:\Users\haris\Downloads\companydata_bridge_construction_120_files\companydata_bridge_construction\CompanyData</code>, <code>add C:\abc</code>, etc.)
+                </li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {/* Connected Folders List */}
+        <div style={{ marginTop: "18px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1" }}>
+              Connected Folders on Your Machine ({agentStatus?.connected_folders?.length || 0}):
+            </span>
+            {agentStatus && agentStatus.total_files > 0 && (
+              <span style={{ fontSize: "0.78rem", color: "#38bdf8" }}>
+                {agentStatus.total_files} files ({agentStatus.total_chunks} chunks indexed)
+              </span>
+            )}
+          </div>
+
+          {agentStatus?.connected_folders && agentStatus.connected_folders.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {agentStatus.connected_folders.map((folder) => (
+                <div
+                  key={folder.folder_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 14px",
+                    background: "rgba(30, 41, 59, 0.5)",
+                    border: "1px solid rgba(148, 163, 184, 0.15)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.88rem", color: "#f8fafc" }}>
+                      📁 {folder.display_name}
+                    </div>
+                    <code style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{folder.folder_path}</code>
+                    <div style={{ marginTop: "4px", fontSize: "0.72rem", color: "#64748b" }}>
+                      {folder.file_count} files • {folder.chunk_count} chunks • Status: <span style={{ color: "#4ade80" }}>{folder.status}</span>
+                    </div>
+                  </div>
+                  <button
+                    className="folder-picker-btn folder-picker-btn-ghost"
+                    style={{ color: "#f87171", fontSize: "0.78rem" }}
+                    onClick={() => handleDisconnectFolder(folder.folder_id)}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: "14px", textAlign: "center", color: "#64748b", background: "rgba(30, 41, 59, 0.3)", borderRadius: "8px", fontSize: "0.82rem" }}>
+              No local folders connected. Run the Nanvi Local Agent on your machine to attach any folder.
+            </div>
+          )}
+        </div>
+
+        {/* Live Search Test Box */}
+        {agentStatus?.connected_folders && agentStatus.connected_folders.length > 0 && (
+          <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: "1px solid rgba(148, 163, 184, 0.15)" }}>
+            <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#cbd5e1" }}>Quick Local Search Test:</span>
+            <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+              <input
+                className="folder-picker-input"
+                type="text"
+                placeholder="Search across your local files (e.g. bridge, contract, invoice)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void handleSearchLocal(); }}
+              />
+              <button
+                className="folder-picker-btn folder-picker-btn-primary"
+                onClick={handleSearchLocal}
+                disabled={searchLoading || !searchQuery.trim()}
+              >
+                {searchLoading ? "Searching…" : "Search"}
+              </button>
+            </div>
+
+            {searchResults && (
+              <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>Found {searchResults.length} relevant excerpts:</span>
+                {searchResults.map((hit, i) => (
+                  <div key={i} style={{ padding: "8px 12px", background: "rgba(15, 23, 42, 0.7)", borderRadius: "6px", fontSize: "0.78rem" }}>
+                    <div style={{ fontWeight: 600, color: "#38bdf8", marginBottom: "4px" }}>
+                      📄 {hit.citation} (Score: {hit.score})
+                    </div>
+                    <div style={{ color: "#cbd5e1", lineHeight: 1.4 }}>{hit.text.slice(0, 200)}…</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Folder Browser Modal */}
       {browserOpen && (

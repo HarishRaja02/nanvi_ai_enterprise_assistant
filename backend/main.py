@@ -85,6 +85,8 @@ from backend.connections.oauth_routes import (
     auth_legacy_router as connections_auth_legacy_router,
 )
 
+from backend.local_agent.routes import router as local_agent_router
+
 app.include_router(router, prefix="/api")
 app.include_router(router)
 app.include_router(report_router, prefix="/api")
@@ -100,6 +102,8 @@ app.include_router(email_router, prefix="/api")
 app.include_router(email_router)
 app.include_router(settings_router, prefix="/api")
 app.include_router(settings_router)
+app.include_router(local_agent_router, prefix="/api")
+app.include_router(local_agent_router)
 app.include_router(connections_router)
 app.include_router(connections_oauth_router)
 app.include_router(connections_auth_router)
