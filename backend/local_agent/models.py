@@ -43,6 +43,11 @@ class LocalAgentHeartbeat(BaseModel):
     folders: list[LocalFolderInfo] = Field(default_factory=list)
 
 
+class AddFolderRequest(BaseModel):
+    """Request from user Web UI to add/approve a local folder path."""
+    folder_path: str
+
+
 class LocalChunkRecord(BaseModel):
     """Individual chunk extracted from a local file."""
     chunk_id: str

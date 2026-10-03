@@ -98,10 +98,20 @@ class LocalAgentService:
                 detail=f"Invalid pairing token: {exc}",
             )
 
-    def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> dict[str, str]:
-        """Record heartbeat and update folder lists."""
+    def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> dict[str, Any]:
+        """Record heartbeat and return requested folder paths from Web UI."""
         self.store.record_heartbeat(tenant_id, user_id, heartbeat)
-        return {"status": "ok", "message": "Heartbeat recorded"}
+        requested_folders = self.store.get_requested_folders(tenant_id, user_id)
+        return {
+            "status": "ok",
+            "message": "Heartbeat recorded",
+            "requested_folders": requested_folders,
+        }
+
+    def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> dict[str, Any]:
+        """User from Web UI requested a folder to be indexed by their local agent."""
+        self.store.request_folder(tenant_id, user_id, folder_path)
+        return {"status": "ok", "message": f"Folder '{folder_path}' added for indexing."}
 
     def sync_folder(self, tenant_id: str, user_id: str, payload: FolderSyncPayload) -> dict[str, Any]:
         """Store synced chunks from an authorized local folder."""

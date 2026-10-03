@@ -425,7 +425,25 @@ class NanviLocalAgent:
                 method="POST",
             )
             with urlopen(req, timeout=10) as resp:
-                return resp.status == 200
+                if resp.status == 200:
+                    try:
+                        raw = resp.read().decode("utf-8")
+                        data = json.loads(raw)
+                        requested = data.get("requested_folders", [])
+                        for rf in requested:
+                            clean_rf = str(rf).strip()
+                            if clean_rf and clean_rf not in self.approved_folders:
+                                logger.info(">>> New folder requested from Web UI: %s", clean_rf)
+                                try:
+                                    self.add_folder(clean_rf)
+                                    print(f"\n[Nanvi Web] Automatically connected folder: {clean_rf}")
+                                    print("nanvi-agent> ", end="", flush=True)
+                                except Exception as err:
+                                    logger.warning("Could not add folder '%s': %s", clean_rf, err)
+                    except Exception as parse_err:
+                        logger.debug("Heartbeat response parse error: %s", parse_err)
+                    return True
+                return False
         except Exception as exc:
             logger.debug("Heartbeat error: %s", exc)
             return False

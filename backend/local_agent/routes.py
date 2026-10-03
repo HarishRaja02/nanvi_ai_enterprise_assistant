@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from backend.security.dependencies import get_current_user
 from backend.security.models import UserIdentity
 from .models import (
+    AddFolderRequest,
     FolderSyncPayload,
     LocalAgentHeartbeat,
     LocalAgentStatusResponse,
@@ -66,6 +67,18 @@ async def get_agent_status(
     return service.get_status(user.tenant_id, user.user_id, server_url)
 
 
+@router.post("/folders")
+async def add_local_folder(
+    body: AddFolderRequest,
+    user: UserIdentity = Depends(get_current_user),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> dict[str, Any]:
+    """Request a local folder path to be approved and indexed by the local agent."""
+    if not body.folder_path or not body.folder_path.strip():
+        raise HTTPException(status_code=400, detail="Folder path cannot be empty.")
+    return service.request_folder(user.tenant_id, user.user_id, body.folder_path.strip())
+
+
 @router.delete("/folders/{folder_id}")
 async def remove_local_folder(
     folder_id: str,
@@ -109,7 +122,7 @@ async def agent_heartbeat(
     heartbeat: LocalAgentHeartbeat,
     identity: tuple[str, str] = Depends(_extract_agent_identity),
     service: LocalAgentService = Depends(get_local_agent_service),
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Heartbeat signal sent periodically by the local agent."""
     tenant_id, user_id = identity
     return service.record_heartbeat(tenant_id, user_id, heartbeat)

@@ -263,3 +263,21 @@ def test_knowledge_agent_retrieves_local_chunks(local_service, mock_user, monkey
     assert "320 MPa" in str(resp.content)
     assert len(resp.sources) >= 1
     assert "Stress_Analysis.csv" in resp.sources[0].title
+
+
+def test_request_folder_via_web_and_heartbeat_dispatch(local_service, mock_user):
+    tenant_id = mock_user.tenant_id
+    user_id = mock_user.subject
+
+    # User adds folder from Web UI
+    res = local_service.request_folder(tenant_id, user_id, "C:/Projects/Bridge")
+    assert res["status"] == "ok"
+
+    # Agent heartbeats and receives the requested folder in response
+    hb_resp = local_service.record_heartbeat(
+        tenant_id,
+        user_id,
+        LocalAgentHeartbeat(agent_version="1.0.0", folders=[]),
+    )
+    assert hb_resp["status"] == "ok"
+    assert "C:/Projects/Bridge" in hb_resp["requested_folders"]

@@ -620,6 +620,13 @@ if (!response.ok) {
     return this.request<LocalAgentStatusResponse>("/local-agent/status");
   }
 
+  addLocalFolder(folderPath: string) {
+    return this.request<{ status: string; message: string }>("/local-agent/folders", {
+      method: "POST",
+      body: JSON.stringify({ folder_path: folderPath }),
+    });
+  }
+
   removeLocalFolder(folderId: string) {
     return this.request<{ status: string; message: string }>(`/local-agent/folders/${encodeURIComponent(folderId)}`, {
       method: "DELETE",

@@ -34,6 +34,9 @@ export function CompanyFolderPicker({ api }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [customLocalFolder, setCustomLocalFolder] = useState("");
+  const [addingFolder, setAddingFolder] = useState(false);
+  const [addFolderMsg, setAddFolderMsg] = useState<string | null>(null);
 
   // Fetch current folder on mount and listen to updates
   useEffect(() => {
@@ -122,6 +125,24 @@ export function CompanyFolderPicker({ api }: Props) {
         text: err instanceof Error ? err.message : "Failed to disconnect folder.",
         type: "error",
       });
+    }
+  };
+
+  const handleAddLocalFolder = async () => {
+    if (!customLocalFolder.trim()) return;
+    setAddingFolder(true);
+    setAddFolderMsg(null);
+    try {
+      const res = await api.addLocalFolder(customLocalFolder.trim());
+      setAddFolderMsg(res.message || "✓ Folder registered. Local agent will index it on next heartbeat.");
+      setCustomLocalFolder("");
+      setTimeout(() => {
+        api.getLocalAgentStatus().then((s) => setAgentStatus(s)).catch(() => {});
+      }, 1500);
+    } catch (err: any) {
+      setAddFolderMsg(`Error: ${err?.message || "Failed to add folder"}`);
+    } finally {
+      setAddingFolder(false);
     }
   };
 
@@ -496,6 +517,39 @@ export function CompanyFolderPicker({ api }: Props) {
             </div>
           </div>
         )}
+
+        {/* Interactive Add Local Folder Input */}
+        <div style={{ marginTop: "16px", padding: "12px 14px", background: "rgba(30, 41, 59, 0.6)", borderRadius: "8px", border: "1px solid rgba(148, 163, 184, 0.2)" }}>
+          <div style={{ fontSize: "0.82rem", fontWeight: 600, color: "#e2e8f0", marginBottom: "6px" }}>
+            Add Any Local Folder to Index:
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <input
+              type="text"
+              className="folder-picker-input"
+              style={{ flex: 1, fontSize: "0.82rem", padding: "6px 12px" }}
+              placeholder="e.g. C:\Users\haris\Downloads\companydata_bridge_construction_120_files\companydata_bridge_construction\CompanyData"
+              value={customLocalFolder}
+              onChange={(e) => setCustomLocalFolder(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleAddLocalFolder();
+              }}
+            />
+            <button
+              className="folder-picker-btn folder-picker-btn-primary"
+              onClick={handleAddLocalFolder}
+              disabled={addingFolder || !customLocalFolder.trim()}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {addingFolder ? "Adding..." : "+ Add Folder"}
+            </button>
+          </div>
+          {addFolderMsg && (
+            <div style={{ marginTop: "6px", fontSize: "0.78rem", color: addFolderMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>
+              {addFolderMsg}
+            </div>
+          )}
+        </div>
 
         {/* Connected Folders List */}
         <div style={{ marginTop: "18px" }}>

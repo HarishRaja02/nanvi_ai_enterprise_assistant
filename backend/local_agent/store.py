@@ -98,7 +98,24 @@ class LocalAgentStore:
                         "last_synced_at": existing.get("last_synced_at") or now_iso,
                     }
             self._save_unlocked()
+    def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> None:
+        """User from Web UI requested a folder to be indexed by their local agent."""
+        k = self._key(tenant_id, user_id)
+        with self._lock:
+            if k not in self._data:
+                self._data[k] = {"agent": {}, "folders": {}, "chunks": [], "requested_folders": []}
+            reqs = self._data[k].setdefault("requested_folders", [])
+            clean_path = str(folder_path).strip()
+            if clean_path and clean_path not in reqs:
+                reqs.append(clean_path)
+            self._save_unlocked()
 
+    def get_requested_folders(self, tenant_id: str, user_id: str) -> list[str]:
+        """Get list of folder paths requested by user via Web UI."""
+        k = self._key(tenant_id, user_id)
+        with self._lock:
+            val = self._data.get(k, {})
+            return list(val.get("requested_folders", []))
     def get_agent_status(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Check if local agent is currently online and return its folder summary."""
         k = self._key(tenant_id, user_id)
@@ -178,20 +195,28 @@ class LocalAgentStore:
             val = self._data.get(k)
             if not val:
                 return False
+            matched = False
             folders = val.get("folders", {})
+            folder_path = ""
             if folder_id in folders:
+                folder_path = folders[folder_id].get("folder_path", "")
                 del folders[folder_id]
-                # Also remove chunks
                 val["chunks"] = [c for c in val.get("chunks", []) if c.get("folder_id") != folder_id]
+                matched = True
+            else:
+                for fid, f in list(folders.items()):
+                    if f.get("folder_path") == folder_id:
+                        folder_path = f.get("folder_path", "")
+                        del folders[fid]
+                        val["chunks"] = [c for c in val.get("chunks", []) if c.get("folder_id") != fid]
+                        matched = True
+                        break
+
+            if matched:
+                reqs = val.get("requested_folders", [])
+                val["requested_folders"] = [r for r in reqs if r != folder_id and r != folder_path]
                 self._save_unlocked()
                 return True
-            # Check by folder_path
-            for fid, f in list(folders.items()):
-                if f.get("folder_path") == folder_id:
-                    del folders[fid]
-                    val["chunks"] = [c for c in val.get("chunks", []) if c.get("folder_id") != fid]
-                    self._save_unlocked()
-                    return True
             return False
 
     def search_chunks(
