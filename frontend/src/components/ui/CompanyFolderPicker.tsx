@@ -462,17 +462,35 @@ export function CompanyFolderPicker({ api }: Props) {
             </code>
             <div style={{ marginTop: "12px", fontSize: "0.8rem", color: "#94a3b8" }}>
               <strong>How to connect your folders:</strong>
-              <ol style={{ margin: "6px 0 0 16px", padding: 0, lineHeight: 1.6 }}>
-                <li>On your Windows PC, open Command Prompt or run <code>local_agent/run_local_agent.bat</code>:
-                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9" }}>
-                    python local_agent/nanvi_local_agent.py --server {typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000"} --token {pairingToken.slice(0, 12)}...
+              <div style={{ marginTop: "8px", display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  className="folder-picker-btn folder-picker-btn-primary"
+                  style={{ padding: "4px 12px", fontSize: "0.8rem" }}
+                  onClick={() => {
+                    const server = typeof window !== "undefined" ? window.location.origin : "https://nanviaienterpriseassistant.vercel.app";
+                    const cmd = `cd /d "%USERPROFILE%\\Desktop\\nanvi_ai_enterprise_assistant" && python local_agent/nanvi_local_agent.py --server ${server} --token ${pairingToken}`;
+                    navigator.clipboard.writeText(cmd);
+                    setTokenCopied(true);
+                    setTimeout(() => setTokenCopied(false), 2500);
+                  }}
+                >
+                  {tokenCopied ? "✓ Command Copied!" : "📋 Copy Terminal Command"}
+                </button>
+                <span style={{ fontSize: "0.75rem", color: "#64748b" }}>
+                  (or double-click <code>local_agent\run_local_agent.bat</code>)
+                </span>
+              </div>
+              <ol style={{ margin: "8px 0 0 16px", padding: 0, lineHeight: 1.6 }}>
+                <li>Navigate to your project directory and run the agent:
+                  <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9", fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
+                    cd /d &quot;%USERPROFILE%\Desktop\nanvi_ai_enterprise_assistant&quot; && python local_agent/nanvi_local_agent.py --server {typeof window !== "undefined" ? window.location.origin : "https://nanviaienterpriseassistant.vercel.app"} --token {pairingToken.slice(0, 16)}...
                   </pre>
                 </li>
-                <li>In the agent console, add any folder:
+                <li>In the agent console, approve any folder on your PC:
                   <pre style={{ margin: "4px 0", padding: "6px 10px", background: "rgba(0,0,0,0.3)", borderRadius: "4px", color: "#f1f5f9" }}>
-                    add C:\Projects
+                    add C:\CompanyData
                   </pre>
-                  (or <code>add C:\Users\haris\Downloads\companydata_bridge_construction_120_files\companydata_bridge_construction\CompanyData</code>, <code>add C:\abc</code>, etc.)
+                  (e.g. <code>add D:\Projects</code>, <code>add C:\abc</code>, etc.)
                 </li>
               </ol>
             </div>
