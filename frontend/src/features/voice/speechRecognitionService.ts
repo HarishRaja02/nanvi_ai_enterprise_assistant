@@ -113,6 +113,7 @@ class SpeechRecognitionService {
   private currentWaitTimeoutMs = TURN_TIMEOUTS.STANDARD_PAUSE;
   private lastConfidence = 1.0;
   private preferredLang = "en-IN";
+  private incompleteGraceCount = 0;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -267,6 +268,7 @@ class SpeechRecognitionService {
             if (fullText) {
               this.speechDetected = true;
               this.lastSpokenTime = Date.now();
+              this.incompleteGraceCount = 0;
               this.callbacks.onSpeechStarted?.();
               this.callbacks.onInterimText?.(fullText);
 
@@ -463,17 +465,25 @@ class SpeechRecognitionService {
       ).trim();
       const analysis = analyzeCompleteness(fullText);
 
-      // 1. If only vocal hesitation (e.g. "um..."), don't fire spurious queries
+      // 1. If only vocal hesitation, wait for substantive thought without wiping previous context
       if (analysis.status === "hesitation_only") {
-        console.log(`[Nanvi Voice] Hesitation only detected during pause ('${fullText}'). Waiting for user thought.`);
-        this.clearRecordedAudio();
-        this.accumulatedTranscript = "";
+        console.log(`[Nanvi Voice] Hesitation detected ('${fullText}'). Waiting for user thought.`);
         this.currentInterim = "";
         this.speechDetected = false;
         return;
       }
 
-      // 2. If user spoke substantive words and silence threshold has elapsed
+      // 2. If phrase is incomplete (e.g. trailing preposition, conjunction, suspension, hesitation, incomplete starter), give extra grace period
+      if (analysis.status === "incomplete" && this.incompleteGraceCount < 2) {
+        this.incompleteGraceCount += 1;
+        console.log(`[Nanvi Voice] Incomplete phrase ('${fullText}'). Reason: ${analysis.reason}. Waiting for user to complete thought.`);
+        this.resetSilenceTimer(2500);
+        return;
+      }
+
+      this.incompleteGraceCount = 0;
+
+      // 3. If user spoke substantive words and silence threshold has elapsed
       if (fullText.length > 0) {
         this.speechDetected = false;
         this.clearSilenceTimer();
@@ -546,6 +556,16 @@ class SpeechRecognitionService {
         // ignore
       }
     }
+  }
+
+  pauseRecognition(): void {
+    // Keep audio stream and analyser running for barge-in volume detection,
+    // but pause current speech buffer
+    this.sessionPrefix = "";
+    this.accumulatedTranscript = "";
+    this.currentInterim = "";
+    this.speechDetected = false;
+    this.clearSilenceTimer();
   }
 
   stopListening(): void {

@@ -18,6 +18,7 @@ from backend.chat.context_engine import (
     detect_verbosity_command,
     UserPreferences,
 )
+from backend.chat.email_conversation import email_conversation_manager
 from backend.chat.intent_registry import intent_registry, RiskLevel
 from backend.chat.models import ChatRequest
 from backend.chat.response_planner import human_response_planner
@@ -64,6 +65,9 @@ def realtime_voice_status(user: UserAttributes = Depends(current_attributes)):
     }
 
 
+from backend.chat.speech_normalizer import normalize_for_speech
+
+
 def clean_spoken_text(text: str) -> str:
     """Format an enterprise assistant answer into natural, fluent humanized spoken text.
 
@@ -71,163 +75,8 @@ def clean_spoken_text(text: str) -> str:
     raw URLs, citation tags, emojis, and bullet markers, producing warm, natural,
     conversational speech suitable for humanized voice synthesis.
     """
-    if not text or not text.strip():
-        return "I have completed your request."
+    return normalize_for_speech(text)
 
-    cleaned = text.strip()
-
-    # 1. Remove markdown code blocks
-    cleaned = re.sub(r"```[\s\S]*?```", " Code details are available in your conversation record. ", cleaned)
-    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
-
-    # 2. Remove markdown tables (| col | col | ...) and summarize
-    if "|" in cleaned:
-        cleaned = re.sub(r"(\|.*\|\n?)+", " Detailed figures are recorded in your context panel. ", cleaned)
-
-    # 3. Remove citation brackets like [1], [ref-1], [Source 2], etc.
-    cleaned = re.sub(r"\[(?:ref|source|\d+|file|doc)[^\]]*\]", "", cleaned, flags=re.IGNORECASE)
-    # Convert markdown links [title](url) to title
-    cleaned = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", cleaned)
-    # Remove raw URLs
-    cleaned = re.sub(r"https?://\S+", "", cleaned)
-
-    # 4. Remove headers (###, ##, #)
-    cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
-
-    # 5. Enterprise ID normalization: EMP1004 → "EMP one zero zero four"
-    def _spell_digits(digits: str) -> str:
-        digit_map = {"0": "zero", "1": "one", "2": "two", "3": "three", "4": "four",
-                     "5": "five", "6": "six", "7": "seven", "8": "eight", "9": "nine"}
-        return " ".join(digit_map.get(d, d) for d in digits)
-
-    def _format_enterprise_id(m: re.Match) -> str:
-        prefix_names = {"EMP": "EMP", "INV": "invoice", "PROJ": "project", "TICK": "ticket",
-                        "ORD": "order", "PO": "P O", "REQ": "request", "DOC": "document",
-                        "RPT": "report", "ACCT": "account", "CUST": "customer", "SKU": "S K U"}
-        prefix = m.group(1)
-        digits = m.group(2)
-        spoken_prefix = prefix_names.get(prefix, prefix)
-        return f"{spoken_prefix} {_spell_digits(digits)}"
-
-    cleaned = re.sub(r"\b([A-Z]{2,6})(\d{3,})\b", _format_enterprise_id, cleaned)
-
-    # Enterprise IDs with dashes: INV-2026-00421 → "invoice 2026 zero zero four two one"
-    def _format_dashed_id(m: re.Match) -> str:
-        prefix_names = {"EMP": "EMP", "INV": "invoice", "PROJ": "project", "TICK": "ticket",
-                        "ORD": "order", "PO": "P O", "REQ": "request"}
-        prefix = m.group(1)
-        rest = m.group(2)
-        spoken_prefix = prefix_names.get(prefix, prefix)
-        parts = rest.split("-")
-        spoken_parts = []
-        for part in parts:
-            if part.isdigit():
-                if len(part) == 4 and (part.startswith("19") or part.startswith("20")):
-                    spoken_parts.append(part)
-                else:
-                    spoken_parts.append(_spell_digits(part))
-            else:
-                spoken_parts.append(part)
-        return f"{spoken_prefix} {' '.join(spoken_parts)}"
-
-    cleaned = re.sub(r"\b([A-Z]{2,6})-(\d[\d-]+\d)\b", _format_dashed_id, cleaned)
-
-    # 6. Date normalization: 2026-09-30 → "September 30th, 2026"
-    month_names = ["January", "February", "March", "April", "May", "June",
-                   "July", "August", "September", "October", "November", "December"]
-    ordinal_suffixes = {1: "st", 2: "nd", 3: "rd", 21: "st", 22: "nd", 23: "rd", 31: "st"}
-
-    def _format_date(m: re.Match) -> str:
-        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
-        if 1 <= mo <= 12 and 1 <= d <= 31:
-            suffix = ordinal_suffixes.get(d, "th")
-            return f"{month_names[mo - 1]} {d}{suffix}, {y}"
-        return m.group(0)
-
-    cleaned = re.sub(r"\b(\d{4})-(\d{2})-(\d{2})\b", _format_date, cleaned)
-
-    # 7. Time normalization: 10:30 AM → "ten thirty A M"
-    cleaned = re.sub(r"\b(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)\b",
-                     lambda m: f"{m.group(1)} {m.group(2)} {m.group(3).upper().replace('', ' ').strip()}",
-                     cleaned)
-
-    # 8. Currency & Numbers spoken expansions
-    cleaned = re.sub(
-        r"\$(\d+(?:\.\d+)?)\s*([BMKbmk])\b",
-        lambda m: m.group(1) + {"b": " billion", "m": " million", "k": " thousand"}[m.group(2).lower()] + " dollars",
-        cleaned,
-    )
-    cleaned = re.sub(r"\$(\d+(?:\.\d+)?)", r"\1 dollars", cleaned)
-
-    # Indian currency with commas: ₹4,50,000 → "four lakh fifty thousand rupees"
-    cleaned = re.sub(r"(?:₹|rs\.?|inr)\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d+)?)\b",
-                     lambda m: _spoken_inr(m.group(1)), cleaned, flags=re.IGNORECASE)
-
-    # Percentages: 95% → "ninety-five percent"
-    cleaned = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"\1 percent", cleaned)
-
-    # Acronyms: spell out common ones
-    spelled_acronyms = {"API": "A P I", "PDF": "P D F", "CSV": "C S V", "HR": "H R",
-                        "IT": "I T", "UI": "U I", "UX": "U X", "AI": "A I",
-                        "ML": "M L", "CEO": "C E O", "CTO": "C T O", "CFO": "C F O",
-                        "KPI": "K P I", "ROI": "R O I", "SLA": "S L A", "NDA": "N D A",
-                        "GST": "G S T", "TDS": "T D S", "CTC": "C T C", "PAN": "P A N"}
-    for acr, spoken in spelled_acronyms.items():
-        cleaned = re.sub(rf"\b{acr}\b", spoken, cleaned)
-    cleaned = re.sub(r"\bSQL\b", "sequel", cleaned, flags=re.IGNORECASE)
-
-    # 9. Conversational expansions
-    cleaned = re.sub(r"\be\.g\b\.?,?\s*", "for example, ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bi\.e\b\.?,?\s*", "that is, ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\betc\b\.?", "and so forth", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bvs\b\.?\s*", "versus ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bQ([1-4])\b", r"Quarter \1", cleaned)
-    cleaned = re.sub(r"\bFY\s*(\d{2,4})\b", r"Fiscal Year \1", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"&", " and ", cleaned)
-
-    # 10. Strip ALL formatting symbols
-    cleaned = re.sub(r"[\*\#\_~\|<>{}\^\\\/]", "", cleaned)
-
-    # 11. Remove bullet points
-    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
-    processed_lines: list[str] = []
-    for line in lines:
-        l = re.sub(r"^[\-\•\◦\▪\▫\+]\s*", "", line)
-        l = re.sub(r"^\d+[\.\)]\s*", "", l)
-        processed_lines.append(l)
-
-    text_body = " ".join(processed_lines)
-
-    # 12. Strip remaining symbols and emojis
-    text_body = re.sub(r"[\*\#\_~\|]", "", text_body)
-    text_body = re.sub(r"[\U00010000-\U0010ffff]", "", text_body)
-    text_body = re.sub(r"\s+", " ", text_body).strip()
-
-    # 13. Natural human pacing: limit spoken response to top 8 conversational sentences
-    sentences = re.split(r"(?<=[.!?])\s+", text_body)
-    if len(sentences) > 8:
-        spoken = " ".join(sentences[:8])
-        if not spoken.endswith((".", "!", "?")):
-            spoken += "."
-        spoken += " You can see further details in your conversation panel."
-        return spoken
-
-    return text_body
-
-
-def _spoken_inr(raw: str) -> str:
-    """Convert Indian-formatted currency string to spoken words."""
-    num = float(raw.replace(",", ""))
-    if num >= 10_000_000:
-        cr = num / 10_000_000
-        return f"{cr:.1f} crore rupees".replace(".0 ", " ")
-    elif num >= 100_000:
-        lk = num / 100_000
-        return f"{lk:.1f} lakh rupees".replace(".0 ", " ")
-    elif num >= 1000:
-        th = num / 1000
-        return f"{th:.1f} thousand rupees".replace(".0 ", " ")
-    return f"{int(num)} rupees"
 
 
 def extract_important_points(answer: str, sources: Sequence[object]) -> list[str]:
@@ -435,6 +284,54 @@ def voice_respond(
             language=detected_lang,
             query_length=len(corrected_query),
         )
+
+    # 5. Interactive Conversational Email Layer Interception
+    conv_id = body.conversation_id or "default"
+    if email_conversation_manager.is_email_query(corrected_query, conv_id):
+        email_resp = email_conversation_manager.handle(corrected_query, user, conv_id)
+        if email_resp is not None:
+            if body.conversation_id:
+                try:
+                    state = email_conversation_manager.get_state(body.conversation_id)
+                    context_manager.update(body.conversation_id, {"email_conversation": state.model_dump()})
+                except Exception:
+                    pass
+
+            duration_ms = round((time.perf_counter() - started) * 1000, 2)
+            log_event(
+                logger,
+                "voice_email_conversation_completed",
+                actor_id=user.user_id,
+                tenant_id=user.tenant_id,
+                duration_ms=duration_ms,
+            )
+            voice_telemetry.record_query(
+                capability="email_conversation",
+                duration_ms=duration_ms,
+                confidence=body.confidence if body.confidence is not None else 1.0,
+            )
+
+            highlights = [h.get("subject", "") for h in email_resp.email_highlights] if email_resp.email_highlights else [email_resp.spoken_text[:60]]
+            return {
+                "conversation_id": body.conversation_id or "",
+                "answer": email_resp.spoken_text,
+                "spoken_text": email_resp.spoken_text,
+                "screen_message": email_resp.screen_text or email_resp.spoken_text,
+                "highlights": highlights,
+                "suggested_actions": email_resp.suggested_actions,
+                "ui_specs": [],
+                "sensitivity": "normal",
+                "confidence_level": "high",
+                "important_points": [email_resp.spoken_text],
+                "capability": "email_conversation",
+                "sources": [],
+                "trace": ["email_conversation_intercepted"],
+                "history": [],
+                "report_id": None,
+                "user_preferences": {"verbosity": "normal", "privacy_mode": False, "language": detected_lang},
+                "email_highlights": email_resp.email_highlights,
+                "needs_confirmation": email_resp.needs_confirmation,
+            }
 
     try:
         response = service.ask(user, ChatRequest(corrected_query, body.conversation_id, body.rag_enabled))
@@ -825,10 +722,15 @@ async def voice_synthesize(
     if not clean.strip():
         raise HTTPException(status_code=400, detail="Empty text provided for synthesis.")
 
-    # CRITICAL: Always use the SAME voice for the entire session to prevent
-    # jarring voice changes between introduction and content. Never switch
-    # voices based on content detection — consistency is paramount.
-    voice = PROFILE_TO_EDGE_VOICE.get(body.profile_id, "en-US-JennyNeural")
+    # CRITICAL: Always use the SAME voice for the entire response to prevent
+    # jarring voice changes between introduction and content.
+    lang = (body.language or "auto").lower()
+    if lang in ("ta-in", "ta", "tamil"):
+        voice = "ta-IN-PallaviNeural"
+    elif lang in ("en-in", "hinglish"):
+        voice = "en-IN-NeerjaNeural"
+    else:
+        voice = PROFILE_TO_EDGE_VOICE.get(body.profile_id, "en-US-JennyNeural")
 
     try:
         import edge_tts

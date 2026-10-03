@@ -558,25 +558,28 @@ export function useVoiceSession({
       activeQueryRef.current = clean;
       setState("processing");
       earconService.playWorking();
-      speechRecognitionService.stopListening();
-      bargeInDetectorRef.current?.stop();
+      speechRecognitionService.pauseRecognition();
 
       clearProgressTimers();
       const category = phrasePool.detectCategoryFromQuery(clean);
-      let initialStage = "Analyzing request & intent";
-      if (category === "KNOWLEDGE_SEARCH") initialStage = "Searching authorized files & documents";
-      else if (category === "SQL_QUERY") initialStage = "Querying enterprise database records";
-      else if (category === "EMAIL_SEARCH") initialStage = "Searching company mailbox";
-      else if (category === "WEB_SEARCH") initialStage = "Searching online sources";
+      const isChitchat = /^(?:hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|thanks|thank\s+you)\b/i.test(clean);
+      const ackPhrase = !isChitchat ? phrasePool.getPhrase(category) : "";
 
       setContextState((prev) => ({
         ...prev,
         currentQuery: clean,
         interimTranscript: "",
+        spokenAnswer: ackPhrase,
         lastError: null,
-        progressStage: initialStage,
+        progressStage: "Checking that now",
         progressElapsed: 0,
       }));
+
+      // Start immediate natural spoken acknowledgement in parallel (Master Prompt Section 9)
+      let ackPromise: Promise<void> | null = null;
+      if (ackPhrase && isOpenRef.current) {
+        ackPromise = speechSynthesisService.speak(ackPhrase, activeProfile, {}, api);
+      }
 
       // Section 9 Elapsed Timer ticking every 1s
       let elapsedSeconds = 0;
@@ -639,6 +642,13 @@ export function useVoiceSession({
           if (chatRes.capability) {
             returnedCaps = chatRes.capability.split(",").filter(Boolean);
           }
+        }
+
+        // Wait for acknowledgement speech if still active
+        if (ackPromise) {
+          try {
+            await ackPromise;
+          } catch {}
         }
 
         // Processing complete — stop any scheduled progress timers

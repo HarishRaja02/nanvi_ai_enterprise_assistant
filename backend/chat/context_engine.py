@@ -62,6 +62,9 @@ def detect_code_switching(text: str) -> str:
     """Detect whether user query uses code-switching (Hinglish, Tamil-English) or standard English."""
     if not text:
         return "en-IN"
+    # Check for native Tamil script (\u0B80-\u0BFF)
+    if re.search(r"[\u0B80-\u0BFF]", text):
+        return "ta-IN"
     tokens = set(re.findall(r"\b[a-zA-Z]+\b", text.lower()))
     if tokens.intersection(HINGLISH_MARKERS):
         return "hinglish"
@@ -133,6 +136,7 @@ class ConversationContext(BaseModel):
     ui_entity_index: dict[str, Any] = Field(default_factory=dict)
     user_preferences: UserPreferences = Field(default_factory=UserPreferences)
     conversation_state: ConversationState = Field(default_factory=ConversationState)
+    email_conversation: dict[str, Any] | None = None
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     def sanitized_slice(self) -> dict[str, Any]:

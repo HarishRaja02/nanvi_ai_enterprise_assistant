@@ -229,7 +229,7 @@ function formatAcronym(acronym: string): string {
 function formatEnterpriseId(id: string): string {
   // Common enterprise prefixes with spoken names
   const PREFIX_NAMES: Record<string, string> = {
-    "EMP": "EMP",
+    "EMP": "employee",
     "INV": "invoice",
     "PROJ": "project",
     "TICK": "ticket",
@@ -337,9 +337,21 @@ export function formatSpokenNumbers(text: string): string {
   // ── 8. Percentages: 14% → "14 percent", 14.2% → "14.2 percent" ──
   s = s.replace(/(\d+(?:\.\d+)?)\s*%/g, "$1 percent");
 
-  // ── 9. Email addresses: name@company.com → "name at company dot com" ──
+  // ── 8b. URLs: https://example.com/report → "the report link" ──
+  s = s.replace(/https?:\/\/\S+/gi, (url) => {
+    const u = url.toLowerCase();
+    if (u.includes("report")) return "the report link";
+    if (u.includes("invoice")) return "the invoice link";
+    if (u.includes("doc") || u.includes("file") || u.includes("pdf")) return "the document link";
+    if (u.includes("contract")) return "the contract link";
+    return "the link";
+  });
+
+  // ── 9. Email addresses: hr@nanvi.ai → "H R at nanvi dot A I" ──
   s = s.replace(/\b([a-zA-Z0-9._%+-]+)@([a-zA-Z0-9.-]+)\.([a-zA-Z]{2,})\b/g, (_, name, domain, tld) => {
-    return `${name} at ${domain} dot ${tld}`;
+    const spokenName = name.length <= 3 ? name.toUpperCase().split("").join(" ") : name;
+    const spokenTld = tld.length <= 3 ? tld.toUpperCase().split("").join(" ") : tld;
+    return `${spokenName} at ${domain} dot ${spokenTld}`;
   });
 
   // ── 10. Phone numbers: +91-9876543210, (080) 1234-5678 ──

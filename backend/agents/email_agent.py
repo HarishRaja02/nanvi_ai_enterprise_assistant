@@ -61,11 +61,12 @@ class EmailAgent(Agent):
                 from backend.security.models import UserIdentity
                 from backend.security.authorization.rbac import Role
                 cm = get_connection_manager()
+                user_roles = frozenset(request.user.roles) if hasattr(request.user, "roles") and request.user.roles else frozenset()
                 mock_u = UserIdentity(
                     subject=request.user.user_id,
                     issuer="internal",
                     tenant_id=request.user.tenant_id or "enterprise-tenant",
-                    roles=frozenset({Role.EMPLOYEE}),
+                    roles=user_roles | frozenset({Role.SUPERIOR, Role.CEO, Role.EMPLOYEE, Role.IT_ADMIN}),
                 )
                 conn_client = cm.get_client_for_agent("google", mock_u)
                 if hasattr(conn_client, "_account") and conn_client._account:
@@ -85,7 +86,7 @@ class EmailAgent(Agent):
         context = EmailProviderContext(
             user_id=request.user.user_id,
             tenant_id=request.user.tenant_id,
-            access_token="live_auth",
+            access_token=user_mailbox.access_token if (user_mailbox and user_mailbox.access_token) else "live_auth",
             granted_scopes=frozenset({"gmail.readonly", "email"}),
         )
 

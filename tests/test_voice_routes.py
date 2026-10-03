@@ -46,8 +46,9 @@ SELECT * FROM ledger;
     assert "[Source 1]" not in spoken
     assert "https://" not in spoken
     assert "```" not in spoken
-    assert "revenue increased by 12%" in spoken.lower()
-    assert "software expenses grew 8%" in spoken.lower()
+    assert "revenue increased by twelve percent" in spoken.lower()
+    assert "software expenses grew eight percent" in spoken.lower()
+    assert "check the report link for details" in spoken.lower()
 
 
 def test_extract_important_points_finds_key_facts():

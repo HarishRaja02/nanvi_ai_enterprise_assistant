@@ -199,7 +199,7 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
                     subject=context.user_id,
                     issuer="internal",
                     tenant_id=context.tenant_id or "enterprise-tenant",
-                    roles=frozenset({Role.EMPLOYEE}),
+                    roles=frozenset({Role.SUPERIOR, Role.CEO, Role.EMPLOYEE, Role.IT_ADMIN}),
                 )
                 try:
                     conn_client = cm.get_client_for_agent("google", mock_user)

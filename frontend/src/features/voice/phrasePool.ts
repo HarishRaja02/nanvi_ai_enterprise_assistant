@@ -15,36 +15,38 @@ export type PhraseCategory =
 
 const PHRASE_POOLS: Record<PhraseCategory, string[]> = {
   KNOWLEDGE_SEARCH: [
-    "Checking company files.",
-    "Searching documents.",
-    "Reviewing internal records.",
-    "Looking through files.",
+    "Sure, I'm checking that.",
+    "One moment, finding those documents.",
+    "Okay, let me look that up.",
+    "Checking that now.",
   ],
   SQL_QUERY: [
-    "Querying database records.",
-    "Checking latest figures.",
-    "Accessing structured records.",
-    "Pulling database records.",
+    "Sure, give me a second.",
+    "Okay, checking the records now.",
+    "Let me look that up for you.",
+    "One moment, pulling that up.",
   ],
   EMAIL_SEARCH: [
-    "Checking company mailbox.",
-    "Scanning email threads.",
-    "Reviewing messages.",
+    "Sure, checking your messages now.",
+    "One moment, looking through the emails.",
+    "Checking that email now.",
+    "Let me check your inbox.",
   ],
   WEB_SEARCH: [
-    "Checking online sources.",
-    "Searching external references.",
-    "Looking up references.",
+    "One moment, checking online.",
+    "Looking that up now.",
+    "Sure, checking current information.",
   ],
   INTERMEDIATE_UPDATE: [
-    "Narrowing down matches.",
-    "Analyzing records now.",
-    "Verifying details with sources.",
+    "I found a few matches. Narrowing them down.",
+    "Checking the details now.",
+    "Pulling together the verified information.",
   ],
   GENERAL_ACK: [
-    "Looking that up.",
-    "One moment, checking on that.",
-    "Checking systems now.",
+    "Sure, give me a second.",
+    "Okay, I'm checking that now.",
+    "One moment, let me look that up.",
+    "Looking that up for you.",
   ],
 };
 

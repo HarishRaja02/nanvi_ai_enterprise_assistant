@@ -17,11 +17,11 @@ export const TURN_TIMEOUTS = {
   /** Snappy timeout for complete sentences with terminal punctuation or complete clauses */
   SNAPPY_COMPLETE: 1200,
   /** Standard silence timeout for normal speech phrases */
-  STANDARD_PAUSE: 1700,
-  /** Extended wait time when speech ends on trailing conjunctions, prepositions, or hesitation */
-  EXTENDED_INCOMPLETE: 2800,
+  STANDARD_PAUSE: 1800,
+  /** Extended wait time when speech ends on trailing conjunctions, prepositions, or hesitation (tolerate natural pauses) */
+  EXTENDED_INCOMPLETE: 3600,
   /** Silence timeout when only hesitation sounds have been uttered */
-  HESITATION_ONLY: 3500,
+  HESITATION_ONLY: 4200,
   /** Post-speech continuous listening window without requiring wake word */
   FOLLOW_UP_WINDOW_MS: 8000,
 };
@@ -30,6 +30,13 @@ export const TURN_TIMEOUTS = {
 const HESITATION_REGEX = /^(?:um+|uh+|er+|ah+|hmm+|mm+|like|you know)$/i;
 
 const TRAILING_HESITATION_REGEX = /\b(?:um+|uh+|er+|ah+|hmm+|mm+|like|you know)\s*[.…—\-]*$/i;
+
+// Incomplete starter phrases
+const INCOMPLETE_STARTERS = new Set([
+  "can you", "can you show", "can you find", "can you check", "can you tell",
+  "show me", "tell me", "find the", "find me", "look up", "search for",
+  "check if", "check the", "what is the", "where is the", "who is the",
+]);
 
 // Trailing coordinating & subordinating conjunctions
 const TRAILING_CONJUNCTIONS_REGEX = /\b(?:and|or|but|so|because|since|although|while|if|unless|yet|as|whereas)\s*[.…—\-]*$/i;
@@ -128,8 +135,17 @@ export function analyzeCompleteness(transcript: string): TurnCompletenessResult 
     };
   }
 
-  // 8. Check for trailing relative / interrogatives with no predicate (e.g. "Tell me why...")
-  // Only flags if not a standalone single-word follow-up question like "Why?" or "What?"
+  // 8. Check for incomplete starter phrases with no object/predicate (e.g. "Can you find", "Show me")
+  const lowerClean = clean.toLowerCase().replace(/[.,!?;:…—\-]/g, " ").replace(/\s+/g, " ").trim();
+  if (INCOMPLETE_STARTERS.has(lowerClean)) {
+    return {
+      status: "incomplete",
+      reason: "incomplete_starter",
+      recommendedWaitMs: TURN_TIMEOUTS.EXTENDED_INCOMPLETE,
+    };
+  }
+
+  // 9. Check for trailing relative / interrogatives with no predicate (e.g. "Tell me why...")
   if (tokens.length > 1 && TRAILING_RELATIVE_REGEX.test(clean)) {
     return {
       status: "incomplete",
@@ -138,7 +154,7 @@ export function analyzeCompleteness(transcript: string): TurnCompletenessResult 
     };
   }
 
-  // 9. Check for terminal punctuation indicating complete thoughts
+  // 10. Check for terminal punctuation indicating complete thoughts
   const hasTerminalPunctuation = /[.!?]$/.test(clean);
   if (hasTerminalPunctuation) {
     return {
@@ -148,7 +164,7 @@ export function analyzeCompleteness(transcript: string): TurnCompletenessResult 
     };
   }
 
-  // 10. Standalone elliptical follow-ups ("Why?", "How come?", "Only enterprise", "Open that", "Show more")
+  // 11. Standalone elliptical follow-ups ("Why?", "How come?", "Only enterprise", "Open that", "Show more")
   if (tokens.length <= 4) {
     return {
       status: "complete",
@@ -164,6 +180,7 @@ export function analyzeCompleteness(transcript: string): TurnCompletenessResult 
     recommendedWaitMs: TURN_TIMEOUTS.STANDARD_PAUSE,
   };
 }
+
 
 /**
  * Resolves conversational self-repairs in user speech.

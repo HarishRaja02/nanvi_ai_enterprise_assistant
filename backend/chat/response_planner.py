@@ -32,6 +32,9 @@ class HumanResponsePlan(BaseModel):
     ui_specs: list[UISpec] = Field(default_factory=list)
 
 
+from backend.chat.speech_normalizer import normalize_for_speech
+
+
 class SpokenNumberFormatter:
     """Formats numeric values and currencies into natural spoken phrasings.
 
@@ -151,7 +154,6 @@ class SpokenNumberFormatter:
                 pct = float(pct_str)
                 if pct.is_integer():
                     return f"{int(pct)} percent"
-                # If rounded close to integer, say "about X percent"
                 rounded = round(pct)
                 if abs(pct - rounded) < 0.3:
                     return f"about {rounded} percent"
@@ -161,29 +163,10 @@ class SpokenNumberFormatter:
 
         s = re.sub(r"(\d+(?:\.\d+)?)\s*%", _replace_percentage, s)
 
-        # 6. Large unadorned digit strings (e.g. 12500000 or 150000)
-        def _replace_raw_large_number(m: re.Match) -> str:
-            raw_str = m.group(1).replace(",", "")
-            # Preserve 4-digit calendar years between 1900 and 2099
-            if len(raw_str) == 4 and raw_str.startswith(("19", "20")):
-                return raw_str
-            try:
-                val = float(raw_str)
-                if val >= 100_000:
-                    return cls.format_number_value(val)
-                return m.group(0)
-            except ValueError:
-                return m.group(0)
-
-        s = re.sub(r"\b(\d{1,3}(?:,\d{2,3})+|\d{5,})\b", _replace_raw_large_number, s)
-
-        # 7. Common enterprise abbreviations expanded for clear pronunciation
-        s = re.sub(r"\bQ([1-4])\b", r"Quarter \1", s)
-        s = re.sub(r"\bFY\s*(\d{2,4})\b", r"Fiscal Year \1", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bMoM\b", "month over month", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bYoY\b", "year over year", s, flags=re.IGNORECASE)
-        s = re.sub(r"\be\.g\b\.?,?\s*", "for example, ", s, flags=re.IGNORECASE)
-        s = re.sub(r"\bi\.e\b\.?,?\s*", "that is, ", s, flags=re.IGNORECASE)
+        # 6. Conversational expansions & year preservation
+        s = re.sub(r"\bYoY\b", "year over year", s)
+        s = re.sub(r"\bQoQ\b", "quarter over quarter", s)
+        s = re.sub(r"\bFY\s*(\d{2,4})\b", r"Fiscal Year \1", s)
 
         return s
 
@@ -193,39 +176,38 @@ class PhrasePool:
 
     POOLS: dict[str, list[str]] = {
         "KNOWLEDGE_SEARCH": [
-            "Checking the company files now.",
-            "Searching through authorized documents.",
-            "Looking into the latest company records.",
-            "Reviewing internal files.",
+            "Sure, I'm checking that.",
+            "One moment, finding those documents.",
+            "Okay, let me look that up.",
+            "Checking that now.",
         ],
         "SQL_QUERY": [
-            "Querying the database now.",
-            "Looking up the database records.",
-            "Pulling the latest figures from the database.",
-            "Accessing structured records.",
+            "Sure, give me a second.",
+            "Okay, checking the records now.",
+            "Let me look that up for you.",
+            "One moment, pulling that up.",
         ],
         "EMAIL_SEARCH": [
-            "Checking your company mailbox.",
-            "Scanning authorized email threads.",
-            "Looking through relevant messages.",
-            "Reviewing email correspondence.",
+            "Sure, checking your messages now.",
+            "One moment, looking through the emails.",
+            "Checking that email now.",
+            "Let me check your inbox.",
         ],
         "WEB_SEARCH": [
-            "Checking online sources for recent information.",
-            "Searching external records.",
-            "Looking up current references.",
+            "One moment, checking online.",
+            "Looking that up now.",
+            "Sure, checking current information.",
         ],
         "INTERMEDIATE_UPDATE": [
             "I found a few matches. Narrowing them down.",
-            "Analyzing the records now.",
-            "Verifying the details with our sources.",
-            "Synthesizing the verified information.",
+            "Checking the details now.",
+            "Pulling together the verified information.",
         ],
         "GENERAL_ACK": [
+            "Sure, give me a second.",
+            "Okay, I'm checking that now.",
+            "One moment, let me look that up.",
             "Looking that up for you.",
-            "Give me a moment, checking on that.",
-            "One moment, pulling that together.",
-            "Checking our systems now.",
         ],
     }
 
@@ -253,6 +235,7 @@ class HumanResponsePlanner:
         r"^In summary,?\s*",
         r"^To summarize,?\s*",
         r"^Here is the (?:information|breakdown|summary)[,\s]*:?\s*",
+        r"^Sure,?\s*I can help you with that[.,!]*\s*",
     ]
 
     def __init__(self) -> None:
@@ -271,7 +254,7 @@ class HumanResponsePlanner:
         """Formulate conclusion-first spoken response, screen message, highlights, and suggested actions."""
         if not answer or not answer.strip():
             return HumanResponsePlan(
-                spoken_response="I couldn't find relevant records for that query.",
+                spoken_response="I couldn't find matching records for that request.",
                 screen_message="No matching records found in authorized data.",
                 highlights=[],
                 suggested_actions=["search_again", "browse_documents"],
@@ -280,25 +263,65 @@ class HumanResponsePlanner:
                 ui_specs=[],
             )
 
-        # 1. Clean markdown elements that should never be spoken
         cleaned = answer.strip()
-        # Remove code blocks
+
+        # 1. Clean markdown and technical syntax
         cleaned = re.sub(r"```[\s\S]*?```", "", cleaned)
         cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
-        # Remove markdown tables
         cleaned = re.sub(r"(\|.*\|\n?)+", "", cleaned)
-        # Remove citations [1], [ref-1], [Source 2]
         cleaned = re.sub(r"\[(?:ref|source|\d+|file|doc)[^\]]*\]", "", cleaned, flags=re.IGNORECASE)
-        # Convert markdown links [title](url) to title
         cleaned = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", cleaned)
         cleaned = re.sub(r"https?://\S+", "", cleaned)
-        # Remove markdown headers
         cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
-        # Remove bullet points
         cleaned = re.sub(r"^[\*\-•\◦\▪\▫\+]\s*", "", cleaned, flags=re.MULTILINE)
         cleaned = re.sub(r"^\d+[\.\)]\s*", "", cleaned, flags=re.MULTILINE)
 
-        # 2. Split into candidate sentences and clean each sentence
+        # Strip email headers from general text early so they are never spoken aloud
+        cleaned = re.sub(r"^(?:From|To|Subject|Date|Cc|Bcc):[^\n]*\n?", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
+
+        # 2. Email-specific natural conversational formulation (Master Prompt Section 7)
+        is_email = capability == "email" or bool(re.search(r"(?:\bFrom:\s*|\bSubject:\s*|\bDear\s+[A-Z]|\bHi\s+[A-Z])", answer, re.IGNORECASE))
+        read_whole_email = bool(re.search(r"\b(?:read\s+(?:the\s+)?(?:(?:whole|full|entire)\s+)?email)\b", query, re.IGNORECASE))
+
+        if is_email:
+            if read_whole_email:
+                # Natural reading with greeting and body
+                greeting_m = re.search(r"\b((?:Hi|Hello|Dear)\s+[^,\n]+[,!])", answer)
+                greeting = greeting_m.group(1) if greeting_m else ""
+                body_clean = re.sub(r"^(?:From|To|Subject|Date):[^\n]*\n?", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
+                body_clean = re.sub(r"^[\*\#_`~|]", "", body_clean).strip()
+                if greeting and body_clean.startswith(greeting):
+                    body_clean = body_clean[len(greeting):].strip()
+                spoken_email = f"I found the email. It starts with, '{greeting or 'Hi'}' {body_clean}" if greeting else f"I found the email: {body_clean}"
+                spoken_response = normalize_for_speech(spoken_email[:600])
+                return HumanResponsePlan(
+                    spoken_response=spoken_response,
+                    screen_message="Full email displayed on screen.",
+                    highlights=["Email thread"],
+                    suggested_actions=["reply_email", "forward_email"],
+                    sensitivity="normal",
+                    confidence_level="high",
+                    ui_specs=[],
+                )
+            else:
+                # Short spoken email summary
+                first_lines = [l.strip() for l in cleaned.splitlines() if l.strip() and not l.lower().startswith(("from:", "to:", "subject:", "date:"))]
+                summary_text = first_lines[0] if first_lines else "the details are in your mailbox"
+                for pat in self.DISCLAIMER_PATTERNS:
+                    summary_text = re.sub(pat, "", summary_text, flags=re.IGNORECASE).strip()
+                spoken_response = f"I found the email. The main point is that {summary_text[0].lower() + summary_text[1:]}"
+                spoken_response = normalize_for_speech(spoken_response)
+                return HumanResponsePlan(
+                    spoken_response=spoken_response,
+                    screen_message="Email summary displayed above.",
+                    highlights=["Email message"],
+                    suggested_actions=["read_whole_email", "reply_email"],
+                    sensitivity="normal",
+                    confidence_level="high",
+                    ui_specs=[],
+                )
+
+        # 3. Split into candidate sentences and clean each sentence
         raw_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
         filtered_sentences: list[str] = []
 
@@ -306,32 +329,37 @@ class HumanResponsePlanner:
             sentence_clean = s.strip()
             for pat in self.DISCLAIMER_PATTERNS:
                 sentence_clean = re.sub(pat, "", sentence_clean, flags=re.IGNORECASE).strip()
-            # Skip empty or pure AI meta-commentary sentences
             if not sentence_clean or len(sentence_clean) < 4:
                 continue
-            if re.search(r"\b(?:as an ai|language model|retrieved documents?|provided context|my knowledge cutoff)\b", sentence_clean, re.IGNORECASE):
+            if re.search(r"\b(?:as an ai|language model|retrieved documents?|provided context|my knowledge cutoff|rag agent|sql agent|vector database)\b", sentence_clean, re.IGNORECASE):
                 continue
-            # Ensure capitalized first letter
             sentence_clean = sentence_clean[0].upper() + sentence_clean[1:]
             filtered_sentences.append(sentence_clean)
 
         if not filtered_sentences:
-            filtered_sentences = [cleaned[0].upper() + cleaned[1:]] if cleaned else ["Here is the requested information."]
+            filtered_sentences = [cleaned[0].upper() + cleaned[1:]] if cleaned else ["Here is the information."]
 
-        # 3. Enforce conclusion first and adapt verbosity
+        # 4. Long Responses Handling (Master Prompt Section 8)
+        # Never dump a huge answer through voice
         max_sentences = 2
         if verbosity_preference in ("long", "tell_me_more", "detailed"):
             max_sentences = 4
         elif verbosity_preference in ("short", "concise"):
             max_sentences = 1
 
-        selected_sentences = filtered_sentences[:max_sentences]
-        spoken_core = " ".join(selected_sentences).strip()
+        if len(filtered_sentences) > 4 and verbosity_preference == "normal":
+            # 1. Short spoken summary, 2. Offer key points, 3. Invite user for details
+            summary_point = filtered_sentences[0]
+            second_point = filtered_sentences[1]
+            spoken_core = f"{summary_point} {second_point} I can read the remaining details if you'd like."
+        else:
+            selected_sentences = filtered_sentences[:max_sentences]
+            spoken_core = " ".join(selected_sentences).strip()
 
-        # 4. Format numbers for speech (crore, lakh, percent, dollars)
-        spoken_response = SpokenNumberFormatter.format(spoken_core)
+        # 5. Format numbers and IDs for speech using speech normalizer
+        spoken_response = normalize_for_speech(spoken_core)
 
-        # 5. Honest uncertainty check
+        # 6. Honest uncertainty check
         low_confidence_cues = ["not entirely sure", "could not confirm", "no direct mention", "partial information", "approximate"]
         confidence_level = "high"
         if any(c in spoken_response.lower() for c in low_confidence_cues):
@@ -339,28 +367,23 @@ class HumanResponsePlanner:
             if not spoken_response.lower().startswith(("i think", "i'm not fully sure")):
                 spoken_response = f"I'm not fully sure, but {spoken_response[0].lower()}{spoken_response[1:]}"
 
-        # 6. Sensitivity & Privacy Mode classification (Section 12 of NANVI_SPEC)
+        # 7. Sensitivity & Privacy Mode classification
         sensitivity = "normal"
-        sensitive_patterns = [
-            r"\b(?:salary|compensation|ctc|annual pay|monthly pay|base pay|bonus)\b",
-            r"\b(?:ssn|pan|aadhaar|passport|bank account|account number|password|secret|api_key|credentials)\b",
+        credential_patterns = [
+            r"\b(?:password|secret|api_key|credentials|aadhaar|ssn|bank account|account number)\b",
         ]
-        is_sensitive_query = any(re.search(pat, query, re.IGNORECASE) for pat in sensitive_patterns)
-        is_sensitive_answer = any(re.search(pat, answer, re.IGNORECASE) for pat in sensitive_patterns)
+        is_credential = any(re.search(pat, answer, re.IGNORECASE) for pat in credential_patterns)
+        if is_credential:
+            sensitivity = "restricted"
 
-        if is_sensitive_query or is_sensitive_answer:
-            sensitivity = "sensitive"
-
-        # Privacy mode: sensitive values (salary, personal data) appear on screen and are not spoken.
-        # Nanvi says "I've put it on screen."
-        if privacy_mode or (sensitivity == "sensitive" and (is_sensitive_query or re.search(r"(?:₹|\$|rs\.?|inr|usd|\d+[\d,]*\s*(?:lakh|crore|k|m|lpa))\b", answer, re.IGNORECASE))):
+        # Privacy mode: sensitive details appear on screen and are not spoken.
+        if privacy_mode or (is_credential and "salary" not in query.lower()):
             spoken_response = "I've put it on screen."
             screen_message = "Confidential details displayed on screen for privacy."
         else:
-            # 7. Formulate Screen Message & Highlights
-            has_table_or_details = "|" in answer or len(raw_sentences) > len(selected_sentences) or len(sources) > 0
+            has_table_or_details = "|" in answer or len(raw_sentences) > len(filtered_sentences[:max_sentences]) or len(sources) > 0
             if has_table_or_details:
-                screen_message = "I've displayed the full verified breakdown and citations on your screen."
+                screen_message = "I've displayed the full verified details and records on your screen."
             else:
                 screen_message = "Verified response displayed above."
 
@@ -369,10 +392,8 @@ class HumanResponsePlanner:
         metrics = re.findall(r"\b(?:\d+(?:\.\d+)?%|\$\d+(?:\.\d+)?[BMKbmk]?|₹\d+(?:,\d+)*(?:\.\d+)?)\b", answer)
         highlights.extend(metrics[:3])
 
-        # 8. Formulate Suggested Actions
+        # 8. Suggested Actions & UI Specs
         suggested_actions = self._generate_suggested_actions(query, answer)
-
-        # 9. Controlled UI Specs
         ui_specs = UISpecBuilder.build_specs(
             query=query,
             answer=answer,
@@ -391,6 +412,7 @@ class HumanResponsePlanner:
             confidence_level=confidence_level,
             ui_specs=ui_specs,
         )
+
 
     @classmethod
     def create_clarification_plan(

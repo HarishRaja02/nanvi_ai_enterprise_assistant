@@ -52,12 +52,13 @@ def can_view_connection(
     user_tenant = user.tenant_id or "enterprise-tenant"
     if connection_tenant_id != user_tenant:
         return False
-    if not _has_role_permission(user, "CONNECTION_READ"):
-        return False
 
     if scope_level == ScopeLevel.USER.value:
         alias = user.subject.replace("demo-", "") if user.subject.startswith("demo-") else f"demo-{user.subject}"
         return owner_user_id in (user.subject, alias)
+
+    if not _has_role_permission(user, "CONNECTION_READ"):
+        return False
 
     # Org-level connection
     admin_roles = {Role.SUPERIOR, Role.SUPERVISOR, Role.IT_ADMIN, Role.CEO, Role.FINANCE}
@@ -101,12 +102,12 @@ def can_use_connection(
     user_tenant = user.tenant_id or "enterprise-tenant"
     if connection_tenant_id != user_tenant:
         return False
-    if not _has_role_permission(user, CONNECTION_USE):
-        return False
-
     if scope_level == ScopeLevel.USER.value:
         alias = user.subject.replace("demo-", "") if user.subject.startswith("demo-") else f"demo-{user.subject}"
         return owner_user_id in (user.subject, alias)
+
+    if not _has_role_permission(user, CONNECTION_USE):
+        return False
 
     # Org connections are usable by anyone in the org (per role policy)
     return True

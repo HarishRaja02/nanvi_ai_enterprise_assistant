@@ -109,6 +109,7 @@ class UserEmailAccountService:
 
     def get_accounts(self, user_id: str) -> list[UserEmailAccount]:
         """Fetch all connected email accounts for a specific user."""
+        db_accounts: list[UserEmailAccount] = []
         target_dsn = settings.supabase_database_url or settings.database_url
         if target_dsn:
             try:
@@ -125,7 +126,7 @@ class UserEmailAccountService:
                         """, (user_id,))
                         rows = cur.fetchall()
                         if rows:
-                            return [
+                            db_accounts = [
                                 UserEmailAccount(
                                     id=r[0],
                                     user_id=r[1],
@@ -149,11 +150,52 @@ class UserEmailAccountService:
 
         with self._lock:
             data = self._read_local_accounts()
-            matching = [
+            local_accounts = [
                 UserEmailAccount(**d) for d in data
                 if d.get("user_id") == user_id and d.get("is_active", True)
             ]
-            return matching
+
+        # Also check Connections Hub for live connection
+        hub_accounts: list[UserEmailAccount] = []
+        try:
+            from backend.connections.manager import get_connection_manager
+            from backend.security.models import UserIdentity
+            from backend.security.authorization.rbac import Role
+            cm = get_connection_manager()
+            mock_user = UserIdentity(
+                subject=user_id,
+                issuer="internal",
+                tenant_id="enterprise-tenant",
+                roles=frozenset({Role.SUPERIOR, Role.CEO, Role.EMPLOYEE, Role.IT_ADMIN}),
+            )
+            client = cm.get_client_for_agent("google", mock_user)
+            if hasattr(client, "_account") and client._account and client._account.access_token:
+                h_acc = client._account
+                h_acc.user_id = user_id
+                hub_accounts.append(h_acc)
+        except Exception:
+            pass
+
+        all_candidates = db_accounts + local_accounts + hub_accounts
+        if not all_candidates:
+            return []
+
+        # Merge by email address, prioritizing unexpired active tokens
+        merged: dict[str, UserEmailAccount] = {}
+        for acc in all_candidates:
+            em = acc.email_address.lower()
+            if em not in merged:
+                merged[em] = acc
+            else:
+                curr = merged[em]
+                if curr.is_token_expired() and not acc.is_token_expired():
+                    merged[em] = acc
+                elif not curr.access_token and acc.access_token:
+                    merged[em] = acc
+                elif (acc.connected_at or "") > (curr.connected_at or "") and not acc.is_token_expired():
+                    merged[em] = acc
+
+        return list(merged.values())
 
     def get_active_account(self, user_id: str) -> UserEmailAccount | None:
         """Get the primary active connected mailbox for the given user."""
@@ -179,23 +221,29 @@ class UserEmailAccountService:
         if target_dsn:
             try:
                 import psycopg
-                with psycopg.connect(target_dsn, autocommit=True, connect_timeout=3) as conn:
+                with psycopg.connect(target_dsn, autocommit=True, connect_timeout=5) as conn:
                     with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT id FROM public.user_email_accounts WHERE user_id = %s AND email_address = %s",
+                            (account.user_id, account.email_address),
+                        )
+                        existing_row = cur.fetchone()
+                        if existing_row:
+                            account.id = existing_row[0]
+
                         cur.execute("""
                             INSERT INTO public.user_email_accounts (
                                 id, user_id, tenant_id, email_address, display_name, provider,
                                 access_token, refresh_token, token_expires_at, scopes, avatar_url,
                                 is_active, connected_at, last_synced_at
                             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                            ON CONFLICT (id) DO UPDATE SET
-                                email_address = EXCLUDED.email_address,
-                                display_name = EXCLUDED.display_name,
-                                provider = EXCLUDED.provider,
+                            ON CONFLICT (user_id, email_address) DO UPDATE SET
                                 access_token = EXCLUDED.access_token,
                                 refresh_token = EXCLUDED.refresh_token,
                                 token_expires_at = EXCLUDED.token_expires_at,
                                 scopes = EXCLUDED.scopes,
                                 avatar_url = EXCLUDED.avatar_url,
+                                display_name = EXCLUDED.display_name,
                                 is_active = EXCLUDED.is_active,
                                 last_synced_at = NOW();
                         """, (

@@ -152,16 +152,16 @@ export const VoiceAssistantMode: React.FC<VoiceAssistantModeProps> = ({
       }
       break;
     case "processing":
-      stateLabel = "Understanding...";
-      stateHint = "Searching authorized files, databases & emails";
+      stateLabel = "Thinking...";
+      stateHint = "Working on your request";
       break;
     case "speaking":
-      stateLabel = "Nanvi is speaking...";
+      stateLabel = "Speaking...";
       stateHint = "Interrupt anytime — just speak";
       break;
     case "interrupted":
       stateLabel = "Listening to you...";
-      stateHint = "Resuming new request";
+      stateHint = "Go ahead, I'm listening";
       break;
     case "muted":
       stateLabel = "Microphone Muted";

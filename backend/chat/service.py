@@ -143,7 +143,7 @@ class ChatService:
                 elif hasattr(self._answerer, "_provider") and hasattr(self._answerer._provider, "contextualize_query"):
                     # Only invoke LLM contextualization if query contains unresolved pronouns
                     q_words = set(query.casefold().split())
-                    if q_words.intersection({"it", "its", "they", "them", "their", "this", "that"}):
+                    if q_words.intersection({"it", "its", "they", "them", "their", "this", "that", "these", "those", "which", "who", "whom", "one", "her", "his", "him", "she", "he"}):
                         try:
                             effective_query = self._answerer._provider.contextualize_query(query, prior_history)
                         except Exception as exc:
@@ -162,7 +162,7 @@ class ChatService:
         traces: list[str] = []
 
         def invoke_capability(capability: Capability):
-            agent_query = effective_query if capability == Capability.KNOWLEDGE else query
+            agent_query = effective_query if (capability == Capability.KNOWLEDGE or effective_query != query) else query
             agent_req = AgentRequest(
                 request_id,
                 user,
