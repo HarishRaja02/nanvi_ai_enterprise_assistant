@@ -616,11 +616,11 @@ if (!response.ok) {
     return this.request<LocalAgentTokenResponse>("/local-agent/token", { method: "POST" });
   }
 
-  async downloadLocalAgentPackage(token?: string): Promise<void> {
+  async downloadLocalAgentPackage(token?: string, format: "bat" | "zip" = "bat"): Promise<void> {
     const bearer = this.getAccessToken ? await this.getAccessToken() : null;
-    const url = token
-      ? `${this.baseUrl}/local-agent/download?token=${encodeURIComponent(token)}`
-      : `${this.baseUrl}/local-agent/download`;
+    const params = new URLSearchParams({ format });
+    if (token) params.set("token", token);
+    const url = `${this.baseUrl}/local-agent/download?${params.toString()}`;
 
     const headers: Record<string, string> = {};
     if (bearer) {
@@ -635,7 +635,7 @@ if (!response.ok) {
     const downloadUrl = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = downloadUrl;
-    a.download = "Nanvi_Windows_Agent.zip";
+    a.download = format === "zip" ? "Nanvi_Windows_Agent.zip" : "Nanvi_Assistant.bat";
     document.body.appendChild(a);
     a.click();
     a.remove();

@@ -53,11 +53,12 @@ def _get_user_id(user: UserIdentity) -> str:
 async def download_agent_package(
     request: Request,
     token: str | None = None,
+    format: str = "bat",
     user: UserIdentity | None = Depends(get_optional_current_user),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> Response:
-    """Download a pre-configured 1-click Windows zip package for the user."""
-    from .packager import generate_agent_zip
+    """Download a pre-configured 1-click Windows .bat file or zip package for the user."""
+    from .packager import generate_agent_bat, generate_agent_zip
 
     server_url = str(request.base_url).rstrip("/")
     pairing_token = ""
@@ -77,12 +78,23 @@ async def download_agent_package(
     else:
         raise HTTPException(status_code=401, detail="Authentication required to download agent package.")
 
-    zip_bytes = generate_agent_zip(server_url, pairing_token, display_name)
+    if format == "zip":
+        zip_bytes = generate_agent_zip(server_url, pairing_token, display_name)
+        return Response(
+            content=zip_bytes,
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": 'attachment; filename="Nanvi_Windows_Agent.zip"',
+                "Cache-Control": "no-store",
+            },
+        )
+
+    bat_content = generate_agent_bat(server_url, pairing_token, display_name)
     return Response(
-        content=zip_bytes,
-        media_type="application/zip",
+        content=bat_content.encode("utf-8"),
+        media_type="application/x-bat",
         headers={
-            "Content-Disposition": 'attachment; filename="Nanvi_Windows_Agent.zip"',
+            "Content-Disposition": 'attachment; filename="Nanvi_Assistant.bat"',
             "Cache-Control": "no-store",
         },
     )
