@@ -4,6 +4,7 @@ import { AuditLogView } from "./AuditLogView";
 import { AccountManagement } from "./AccountManagement";
 import { DisplaySettings } from "./DisplaySettings";
 import { CompanyFolderPicker } from "../../components/ui/CompanyFolderPicker";
+import { ErrorBoundary } from "../../components/ui/ErrorBoundary";
 import { PlugIcon, FolderIcon, ShieldCheckIcon } from "../../icons";
 import type { NanviApiClient, UserIdentity } from "../../api";
 import type { FontScale } from "../../hooks/useFontScale";
@@ -72,7 +73,9 @@ export function SettingsPage({ api, identity, fontScale, onFontScaleChange }: Pr
       {activeTab === "connections" && canManageOrg && <ConnectionsHub api={api} canManageOrg={canManageOrg} />}
       {activeTab === "folder" && canManageOrg && (
         <div style={{ maxWidth: "800px" }}>
-          <CompanyFolderPicker api={api} />
+          <ErrorBoundary>
+            <CompanyFolderPicker api={api} />
+          </ErrorBoundary>
         </div>
       )}
       {activeTab === "audit" && canViewAudit && <AuditLogView api={api} />}

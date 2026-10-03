@@ -46,12 +46,13 @@ export function CompanyFolderPicker({ api }: Props) {
     api
       .getCompanyFolder()
       .then((res) => {
-        if (cancelled) return;
-        setCurrentPath(res.path);
-        setInputPath(res.path);
-        setFolderExists(res.exists);
-        setFolderCount(res.folder_count);
-        setFileCount(res.file_count);
+        if (cancelled || !res) return;
+        const p = res.path || "";
+        setCurrentPath(p);
+        setInputPath(p);
+        setFolderExists(Boolean(res.exists));
+        setFolderCount(res.folder_count || 0);
+        setFileCount(res.file_count || 0);
       })
       .catch(() => {
         if (!cancelled) setMessage({ text: "Could not load current folder.", type: "error" });
@@ -718,18 +719,18 @@ export function CompanyFolderPicker({ api }: Props) {
             <span style={{ fontSize: "0.95rem", fontWeight: 700, color: "#1e293b" }}>
               Connected Folders on Your Machine ({agentStatus?.connected_folders?.length || 0}):
             </span>
-            {agentStatus && agentStatus.total_files > 0 && (
+            {agentStatus && typeof agentStatus.total_files === "number" && agentStatus.total_files > 0 && (
               <span style={{ fontSize: "0.85rem", fontWeight: 600, color: "#0284c7" }}>
-                {agentStatus.total_files} files ({agentStatus.total_chunks} chunks ready)
+                {agentStatus.total_files} files ({agentStatus.total_chunks || 0} chunks ready)
               </span>
             )}
           </div>
 
-          {agentStatus?.connected_folders && agentStatus.connected_folders.length > 0 ? (
+          {Array.isArray(agentStatus?.connected_folders) && agentStatus.connected_folders.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {agentStatus.connected_folders.map((folder) => (
+              {agentStatus.connected_folders.map((folder, idx) => (
                 <div
-                  key={folder.folder_id}
+                  key={folder?.folder_id || folder?.folder_path || idx}
                   style={{
                     display: "flex",
                     justifyContent: "space-between",
@@ -742,11 +743,11 @@ export function CompanyFolderPicker({ api }: Props) {
                 >
                   <div>
                     <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "#0f172a" }}>
-                      📁 {folder.display_name}
+                      📁 {folder?.display_name || folder?.folder_path || "Folder"}
                     </div>
-                    <code style={{ fontSize: "0.8rem", color: "#475569" }}>{folder.folder_path}</code>
+                    <code style={{ fontSize: "0.8rem", color: "#475569" }}>{folder?.folder_path}</code>
                     <div style={{ marginTop: "4px", fontSize: "0.8rem", color: "#16a34a", fontWeight: 600 }}>
-                      {folder.file_count} files • {folder.chunk_count} chunks • Status: {folder.status}
+                      {folder?.file_count ?? 0} files • {folder?.chunk_count ?? 0} chunks • Status: {folder?.status || "ready"}
                     </div>
                   </div>
                   <button
@@ -761,7 +762,7 @@ export function CompanyFolderPicker({ api }: Props) {
                       borderRadius: "6px",
                       cursor: "pointer",
                     }}
-                    onClick={() => handleDisconnectFolder(folder.folder_id)}
+                    onClick={() => folder?.folder_id && handleDisconnectFolder(folder.folder_id)}
                   >
                     Disconnect
                   </button>
