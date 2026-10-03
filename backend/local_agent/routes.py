@@ -45,6 +45,10 @@ def _extract_agent_identity(
 # User Endpoints (Accessed from Frontend Web App)
 # ---------------------------------------------------------------------------
 
+def _get_user_id(user: UserIdentity) -> str:
+    return str(getattr(user, "subject", None) or getattr(user, "user_id", "default"))
+
+
 @router.post("/token", response_model=LocalAgentTokenResponse)
 async def generate_pairing_token(
     request: Request,
@@ -64,7 +68,9 @@ async def get_agent_status(
 ) -> LocalAgentStatusResponse:
     """Get the current live status, folder list, and file counts for the user's agent."""
     server_url = str(request.base_url).rstrip("/")
-    return service.get_status(user.tenant_id, user.user_id, server_url)
+    tenant_id = getattr(user, "tenant_id", None) or "default"
+    user_id = _get_user_id(user)
+    return service.get_status(tenant_id, user_id, server_url)
 
 
 @router.post("/folders")
@@ -76,7 +82,9 @@ async def add_local_folder(
     """Request a local folder path to be approved and indexed by the local agent."""
     if not body.folder_path or not body.folder_path.strip():
         raise HTTPException(status_code=400, detail="Folder path cannot be empty.")
-    return service.request_folder(user.tenant_id, user.user_id, body.folder_path.strip())
+    tenant_id = getattr(user, "tenant_id", None) or "default"
+    user_id = _get_user_id(user)
+    return service.request_folder(tenant_id, user_id, body.folder_path.strip())
 
 
 @router.delete("/folders/{folder_id}")
@@ -86,7 +94,9 @@ async def remove_local_folder(
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> dict[str, Any]:
     """Disconnect an approved local folder and delete its synced chunks."""
-    removed = service.remove_folder(user.tenant_id, user.user_id, folder_id)
+    tenant_id = getattr(user, "tenant_id", None) or "default"
+    user_id = _get_user_id(user)
+    removed = service.remove_folder(tenant_id, user_id, folder_id)
     if not removed:
         raise HTTPException(status_code=404, detail="Connected folder not found.")
     return {"status": "ok", "message": f"Folder '{folder_id}' disconnected."}
@@ -99,9 +109,11 @@ async def test_search_local(
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> LocalSearchResponse:
     """Search user's active local files directly."""
+    tenant_id = getattr(user, "tenant_id", None) or "default"
+    user_id = _get_user_id(user)
     hits = service.search_local_chunks(
-        tenant_id=user.tenant_id,
-        user_id=user.user_id,
+        tenant_id=tenant_id,
+        user_id=user_id,
         query=body.query,
         top_k=body.top_k,
         folder_id=body.folder_id,

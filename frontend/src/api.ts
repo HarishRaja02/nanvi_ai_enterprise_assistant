@@ -617,7 +617,7 @@ if (!response.ok) {
   }
 
   getLocalAgentStatus() {
-    return this.request<LocalAgentStatusResponse>("/local-agent/status");
+    return this.request<LocalAgentStatusResponse>("/local-agent/status", {}, true);
   }
 
   addLocalFolder(folderPath: string) {

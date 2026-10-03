@@ -4,13 +4,16 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.core.config import settings
 from .models import (
     FolderSyncPayload,
     LocalAgentHeartbeat,
@@ -20,24 +23,71 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-STORAGE_FILE = Path(__file__).resolve().parents[2] / "storage" / "local_agent_store.json"
-HEARTBEAT_TTL_SECONDS = 35.0  # Agent is considered offline if no heartbeat within 35 seconds
+HEARTBEAT_TTL_SECONDS = 45.0  # Agent is considered offline if no heartbeat within 45 seconds
+
+
+def _default_storage_file() -> Path:
+    """Determine a writable local path for file fallback storage."""
+    if os.getenv("VERCEL") or not os.access(Path(__file__).resolve().parents[2], os.W_OK):
+        return Path(tempfile.gettempdir()) / "nanvi_local_agent_store.json"
+    p = Path(__file__).resolve().parents[2] / "storage" / "local_agent_store.json"
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    except Exception:
+        return Path(tempfile.gettempdir()) / "nanvi_local_agent_store.json"
 
 
 class LocalAgentStore:
-    """Thread-safe store for local agent status, approved folders, and synced chunks."""
+    """Thread-safe store for local agent status, approved folders, and synced chunks.
 
-    def __init__(self, persistence_file: Path | str | None = None) -> None:
-        self._path = Path(persistence_file) if persistence_file else STORAGE_FILE
+    Supports PostgreSQL / Supabase storage (essential on serverless Vercel) with
+    automatic fallback to local JSON file.
+    """
+
+    def __init__(self, dsn: str = "", persistence_file: Path | str | None = None) -> None:
+        self._path = Path(persistence_file) if persistence_file else _default_storage_file()
         self._lock = threading.Lock()
-        # Structure: {(tenant_id, user_id): {"agent": dict, "folders": dict[folder_id, dict], "chunks": list[dict]}}
+        self._dsn = dsn
+        if not self._dsn and persistence_file is None:
+            # Use Supabase/PostgreSQL if available
+            self._dsn = settings.supabase_database_url or settings.database_url or ""
+            # Don't use localhost DB in production
+            if settings.is_production and ("localhost" in self._dsn or "127.0.0.1" in self._dsn):
+                self._dsn = ""
+
+        # In-memory fast cache: {(tenant_id, user_id): dict}
         self._data: dict[tuple[str, str], dict[str, Any]] = {}
-        self._load()
+        self._load_local_file()
+        if self._dsn:
+            self._init_db()
 
     def _key(self, tenant_id: str, user_id: str) -> tuple[str, str]:
         return (str(tenant_id or "default").strip(), str(user_id or "default").strip())
 
-    def _load(self) -> None:
+    def _init_db(self) -> None:
+        """Create PostgreSQL table if it doesn't already exist."""
+        if not self._dsn:
+            return
+        try:
+            import psycopg
+            with psycopg.connect(self._dsn, autocommit=True, connect_timeout=4) as conn:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS public.nanvi_local_agent_store (
+                        tenant_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        data JSONB NOT NULL,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        PRIMARY KEY (tenant_id, user_id)
+                    );
+                    """
+                )
+        except Exception as exc:
+            logger.warning("Could not initialize PostgreSQL local agent table (%s). Using local storage.", exc)
+            self._dsn = ""
+
+    def _load_local_file(self) -> None:
         if not self._path.exists():
             return
         try:
@@ -48,11 +98,12 @@ class LocalAgentStore:
                     "agent": entry.get("agent", {}),
                     "folders": entry.get("folders", {}),
                     "chunks": entry.get("chunks", []),
+                    "requested_folders": entry.get("requested_folders", []),
                 }
         except Exception as exc:
-            logger.warning("Could not load local_agent_store.json: %s", exc)
+            logger.debug("Could not load local_agent_store.json: %s", exc)
 
-    def _save_unlocked(self) -> None:
+    def _save_local_file_unlocked(self) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             export = []
@@ -63,20 +114,68 @@ class LocalAgentStore:
                     "agent": val.get("agent", {}),
                     "folders": val.get("folders", {}),
                     "chunks": val.get("chunks", []),
+                    "requested_folders": val.get("requested_folders", []),
                 })
             self._path.write_text(json.dumps(export, indent=2), encoding="utf-8")
         except Exception as exc:
-            logger.warning("Could not persist local_agent_store.json: %s", exc)
+            logger.debug("Could not persist local_agent_store.json: %s", exc)
+
+    def _load_key(self, tenant_id: str, user_id: str) -> dict[str, Any]:
+        """Fetch fresh state for a tenant/user from PostgreSQL or memory."""
+        k = self._key(tenant_id, user_id)
+        if self._dsn:
+            try:
+                import psycopg
+                from psycopg.rows import dict_row
+                with psycopg.connect(self._dsn, autocommit=True, connect_timeout=3, row_factory=dict_row) as conn:
+                    row = conn.execute(
+                        "SELECT data FROM public.nanvi_local_agent_store WHERE tenant_id = %s AND user_id = %s",
+                        (k[0], k[1]),
+                    ).fetchone()
+                    if row and row.get("data"):
+                        d = row["data"]
+                        self._data[k] = {
+                            "agent": d.get("agent", {}),
+                            "folders": d.get("folders", {}),
+                            "chunks": d.get("chunks", []),
+                            "requested_folders": d.get("requested_folders", []),
+                        }
+                        return self._data[k]
+            except Exception as exc:
+                logger.debug("PostgreSQL load error for %s: %s", k, exc)
+
+        return self._data.setdefault(k, {"agent": {}, "folders": {}, "chunks": [], "requested_folders": []})
+
+    def _save_key(self, tenant_id: str, user_id: str, val: dict[str, Any]) -> None:
+        """Persist state for a tenant/user to PostgreSQL and local file."""
+        k = self._key(tenant_id, user_id)
+        self._data[k] = val
+        if self._dsn:
+            try:
+                import psycopg
+                with psycopg.connect(self._dsn, autocommit=True, connect_timeout=3) as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO public.nanvi_local_agent_store (tenant_id, user_id, data, updated_at)
+                        VALUES (%s, %s, %s::jsonb, NOW())
+                        ON CONFLICT (tenant_id, user_id)
+                        DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+                        """,
+                        (k[0], k[1], json.dumps(val)),
+                    )
+                return
+            except Exception as exc:
+                logger.warning("PostgreSQL save error for %s: %s", k, exc)
+
+        self._save_local_file_unlocked()
 
     def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> None:
         """Update last seen timestamp, agent version, and folder list from local agent."""
         k = self._key(tenant_id, user_id)
         with self._lock:
-            if k not in self._data:
-                self._data[k] = {"agent": {}, "folders": {}, "chunks": []}
-
+            val = self._load_key(tenant_id, user_id)
             now_iso = datetime.now(timezone.utc).isoformat()
-            self._data[k]["agent"] = {
+            val["agent"] = {
                 "last_heartbeat": now_iso,
                 "last_heartbeat_ts": time.time(),
                 "agent_version": heartbeat.agent_version,
@@ -84,7 +183,7 @@ class LocalAgentStore:
 
             # Update folders if provided
             if heartbeat.folders:
-                folder_map = self._data[k].setdefault("folders", {})
+                folder_map = val.setdefault("folders", {})
                 for f in heartbeat.folders:
                     fid = f.folder_id or f.folder_path
                     existing = folder_map.get(fid, {})
@@ -97,30 +196,29 @@ class LocalAgentStore:
                         "status": f.status or "connected",
                         "last_synced_at": existing.get("last_synced_at") or now_iso,
                     }
-            self._save_unlocked()
+            self._save_key(tenant_id, user_id, val)
+
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> None:
         """User from Web UI requested a folder to be indexed by their local agent."""
         k = self._key(tenant_id, user_id)
         with self._lock:
-            if k not in self._data:
-                self._data[k] = {"agent": {}, "folders": {}, "chunks": [], "requested_folders": []}
-            reqs = self._data[k].setdefault("requested_folders", [])
+            val = self._load_key(tenant_id, user_id)
+            reqs = val.setdefault("requested_folders", [])
             clean_path = str(folder_path).strip()
             if clean_path and clean_path not in reqs:
                 reqs.append(clean_path)
-            self._save_unlocked()
+            self._save_key(tenant_id, user_id, val)
 
     def get_requested_folders(self, tenant_id: str, user_id: str) -> list[str]:
         """Get list of folder paths requested by user via Web UI."""
-        k = self._key(tenant_id, user_id)
         with self._lock:
-            val = self._data.get(k, {})
+            val = self._load_key(tenant_id, user_id)
             return list(val.get("requested_folders", []))
+
     def get_agent_status(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Check if local agent is currently online and return its folder summary."""
-        k = self._key(tenant_id, user_id)
         with self._lock:
-            val = self._data.get(k, {})
+            val = self._load_key(tenant_id, user_id)
             agent = val.get("agent", {})
             last_ts = agent.get("last_heartbeat_ts", 0.0)
             is_online = (time.time() - last_ts) < HEARTBEAT_TTL_SECONDS
@@ -146,14 +244,12 @@ class LocalAgentStore:
         """Store or replace indexed chunks for an approved folder."""
         k = self._key(tenant_id, user_id)
         with self._lock:
-            if k not in self._data:
-                self._data[k] = {"agent": {}, "folders": {}, "chunks": []}
-
+            val = self._load_key(tenant_id, user_id)
             fid = payload.folder_id or payload.folder_path
             now_iso = datetime.now(timezone.utc).isoformat()
 
             # 1. Update folder registry
-            folders = self._data[k].setdefault("folders", {})
+            folders = val.setdefault("folders", {})
             folders[fid] = {
                 "folder_id": fid,
                 "folder_path": payload.folder_path,
@@ -165,7 +261,7 @@ class LocalAgentStore:
             }
 
             # 2. Replace chunks belonging to this folder
-            existing_chunks = self._data[k].get("chunks", [])
+            existing_chunks = val.get("chunks", [])
             retained_chunks = [c for c in existing_chunks if c.get("folder_id") != fid]
 
             for c in payload.chunks:
@@ -184,17 +280,14 @@ class LocalAgentStore:
                     "metadata": c.metadata,
                 })
 
-            self._data[k]["chunks"] = retained_chunks
-            self._save_unlocked()
+            val["chunks"] = retained_chunks
+            self._save_key(tenant_id, user_id, val)
             logger.info("Synced %d chunks for local folder '%s' (user %s)", len(payload.chunks), fid, user_id)
 
     def remove_folder(self, tenant_id: str, user_id: str, folder_id: str) -> bool:
         """Remove a connected folder and its chunks."""
-        k = self._key(tenant_id, user_id)
         with self._lock:
-            val = self._data.get(k)
-            if not val:
-                return False
+            val = self._load_key(tenant_id, user_id)
             matched = False
             folders = val.get("folders", {})
             folder_path = ""
@@ -215,7 +308,7 @@ class LocalAgentStore:
             if matched:
                 reqs = val.get("requested_folders", [])
                 val["requested_folders"] = [r for r in reqs if r != folder_id and r != folder_path]
-                self._save_unlocked()
+                self._save_key(tenant_id, user_id, val)
                 return True
             return False
 
@@ -228,79 +321,63 @@ class LocalAgentStore:
         folder_id: str | None = None,
     ) -> list[LocalSearchChunk]:
         """Perform fast keyword and relevance search over user's local chunks."""
-        k = self._key(tenant_id, user_id)
         with self._lock:
-            val = self._data.get(k, {})
+            val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
             if not chunks:
                 return []
 
-        q_terms = set(re.findall(r"\w+", query.casefold()))
-        if not q_terms:
-            return []
+            query_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 1]
+            if not query_terms:
+                return []
 
-        results: list[tuple[float, dict[str, Any]]] = []
+            scored: list[tuple[float, dict[str, Any]]] = []
+            for c in chunks:
+                if folder_id and c.get("folder_id") != folder_id:
+                    continue
 
-        for c in chunks:
-            if folder_id and c.get("folder_id") != folder_id:
-                continue
+                text_lower = c.get("text", "").lower()
+                rel_path_lower = c.get("relative_path", "").lower()
 
-            text = c.get("text", "")
-            text_cf = text.casefold()
-            fn_cf = c.get("filename", "").casefold()
-            rel_cf = c.get("relative_path", "").casefold()
+                score = 0.0
+                matched_terms = 0
 
-            score = 0.0
+                for term in query_terms:
+                    count_text = text_lower.count(term)
+                    count_path = rel_path_lower.count(term)
 
-            # Exact phrase match
-            if query.casefold() in text_cf:
-                score += 5.0
-            if query.casefold() in fn_cf:
-                score += 10.0
+                    if count_text > 0 or count_path > 0:
+                        matched_terms += 1
+                        score += (count_text * 1.0) + (count_path * 5.0)
 
-            # Term overlap
-            text_tokens = re.findall(r"\w+", text_cf)
-            fn_tokens = re.findall(r"\w+", fn_cf)
-            rel_tokens = re.findall(r"\w+", rel_cf)
+                if matched_terms > 0:
+                    coverage = matched_terms / len(query_terms)
+                    final_score = score * (1.0 + coverage)
+                    scored.append((final_score, c))
 
-            matched_terms = 0
-            for term in q_terms:
-                t_count = text_tokens.count(term)
-                if t_count > 0:
-                    matched_terms += 1
-                    # Log-frequency term score
-                    score += 1.0 + math.log(1.0 + t_count)
-                if term in fn_tokens:
-                    score += 3.0
-                if term in rel_tokens:
-                    score += 2.0
+            scored.sort(key=lambda x: x[0], reverse=True)
 
-            # Coverage boost
-            if len(q_terms) > 1 and matched_terms == len(q_terms):
-                score *= 1.5
+            results: list[LocalSearchChunk] = []
+            for score, c in scored[:top_k]:
+                rel = c.get("relative_path", "")
+                fname = c.get("filename", Path(rel).name)
+                f_name = c.get("folder_name", "")
+                citation = f"{f_name}/{rel}".strip("/")
 
-            if score > 0.5:
-                results.append((score, c))
+                results.append(
+                    LocalSearchChunk(
+                        chunk_id=c["chunk_id"],
+                        folder_name=f_name,
+                        folder_path=c.get("folder_path", ""),
+                        relative_path=rel,
+                        filename=fname,
+                        citation=citation,
+                        text=c.get("text", ""),
+                        score=round(score, 3),
+                        page=c.get("page"),
+                        sheet=c.get("sheet"),
+                        modified_at=c.get("modified_at"),
+                    )
+                )
 
-        results.sort(key=lambda x: x[0], reverse=True)
-        top = results[:top_k]
-
-        hits: list[LocalSearchChunk] = []
-        for s, c in top:
-            folder_name = c.get("folder_name", "")
-            rel_path = c.get("relative_path", "")
-            citation = f"{folder_name}/{rel_path}" if folder_name else rel_path
-            hits.append(LocalSearchChunk(
-                chunk_id=c.get("chunk_id", ""),
-                folder_name=folder_name,
-                folder_path=c.get("folder_path", ""),
-                relative_path=rel_path,
-                filename=c.get("filename", ""),
-                citation=citation,
-                text=c.get("text", ""),
-                score=round(s, 3),
-                page=c.get("page"),
-                sheet=c.get("sheet"),
-                modified_at=c.get("modified_at"),
-            ))
-        return hits
+            return results
