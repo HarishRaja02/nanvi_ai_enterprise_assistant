@@ -49,13 +49,18 @@ def get_frontend_base_url(request: Request | None = None) -> str:
 
 def get_backend_callback_uri(request: Request, path: str, provider: str = "") -> str:
     """Resolve the OAuth callback redirect URI registered with the OAuth provider."""
-    # For Google: if explicitly configured in environment (e.g. GOOGLE_REDIRECT_URI), prefer it
-    if provider == "google" and settings.google_redirect_uri:
-        return settings.google_redirect_uri
-
-    # Detect scheme and host (honoring proxy headers for Vercel/reverse proxies)
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+
+    # For Google: if explicitly configured in environment (e.g. GOOGLE_REDIRECT_URI), prefer it,
+    # UNLESS the app is running in the cloud (Vercel/domain) and the setting is pointing to localhost.
+    if provider == "google" and settings.google_redirect_uri:
+        is_cloud_request = host and not any(h in host for h in ("localhost", "127.0.0.1", "0.0.0.0", "testserver"))
+        is_configured_localhost = any(h in settings.google_redirect_uri for h in ("localhost", "127.0.0.1"))
+        if not (is_cloud_request and is_configured_localhost):
+            return settings.google_redirect_uri
+
+    # Detect scheme and host (honoring proxy headers for Vercel/reverse proxies)
     if host:
         return f"{proto}://{host}{path}"
 
@@ -116,7 +121,7 @@ def oauth_callback(
             expected_user_id=current_user.subject if current_user else None,
             expected_tenant_id=current_user.tenant_id if current_user else None,
         )
-        target = redirect_after or f"{frontend_base}/settings?tab=connections"
+        target = redirect_after or f"{frontend_base}/?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected={provider}&status=success")
     except (OAuthDenied, OAuthExpired) as exc:
@@ -127,7 +132,7 @@ def oauth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     except Exception as exc:
         logger.error("OAuth callback failed for %s: %s", provider, exc)
-        target = f"{frontend_base}/settings?tab=connections"
+        target = f"{frontend_base}/?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected={provider}&status=error&error={str(exc)}")
 
@@ -183,7 +188,7 @@ def github_auth_callback(
             expected_user_id=current_user.subject if current_user else None,
             expected_tenant_id=current_user.tenant_id if current_user else None,
         )
-        target = redirect_after or f"{frontend_base}/settings?tab=connections"
+        target = redirect_after or f"{frontend_base}/?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected=github&status=success")
     except (OAuthDenied, OAuthExpired) as exc:
@@ -194,7 +199,7 @@ def github_auth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     except Exception as exc:
         logger.error("GitHub callback error: %s", exc)
-        return RedirectResponse(url=f"{frontend_base}/settings?tab=connections&connected=github&status=error&error={str(exc)}")
+        return RedirectResponse(url=f"{frontend_base}/?tab=connections&connected=github&status=error&error={str(exc)}")
 
 
 # ── Top-level /api/auth/google routes (backward-compatibility alias) ──
@@ -248,7 +253,7 @@ def google_auth_callback(
             expected_user_id=current_user.subject if current_user else None,
             expected_tenant_id=current_user.tenant_id if current_user else None,
         )
-        target = redirect_after or f"{frontend_base}/settings?tab=connections"
+        target = redirect_after or f"{frontend_base}/?tab=connections"
         delimiter = "&" if "?" in target else "?"
         return RedirectResponse(url=f"{target}{delimiter}connected=google&status=success")
     except (OAuthDenied, OAuthExpired) as exc:
@@ -259,6 +264,6 @@ def google_auth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
     except Exception as exc:
         logger.error("Google callback error: %s", exc)
-        return RedirectResponse(url=f"{frontend_base}/settings?tab=connections&connected=google&status=error&error={str(exc)}")
+        return RedirectResponse(url=f"{frontend_base}/?tab=connections&connected=google&status=error&error={str(exc)}")
 
 
