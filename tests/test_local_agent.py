@@ -281,3 +281,14 @@ def test_request_folder_via_web_and_heartbeat_dispatch(local_service, mock_user)
     )
     assert hb_resp["status"] == "ok"
     assert "C:/Projects/Bridge" in hb_resp["requested_folders"]
+
+
+def test_sanitize_folder_path_strips_prefixes(local_service, mock_user):
+    from backend.local_agent.service import sanitize_folder_path
+
+    assert sanitize_folder_path("add C:\\Users\\haris\\Documents") == "C:\\Users\\haris\\Documents"
+    assert sanitize_folder_path('add "C:\\CompanyData"') == "C:\\CompanyData"
+    assert sanitize_folder_path("nanvi-agent add D:\\Projects") == "D:\\Projects"
+    assert sanitize_folder_path("  'C:\\Data\\Reports'  ") == "C:\\Data\\Reports"
+    assert sanitize_folder_path("python nanvi_local_agent.py add C:\\Docs") == "C:\\Docs"
+

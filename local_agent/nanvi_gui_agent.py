@@ -63,6 +63,32 @@ class SecurityError(ValueError):
     pass
 
 
+def sanitize_folder_path(raw_path: str) -> str:
+    """Sanitize and clean folder paths, stripping quotes, environments, and accidental prefixes."""
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().strip("'\"“”`")
+    for prefix in [
+        "nanvi-agent add",
+        "nanvi local agent add",
+        "nanvi add",
+        "python nanvi_local_agent.py add",
+        "python nanvi_gui_agent.py add",
+        "python local_agent.py add",
+        "python add",
+        "add folder",
+        "add path",
+        "add:",
+        "add",
+    ]:
+        if cleaned.lower().startswith(prefix.lower() + " ") or cleaned.lower() == prefix.lower():
+            cleaned = cleaned[len(prefix):].strip().strip("'\"“”`")
+            break
+    cleaned = cleaned.strip("'\"“”`:").strip()
+    cleaned = os.path.expandvars(cleaned)
+    return cleaned
+
+
 class NanviLocalAgent:
     """Manages local approved folders, file indexing, filesystem watching, and cloud sync."""
 
@@ -118,11 +144,13 @@ class NanviLocalAgent:
             self.config_path.write_text(json.dumps(export, indent=2), encoding="utf-8")
         except Exception as exc:
             logger.warning("Could not save configuration: %s", exc)
-
     def validate_folder(self, folder_path: str | Path) -> Path:
-        p = Path(folder_path).expanduser().resolve()
+        clean = sanitize_folder_path(str(folder_path))
+        if not clean:
+            raise ValueError("Folder path cannot be empty.")
+        p = Path(clean).expanduser().resolve()
         if not p.exists() or not p.is_dir():
-            raise FileNotFoundError(f"Folder does not exist or is not a directory: {folder_path}")
+            raise FileNotFoundError(f"Folder does not exist or is not a directory: {clean}")
 
         for blocked in BLOCKED_SYSTEM_PATHS:
             try:
@@ -384,13 +412,17 @@ class NanviLocalAgent:
                         data = json.loads(raw)
                         requested = data.get("requested_folders", [])
                         for rf in requested:
-                            clean_rf = str(rf).strip()
-                            if clean_rf and clean_rf not in self.approved_folders:
-                                logger.info("Adding requested folder from cloud: %s", clean_rf)
+                            clean_rf = sanitize_folder_path(str(rf))
+                            if clean_rf:
                                 try:
-                                    self.add_folder(clean_rf)
-                                except Exception:
-                                    pass
+                                    resolved_str = str(Path(clean_rf).expanduser().resolve())
+                                    if resolved_str not in self.approved_folders:
+                                        logger.info("Adding requested folder from cloud: %s", clean_rf)
+                                        self.add_folder(clean_rf)
+                                        if self.status_callback:
+                                            self.status_callback(f"✓ Added folder: {Path(clean_rf).name}")
+                                except Exception as exc:
+                                    logger.warning("Could not add folder '%s': %s", clean_rf, exc)
                     except Exception:
                         pass
                     return True
@@ -506,7 +538,7 @@ class NanviAgentWindow:
 
         # Action Buttons Row
         btn_frame = tk.Frame(content, bg="#ffffff")
-        btn_frame.pack(fill="x", pady=(0, 16))
+        btn_frame.pack(fill="x", pady=(0, 10))
 
         # Big Blue "Browse & Select Folder" Button
         self.add_btn = tk.Button(
@@ -524,6 +556,41 @@ class NanviAgentWindow:
             command=self._on_browse_click,
         )
         self.add_btn.pack(side="left")
+
+        # Manual Path Entry Row (Allows typing or pasting folder paths directly)
+        entry_frame = tk.Frame(content, bg="#ffffff")
+        entry_frame.pack(fill="x", pady=(0, 16))
+
+        self.placeholder_text = "Or paste any folder path here, e.g. C:\\CompanyData or D:\\Projects..."
+        self.path_entry = tk.Entry(
+            entry_frame,
+            font=("Segoe UI", 10),
+            bg="#f8fafc",
+            fg="#64748b",
+            highlightbackground="#cbd5e1",
+            highlightcolor="#0284c7",
+            highlightthickness=1,
+            relief="flat",
+        )
+        self.path_entry.pack(side="left", fill="x", expand=True, ipady=7, padx=(0, 10))
+        self.path_entry.insert(0, self.placeholder_text)
+        self.path_entry.bind("<FocusIn>", self._clear_placeholder)
+        self.path_entry.bind("<Return>", lambda e: self._on_add_manual_click())
+
+        self.manual_add_btn = tk.Button(
+            entry_frame,
+            text="+ Add Folder",
+            font=("Segoe UI", 10, "bold"),
+            bg="#0f172a",
+            fg="#ffffff",
+            activebackground="#334155",
+            relief="flat",
+            padx=16,
+            pady=7,
+            cursor="hand2",
+            command=self._on_add_manual_click,
+        )
+        self.manual_add_btn.pack(side="right")
 
         # Section Header: Approved Folders
         folders_header = tk.Label(
@@ -574,6 +641,26 @@ class NanviAgentWindow:
             else:
                 self.status_label.config(fg="#d97706")
         self.root.after(0, update)
+
+    def _clear_placeholder(self, event=None) -> None:
+        if self.path_entry.get() == self.placeholder_text:
+            self.path_entry.delete(0, tk.END)
+            self.path_entry.config(fg="#0f172a")
+
+    def _on_add_manual_click(self) -> None:
+        raw = self.path_entry.get().strip()
+        if not raw or raw == self.placeholder_text:
+            return
+        clean = sanitize_folder_path(raw)
+        try:
+            p = self.agent.add_folder(clean)
+            self.path_entry.delete(0, tk.END)
+            messagebox.showinfo(
+                "Folder Added",
+                f"Successfully connected folder:\n\n{p}\n\nNanvi is now indexing files in the background.",
+            )
+        except Exception as exc:
+            messagebox.showerror("Cannot Add Folder", str(exc))
 
     def _on_browse_click(self) -> None:
         selected = filedialog.askdirectory(title="Select a folder for Nanvi AI to search")

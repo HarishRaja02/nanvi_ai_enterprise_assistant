@@ -65,16 +65,8 @@ echo   "display_name": "{clean_display}"
 echo }}
 ) > "%NANVI_DIR%\\config.json"
 
-:: 3. Unpack GUI Python script using Windows built-in certutil
-set "B64_FILE=%TEMP%\\nanvi_agent_b64.txt"
-(
-echo -----BEGIN CERTIFICATE-----
-{b64_lines}
-echo -----END CERTIFICATE-----
-) > "%B64_FILE%"
-
-certutil -decode "%B64_FILE%" "%NANVI_DIR%\\nanvi_gui_agent.py" >nul 2>&1
-del "%B64_FILE%" 2>nul
+:: 3. Unpack GUI Python script using Windows built-in certutil directly from this file
+certutil -decode -f "%~f0" "%NANVI_DIR%\\nanvi_gui_agent.py" >nul 2>&1
 
 :: 4. Launch the clean white GUI window silently
 where pythonw.exe >nul 2>&1
@@ -85,6 +77,10 @@ if %ERRORLEVEL% EQU 0 (
 )
 
 exit /b 0
+
+-----BEGIN CERTIFICATE-----
+{b64_lines}
+-----END CERTIFICATE-----
 """
     return bat_script
 

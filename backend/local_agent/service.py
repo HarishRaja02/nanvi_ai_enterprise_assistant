@@ -31,6 +31,31 @@ def get_local_agent_store() -> LocalAgentStore:
     return _store
 
 
+def sanitize_folder_path(raw_path: str) -> str:
+    """Sanitize and clean user-entered folder paths, stripping quotes and accidental CLI prefixes."""
+    if not raw_path:
+        return ""
+    cleaned = str(raw_path).strip().strip("'\"“”`")
+    for prefix in [
+        "nanvi-agent add",
+        "nanvi local agent add",
+        "nanvi add",
+        "python nanvi_local_agent.py add",
+        "python nanvi_gui_agent.py add",
+        "python local_agent.py add",
+        "python add",
+        "add folder",
+        "add path",
+        "add:",
+        "add",
+    ]:
+        if cleaned.lower().startswith(prefix.lower() + " ") or cleaned.lower() == prefix.lower():
+            cleaned = cleaned[len(prefix):].strip().strip("'\"“”`")
+            break
+    cleaned = cleaned.strip("'\"“”`:").strip()
+    return cleaned
+
+
 class LocalAgentService:
     """Manages pairing tokens and local agent data access."""
 
@@ -107,11 +132,13 @@ class LocalAgentService:
             "message": "Heartbeat recorded",
             "requested_folders": requested_folders,
         }
-
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> dict[str, Any]:
         """User from Web UI requested a folder to be indexed by their local agent."""
-        self.store.request_folder(tenant_id, user_id, folder_path)
-        return {"status": "ok", "message": f"Folder '{folder_path}' added for indexing."}
+        cleaned = sanitize_folder_path(folder_path)
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="Please provide a valid folder path.")
+        self.store.request_folder(tenant_id, user_id, cleaned)
+        return {"status": "ok", "message": f"✓ Folder '{cleaned}' added for indexing."}
 
     def sync_folder(self, tenant_id: str, user_id: str, payload: FolderSyncPayload) -> dict[str, Any]:
         """Store synced chunks from an authorized local folder."""

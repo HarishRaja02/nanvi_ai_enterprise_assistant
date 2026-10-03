@@ -130,13 +130,38 @@ export function CompanyFolderPicker({ api }: Props) {
     }
   };
 
-  const handleAddLocalFolder = async () => {
-    if (!customLocalFolder.trim()) return;
+  const handleAddLocalFolder = async (pathToAdd?: string) => {
+    let raw = (pathToAdd || customLocalFolder).trim();
+    if (!raw) return;
+
+    // Sanitize accidental prefixes like "add ", "add folder ", or surrounding quotes
+    let clean = raw.replace(/^['"“”`]|['"“”`]$/g, "").trim();
+    for (const prefix of [
+      "nanvi-agent add",
+      "nanvi local agent add",
+      "nanvi add",
+      "python nanvi_local_agent.py add",
+      "python nanvi_gui_agent.py add",
+      "python local_agent.py add",
+      "python add",
+      "add folder",
+      "add path",
+      "add:",
+      "add",
+    ]) {
+      if (clean.toLowerCase().startsWith(prefix + " ") || clean.toLowerCase() === prefix) {
+        clean = clean.slice(prefix.length).trim().replace(/^['"“”`]|['"“”`]$/g, "").trim();
+        break;
+      }
+    }
+    clean = clean.replace(/^['"“”`:]|['"“”`:]$/g, "").trim();
+    if (!clean) return;
+
     setAddingFolder(true);
     setAddFolderMsg(null);
     try {
-      const res = await api.addLocalFolder(customLocalFolder.trim());
-      setAddFolderMsg(res.message || "✓ Folder registered. Local agent will index it on next heartbeat.");
+      const res = await api.addLocalFolder(clean);
+      setAddFolderMsg(res.message || `✓ Folder '${clean}' registered for indexing.`);
       setCustomLocalFolder("");
       setTimeout(() => {
         api.getLocalAgentStatus().then((s) => setAgentStatus(s)).catch(() => {});
@@ -148,38 +173,8 @@ export function CompanyFolderPicker({ api }: Props) {
     }
   };
 
-  const handleDownloadAgent = async () => {
-    setDownloadingAgent(true);
-    try {
-      await api.downloadLocalAgentPackage(pairingToken || undefined);
-      setMessage({
-        text: "✓ Nanvi_Windows_Agent.zip downloaded! Extract the folder and double-click Start_Nanvi_Agent.bat.",
-        type: "success",
-      });
-    } catch (err: any) {
-      setMessage({
-        text: `Download failed: ${err?.message || "Please try again."}`,
-        type: "error",
-      });
-    } finally {
-      setDownloadingAgent(false);
-    }
-  };
-
   const handleQuickAdd = async (folderPath: string) => {
-    setAddingFolder(true);
-    setAddFolderMsg(null);
-    try {
-      const res = await api.addLocalFolder(folderPath);
-      setAddFolderMsg(res.message || `✓ Added ${folderPath}. Agent will index it immediately.`);
-      setTimeout(() => {
-        api.getLocalAgentStatus().then((s) => setAgentStatus(s)).catch(() => {});
-      }, 1500);
-    } catch (err: any) {
-      setAddFolderMsg(`Error: ${err?.message || "Failed to add folder"}`);
-    } finally {
-      setAddingFolder(false);
-    }
+    return handleAddLocalFolder(folderPath);
   };
 
   const handleSearchLocal = async () => {
@@ -649,7 +644,7 @@ export function CompanyFolderPicker({ api }: Props) {
                 border: "1px solid #cbd5e1",
                 borderRadius: "6px",
               }}
-              placeholder="Or paste any folder path, e.g. C:\CompanyData or D:\Projects"
+              placeholder="Paste folder path here, e.g. C:\CompanyData or C:\Users\haris\Documents"
               value={customLocalFolder}
               onChange={(e) => setCustomLocalFolder(e.target.value)}
               onKeyDown={(e) => {
@@ -658,7 +653,7 @@ export function CompanyFolderPicker({ api }: Props) {
             />
             <button
               className="folder-picker-btn"
-              onClick={handleAddLocalFolder}
+              onClick={() => void handleAddLocalFolder()}
               disabled={addingFolder || !customLocalFolder.trim()}
               style={{
                 padding: "10px 20px",
@@ -676,13 +671,22 @@ export function CompanyFolderPicker({ api }: Props) {
             </button>
           </div>
 
+          <div style={{ marginTop: "6px", fontSize: "0.82rem", color: "#64748b" }}>
+            💡 Tip: You only need the folder path itself. No need to type &quot;add&quot;.
+          </div>
+
           {addFolderMsg && (
             <div
               style={{
                 marginTop: "12px",
                 fontSize: "0.9rem",
                 fontWeight: 600,
-                color: addFolderMsg.startsWith("✓") ? "#16a34a" : "#dc2626",
+                color:
+                  addFolderMsg.startsWith("✓") ||
+                  addFolderMsg.toLowerCase().includes("added") ||
+                  addFolderMsg.toLowerCase().includes("registered")
+                    ? "#16a34a"
+                    : "#dc2626",
               }}
             >
               {addFolderMsg}
