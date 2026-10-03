@@ -177,6 +177,24 @@ export function CompanyFolderPicker({ api }: Props) {
     return handleAddLocalFolder(folderPath);
   };
 
+  const handleDownloadAgent = async () => {
+    setDownloadingAgent(true);
+    try {
+      await api.downloadLocalAgentPackage(pairingToken || undefined);
+      setMessage({
+        text: "✓ Nanvi_Assistant.bat downloaded! Double-click it to start your local file search.",
+        type: "success",
+      });
+    } catch (err: any) {
+      setMessage({
+        text: `Download failed: ${err?.message || "Please try again."}`,
+        type: "error",
+      });
+    } finally {
+      setDownloadingAgent(false);
+    }
+  };
+
   const handleSearchLocal = async () => {
     if (!searchQuery.trim()) return;
     setSearchLoading(true);

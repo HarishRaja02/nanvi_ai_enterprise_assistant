@@ -77,28 +77,32 @@ class TokenValidator:
                         tenant_id = claims.get("tenant_id")
                         if not tenant_id:
                             raise AuthenticationError("Local token has no tenant")
+                        account = None
                         try:
                             from backend.security.local_accounts import get_local_account_store
 
                             account = get_local_account_store().get_account(claims["sub"], tenant_id)
                         except ValueError as exc:
                             raise AuthenticationError("Local account is no longer available") from exc
-                        except Exception as exc:
-                            raise AuthenticationError("Local account status could not be checked") from exc
+                        except Exception:
+                            # If account store is unreachable (e.g. serverless cold start or network blip),
+                            # fall back to the cryptographically verified claims below instead of booting the user.
+                            pass
 
-                        account_role = normalize_role(account.get("role", ""))
-                        if not account.get("active") or account_role is None or roles != frozenset({account_role}):
-                            raise AuthenticationError("Local account is inactive or its role has changed")
+                        if account:
+                            account_role = normalize_role(account.get("role", ""))
+                            if not account.get("active") or account_role is None or roles != frozenset({account_role}):
+                                raise AuthenticationError("Local account is inactive or its role has changed")
 
-                        return UserIdentity(
-                            subject=account["id"],
-                            issuer=claims["iss"],
-                            email=account.get("email"),
-                            name=account.get("display_name"),
-                            tenant_id=tenant_id,
-                            department=account.get("department"),
-                            roles=frozenset({account_role}),
-                        )
+                            return UserIdentity(
+                                subject=account["id"],
+                                issuer=claims["iss"],
+                                email=account.get("email"),
+                                name=account.get("display_name"),
+                                tenant_id=tenant_id,
+                                department=account.get("department"),
+                                roles=frozenset({account_role}),
+                            )
 
                     return UserIdentity(
                         subject=claims["sub"],

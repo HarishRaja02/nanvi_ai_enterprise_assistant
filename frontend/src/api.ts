@@ -594,26 +594,34 @@ if (!response.ok) {
 
   // Company folder settings
   getCompanyFolder() {
-    return this.request<CompanyFolderResponse>("/settings/company-folder");
+    return this.request<CompanyFolderResponse>("/settings/company-folder", {}, true);
   }
 
   updateCompanyFolder(path: string) {
-    return this.request<CompanyFolderUpdateResponse>("/settings/company-folder", {
-      method: "PUT",
-      body: JSON.stringify({ path }),
-    });
+    return this.request<CompanyFolderUpdateResponse>(
+      "/settings/company-folder",
+      {
+        method: "PUT",
+        body: JSON.stringify({ path }),
+      },
+      true,
+    );
   }
 
   browseDirectory(path: string) {
-    return this.request<BrowseDirectoryResponse>("/settings/company-folder/browse", {
-      method: "POST",
-      body: JSON.stringify({ path }),
-    });
+    return this.request<BrowseDirectoryResponse>(
+      "/settings/company-folder/browse",
+      {
+        method: "POST",
+        body: JSON.stringify({ path }),
+      },
+      true,
+    );
   }
 
   // Local Agent Integration
   getLocalAgentToken() {
-    return this.request<LocalAgentTokenResponse>("/local-agent/token", { method: "POST" });
+    return this.request<LocalAgentTokenResponse>("/local-agent/token", { method: "POST" }, true);
   }
 
   async downloadLocalAgentPackage(token?: string, format: "bat" | "zip" = "bat"): Promise<void> {
