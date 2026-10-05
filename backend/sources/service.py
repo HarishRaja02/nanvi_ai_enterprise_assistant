@@ -28,6 +28,7 @@ class SourceReferenceService:
         SourceType.EMAIL: Permission.EMAIL_READ,
         SourceType.DATABASE: Permission.DATABASE_READ,
         SourceType.DRIVE: Permission.FILE_READ,
+        SourceType.WEBSITE: Permission.WEB_SEARCH,
     }
 
     def __init__(self, authorization: AuthorizationService, audit: AuditLogger,
@@ -279,6 +280,25 @@ class SourceReferenceService:
             )
             return self._store.get(reference_id)
 
+        # 6. Check if it's a Web Search / Website reference
+        if "web" in reference_id.casefold() or "http" in reference_id.casefold():
+            ref = SourceReference(
+                reference_id=reference_id,
+                source_type=SourceType.WEBSITE,
+                display_name="[Web] Online Reference",
+                title="Online Web Reference",
+                location="Web Source",
+            )
+            self._store.save(
+                reference=ref,
+                owner_id=user.user_id,
+                tenant_id=user.tenant_id,
+                source_id=reference_id,
+                source_type="website",
+                department=user.department,
+            )
+            return self._store.get(reference_id)
+
         return None
 
 
@@ -361,7 +381,8 @@ class SourceReferenceService:
                 "email": "email_mailbox",
                 "database": "database_source",
                 "drive": "google_drive_file",
-            }[item["source_type"]],
+                "website": "web_source",
+            }.get(item["source_type"], "web_source"),
             tenant_id=item["tenant_id"],
             owner_id=item["owner_id"],
             department=item["department"],
@@ -377,11 +398,14 @@ class SourceReferenceService:
             SourceType.EMAIL: "email_mailbox",
             SourceType.DATABASE: "database_source",
             SourceType.DRIVE: "google_drive_file",
-        }[source_type]
+            SourceType.WEBSITE: "web_source",
+        }.get(source_type, "web_source")
 
     @staticmethod
     def _source_type(value: str) -> SourceType:
         normalized = value.casefold()
+        if normalized in {"web", "website", "web_source", "search"}:
+            return SourceType.WEBSITE
         if normalized in {"drive", "google_drive", "gdrive", "google_drive_file"}:
             return SourceType.DRIVE
         if normalized in {"pdf", "docx", "xlsx", "csv", "document", "knowledge_source"}:

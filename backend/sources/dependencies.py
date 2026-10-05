@@ -7,7 +7,7 @@ from backend.security.authorization import AuthorizationService
 from .service import SourceReferenceService
 from .store import SourceReferenceStore
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _source_store: SourceReferenceStore | None = None
 _source_audit: AuditLogger | None = None
 _source_service: SourceReferenceService | None = None

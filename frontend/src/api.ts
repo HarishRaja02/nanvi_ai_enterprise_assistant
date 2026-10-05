@@ -40,6 +40,8 @@ export type ChatSource = {
   timestamp?: string | null;
   mime_type?: string | null;
   href?: string | null;
+  snippet?: string | null;
+  content?: string | null;
 };
 
 export type ChatResponse = {

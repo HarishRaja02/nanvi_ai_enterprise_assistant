@@ -12,7 +12,7 @@ type Props = { sources: SourceView[]; onOpen: (source: SourceView) => void };
 export function SourceList({ sources, onOpen }: Props) {
   const notify = useToast();
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [sourcesVisible, setSourcesVisible] = useState(false);
+  const [sourcesVisible, setSourcesVisible] = useState(true);
   const cardsId = useId();
 
   if (!sources || sources.length === 0) return null;
