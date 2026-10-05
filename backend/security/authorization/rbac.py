@@ -49,7 +49,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
         "CONNECTION_READ", "CONNECTION_WRITE", "CONNECTION_DELETE", "CONNECTION_USE",
         "CONNECTION_OWN_MANAGE", "CONNECTION_ORG_VIEW", "CONNECTION_ORG_MANAGE",
     }),
-    Role.PROJECT_ENGINEER: frozenset({"FILE_READ"}),
+    Role.PROJECT_ENGINEER: frozenset({"FILE_READ", "REPORT_CREATE", "REPORT_DOWNLOAD"}),
     Role.CEO: frozenset({
         "FILE_READ", "FILE_WRITE",
         "EMAIL_READ", "EMAIL_SEND",
@@ -88,7 +88,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
         "CONNECTION_USE", "CONNECTION_OWN_MANAGE", "CONNECTION_ORG_VIEW",
     }),
     Role.EMPLOYEE: frozenset({
-        "FILE_READ",
+        "FILE_READ", "DATABASE_READ", "REPORT_CREATE", "REPORT_DOWNLOAD",
     }),
 
     Role.IT_ADMIN: frozenset({

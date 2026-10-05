@@ -24,6 +24,30 @@ def create_default_document_service() -> DocumentProcessingService:
     ])
 
 
+def _matches_status(status: str, status_filter: str | None) -> bool:
+    if not status_filter:
+        return True
+    sf = status_filter.strip().casefold()
+    s = status.strip().casefold()
+    if sf in ("pending", "unpaid", "due"):
+        return any(k in s for k in ("pending", "scheduled", "approved", "review", "due", "unpaid")) and ("paid" not in s or "unpaid" in s) and "overdue" not in s
+    if sf == "overdue":
+        return "overdue" in s
+    if sf == "paid":
+        return "paid" in s and "unpaid" not in s
+    return sf in s
+
+
+def _clean_str(val: Any) -> str:
+    if val is None:
+        return ""
+    s = str(val).strip()
+    s = s.replace("\u25a0", "").replace("\xa0", " ").replace("\u2013", "-").replace("\u2014", "-")
+    s = re.sub(r"[\r\n\t]+", " ", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip()
+
+
 def extract_invoice_records_from_files(
     indexed_files: dict[str, dict[str, Any]],
     is_folder_authorized: Callable[[UserAttributes, str], bool],
@@ -87,7 +111,7 @@ def extract_invoice_records_from_files(
                     if inv_id and amount:
                         if inv_id in seen_ids:
                             continue
-                        if status_filter and status_filter.casefold() not in status.casefold():
+                        if not _matches_status(status, status_filter):
                             continue
                         if entity_filter:
                             ef = entity_filter.casefold()
@@ -96,12 +120,12 @@ def extract_invoice_records_from_files(
                         seen_ids.add(inv_id)
                         display_comp = comp_name or vendor or "Enterprise Client"
                         records.append({
-                            "id": inv_id,
-                            "customer": display_comp,
-                            "vendor": vendor,
-                            "amount": amount,
-                            "status": status,
-                            "due_date": due_date,
+                            "id": _clean_str(inv_id),
+                            "customer": _clean_str(display_comp),
+                            "vendor": _clean_str(vendor),
+                            "amount": _clean_str(amount),
+                            "status": _clean_str(status),
+                            "due_date": _clean_str(due_date),
                             "file_path": rel_path,
                         })
                         if rel_path not in seen_refs:
@@ -140,7 +164,7 @@ def extract_invoice_records_from_files(
         date_str = date_m.group(1).strip() if date_m else ""
         total_raw = total_m.group(1).strip()
 
-        if status_filter and status_filter.casefold() not in status.casefold():
+        if not _matches_status(status, status_filter):
             continue
 
         if entity_filter:
@@ -152,12 +176,12 @@ def extract_invoice_records_from_files(
         comp_name = customer if customer and customer != "Synthetic" else (vendor or "Enterprise Client")
 
         records.append({
-            "id": inv_id,
-            "customer": comp_name,
-            "vendor": vendor,
-            "amount": total_raw,
-            "status": status,
-            "due_date": date_str,
+            "id": _clean_str(inv_id),
+            "customer": _clean_str(comp_name),
+            "vendor": _clean_str(vendor),
+            "amount": _clean_str(total_raw),
+            "status": _clean_str(status),
+            "due_date": _clean_str(date_str),
             "file_path": rel_path,
         })
 
@@ -213,12 +237,12 @@ def extract_contract_records_from_files(
                             continue
                     seen_ids.add(cid)
                     records.append({
-                        "id": cid,
-                        "customer": parts[1] if len(parts) > 1 else "",
-                        "contract_type": parts[2] if len(parts) > 2 else "Standard Agreement",
-                        "annual_value": parts[3] if len(parts) > 3 else "N/A",
-                        "renewal_date": parts[4] if len(parts) > 4 else "",
-                        "status": parts[6] if len(parts) > 6 else "Active",
+                        "id": _clean_str(cid),
+                        "customer": _clean_str(parts[1] if len(parts) > 1 else ""),
+                        "contract_type": _clean_str(parts[2] if len(parts) > 2 else "Standard Agreement"),
+                        "annual_value": _clean_str(parts[3] if len(parts) > 3 else "N/A"),
+                        "renewal_date": _clean_str(parts[4] if len(parts) > 4 else ""),
+                        "status": _clean_str(parts[6] if len(parts) > 6 else "Active"),
                         "file_path": rel_path,
                     })
 

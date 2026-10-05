@@ -399,22 +399,50 @@ class ChatService:
                     found.append(cap)
 
         # Document / Report generation detection (strictly isolate ReportAgent)
+        doc_format_words = (
+            "doc", "docx", "word", "pdf", "excel", "xlsx", "csv", "sheet", "spreadsheet",
+            "pptx", "powerpoint", "presentation", "slide", "slides", "txt", "text",
+        )
+        has_doc_format = any(
+            re.search(rf"\b(?:in|into|as|to|for|on)\s+(?:the\s+|a\s+|an\s+)?{f}\b", text)
+            or re.search(rf"\b{f}\s+(?:format|file|document|report|sheet|presentation|deck|schedule|export|download)\b", text)
+            or f"in {f}" in text
+            or f"in the {f}" in text
+            or f"as {f}" in text
+            or f"as a {f}" in text
+            or (f in ("presentation", "powerpoint", "slides", "pptx", "spreadsheet", "excel sheet", "word doc", "pdf report", "excel report", "word report") and f in text)
+            for f in doc_format_words
+        )
+        has_export_action = any(
+            v in text for v in (
+                "generate", "generation", "export", "download", "create", "build", "make",
+                "produce", "compile", "put it in", "put this in", "put them in", "put in",
+                "need to be in", "needs to be in", "want in", "convert to", "save as",
+                "need in", "give it in", "give in", "prepare",
+            )
+        )
         is_report_request = (
             Capability.REPORT in found
-            or ("report" in text and any(v in text for v in ("generate", "generation", "export", "download", "create", "build", "make", "produce", "new")))
+            or (has_export_action and has_doc_format)
+            or (has_doc_format and any(w in text for w in ("invoice", "invoices", "pending", "overdue", "contract", "contracts", "renewal", "schedule", "budget", "salary", "employee", "customer", "project", "department")))
+            or ("report" in text and any(v in text for v in ("generate", "generation", "export", "download", "create", "build", "make", "produce", "new", "compile", "schedule")))
             or any(w in text for w in (
-                "in word", "in excel", "in pdf", "in doc", "in docx", "in xlsx", "in txt", "in text",
-                "renewal schedule", "contract renewal", "schedule in word", "schedule in excel",
-                "as a doc", "as a document", "as a word", "as a pdf", "as an excel", "as a sheet",
-                "put this in", "put this content", "export to", "download as", "generate schedule", "create schedule",
-                "in a doc", "in a pdf", "in an excel", "in a word", "in a txt",
+                "in word", "in the word", "in excel", "in the excel", "in pdf", "in the pdf",
+                "in doc", "in the doc", "in docx", "in the docx", "in xlsx", "in the xlsx",
+                "in pptx", "in the pptx", "in powerpoint", "in the powerpoint", "in presentation", "in slides", "in slide",
+                "in txt", "in text", "renewal schedule", "contract renewal", "schedule in word", "schedule in excel",
+                "as a doc", "as doc", "as a document", "as a word", "as word", "as a pdf", "as pdf",
+                "as an excel", "as excel", "as a sheet", "as sheet", "as pptx", "as a pptx", "as presentation",
+                "put this in", "put this content", "put in doc", "put in pdf", "put in excel", "put in pptx",
+                "export to", "download as", "generate schedule", "create schedule",
+                "in a doc", "in a pdf", "in an excel", "in a word", "in a txt", "in a pptx",
             ))
             or (
                 any(v in text for v in ("generate", "generation", "create", "export", "download", "build", "produce")) and
-                any(f in text for f in ("in word", "in doc", "in excel", "in pdf", "in txt", "schedule", "report", "word document", "excel sheet", "pdf report", "document"))
+                any(f in text for f in ("in word", "in doc", "in excel", "in pdf", "in pptx", "in txt", "schedule", "report", "word document", "excel sheet", "pdf report", "powerpoint presentation", "document"))
             )
             or (
-                "report" in text and any(k in text for k in ("invoice", "invoices", "overdue", "billing", "contract", "renewal"))
+                "report" in text and any(k in text for k in ("invoice", "invoices", "pending", "overdue", "billing", "contract", "renewal", "financial", "budget", "sales", "employee"))
             )
         )
         if is_report_request:

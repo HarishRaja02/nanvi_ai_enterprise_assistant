@@ -32,6 +32,7 @@ else:
     REPORT_STORAGE_ROOT = Path("backend/storage/reports")
 
 _storage = SecureFileReportStorage(REPORT_STORAGE_ROOT)
+_service_lock = threading.Lock()
 _audit_lock = threading.Lock()
 _audit: AuditLogger | None = None
 _service: ReportService | None = None
@@ -56,7 +57,7 @@ def _get_report_audit() -> AuditLogger:
 def get_report_service() -> ReportService:
     global _service
     if _service is None:
-        with _audit_lock:
+        with _service_lock:
             if _service is None:
                 _service = ReportService(_storage, AuthorizationService(), _get_report_audit())
     return _service
