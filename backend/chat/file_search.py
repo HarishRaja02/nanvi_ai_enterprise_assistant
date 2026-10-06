@@ -206,15 +206,21 @@ def execute_file_search(
                         full_open = ""
                         if h.folder_path and h.relative_path:
                             full_open = f"{h.folder_path}\\{h.relative_path}".replace("/", "\\")
+                        elif h.folder_path:
+                            full_open = h.folder_path
                         else:
                             full_open = disp_path
 
+                        exact_full_path = full_open if (":" in full_open or full_open.startswith("\\\\")) else (h.folder_path or disp_path)
+
                         agent_files.append({
                             "name": h.filename,
-                            "path": disp_path,
+                            "path": exact_full_path,
+                            "full_path": exact_full_path,
+                            "display_path": disp_path,
                             "type": Path(h.filename).suffix.lstrip("."),
                             "modified_at": h.modified_at or "",
-                            "open_url": full_open,
+                            "open_url": exact_full_path,
                             "source": "local",
                             "content_snippet": (h.text or "")[:400],
                         })
@@ -740,7 +746,7 @@ def execute_file_search(
     ]
     for f in files:
         name = f["name"]
-        path = f["path"]
+        path = f.get("full_path") or f.get("open_url") or f["path"]
         open_target = f.get("open_url") or path
         lines.append(f"| {name} | `{path}` | [Open]({open_target}) |")
 

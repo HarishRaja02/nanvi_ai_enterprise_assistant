@@ -60,8 +60,11 @@ export type ChatResponse = {
     path: string;
     type?: string;
     open_url?: string;
+    full_path?: string;
+    display_path?: string;
     modified_at?: string;
     source?: string;
+    content_snippet?: string;
   }>;
 };
 
@@ -317,8 +320,11 @@ if (!response.ok) {
         path: string;
         type?: string;
         open_url?: string;
+        full_path?: string;
+        display_path?: string;
         modified_at?: string;
         source?: string;
+        content_snippet?: string;
       }>;
       total_count: number;
       source: string;

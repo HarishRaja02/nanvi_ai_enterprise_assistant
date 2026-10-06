@@ -401,15 +401,21 @@ class LocalAgentStore:
                 full_open = ""
                 if f_path and rel:
                     full_open = f"{f_path}\\{rel}".replace("/", "\\")
+                elif f_path:
+                    full_open = f_path
                 else:
                     full_open = disp_path
 
+                exact_full_path = full_open if (":" in full_open or full_open.startswith("\\\\")) else (f_path or disp_path)
+
                 files.append({
                     "name": fname,
-                    "path": disp_path,
+                    "path": exact_full_path,
+                    "full_path": exact_full_path,
+                    "display_path": disp_path,
                     "type": Path(fname).suffix.lstrip("."),
                     "modified_at": c.get("modified_at") or "",
-                    "open_url": full_open,
+                    "open_url": exact_full_path,
                     "source": "local",
                     "content_snippet": (c.get("text") or "")[:350],
                 })

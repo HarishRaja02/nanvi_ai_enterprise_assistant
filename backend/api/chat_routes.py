@@ -431,16 +431,22 @@ def download_local_file(
     except Exception as exc:
         logger.debug("Error looking up chunks for preview: %s", exc)
 
+    title = p.name
+    folder = ""
+    joined_text = ""
     if matching_chunks:
         title = matching_chunks[0].get("filename", p.name)
         folder = matching_chunks[0].get("folder_name", "")
         joined_text = "\n\n".join(c.get("text", "") for c in matching_chunks)
-        html_content = f"""<!DOCTYPE html>
+
+    escaped_raw_path = raw_path.replace("\\", "\\\\").replace("'", "\\'")
+
+    html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{title} - Document Content</title>
+  <title>{title} - Nanvi Enterprise Assistant</title>
   <style>
     * {{ box-sizing: border-box; }}
     body {{
@@ -452,7 +458,7 @@ def download_local_file(
       padding: 32px 16px;
     }}
     .container {{
-      max-width: 900px;
+      max-width: 860px;
       margin: 0 auto;
       background: #ffffff;
       border-radius: 12px;
@@ -468,29 +474,100 @@ def download_local_file(
     .badge {{
       display: inline-block;
       padding: 4px 10px;
-      background: #dbeafe;
-      color: #1d4ed8;
+      background: #e0f2fe;
+      color: #0369a1;
       font-size: 12px;
       font-weight: 600;
       border-radius: 6px;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }}
     h1 {{
-      margin: 0 0 8px;
-      font-size: 22px;
+      margin: 0 0 12px;
+      font-size: 20px;
       color: #0f172a;
-    }}
-    .path {{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 13px;
-      color: #64748b;
       word-break: break-all;
     }}
+    .path-card {{
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }}
+    .path-text {{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      color: #0284c7;
+      word-break: break-all;
+      flex: 1;
+      min-width: 200px;
+    }}
+    .copy-btn {{
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease;
+      flex-shrink: 0;
+    }}
+    .copy-btn:hover {{
+      background: #0369a1;
+    }}
+    .instructions {{
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin: 24px 32px 0;
+      font-size: 13.5px;
+      color: #166534;
+    }}
+    .instructions strong {{
+      color: #14532d;
+    }}
+    .instructions kbd {{
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: monospace;
+      font-size: 12px;
+      box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    }}
     .content {{
-      padding: 32px;
-      white-space: pre-wrap;
-      font-size: 15px;
+      padding: 24px 32px 32px;
+      font-size: 14.5px;
       color: #334155;
+    }}
+    .content-title {{
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 8px;
+    }}
+    .text-box {{
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 20px;
+      white-space: pre-wrap;
+      max-height: 500px;
+      overflow-y: auto;
+      line-height: 1.6;
     }}
     .footer {{
       padding: 16px 32px;
@@ -498,24 +575,61 @@ def download_local_file(
       border-top: 1px solid #e2e8f0;
       font-size: 13px;
       color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }}
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <div class="badge">Connected Windows PC Document</div>
+      <div class="badge">Local Windows PC Document</div>
       <h1>{title}</h1>
-      <div class="path">{raw_path}</div>
+      <div class="path-card">
+        <div class="path-text" id="filePath">{raw_path}</div>
+        <button type="button" class="copy-btn" id="copyBtn" onclick="copyFilePath()">
+          <span>Copy File Path</span>
+        </button>
+      </div>
     </div>
-    <div class="content">{joined_text}</div>
-    <div class="footer">Nanvi Enterprise Assistant • Document indexed from your Windows computer</div>
+
+    <div class="instructions">
+      <strong>💡 How to open on your computer:</strong><br>
+      1. Click <strong>"Copy File Path"</strong> above.<br>
+      2. Press <kbd>Win</kbd> + <kbd>R</kbd> on your keyboard (or open Windows File Explorer).<br>
+      3. Paste the path and press <kbd>Enter</kbd> to open directly in your default app.
+    </div>
+
+    <div class="content">
+      {f'<div class="content-title">Indexed Document Content</div><div class="text-box">{joined_text}</div>' if joined_text else '<div style="color: #64748b; font-style: italic; padding: 12px 0;">This file is stored on your connected computer. Copy the path above to open the original file.</div>'}
+    </div>
+
+    <div class="footer">
+      <span>Nanvi Enterprise Assistant</span>
+      <span>Indexed from your local storage</span>
+    </div>
   </div>
+
+  <script>
+    function copyFilePath() {{
+      const text = '{escaped_raw_path}';
+      navigator.clipboard.writeText(text).then(() => {{
+        const btn = document.getElementById('copyBtn');
+        btn.innerHTML = '<span>✅ Copied!</span>';
+        btn.style.background = '#16a34a';
+        setTimeout(() => {{
+          btn.innerHTML = '<span>Copy File Path</span>';
+          btn.style.background = '#0284c7';
+        }}, 2500);
+      }}).catch(() => {{
+        prompt('Copy this file path:', text);
+      }});
+    }}
+  </script>
 </body>
 </html>"""
-        return HTMLResponse(content=html_content)
-
-    raise HTTPException(status_code=404, detail=f"Document '{p.name}' is located on your connected computer. Please use Nanvi Assistant on your computer to open it directly.")
+    return HTMLResponse(content=html_content)
 
 
 

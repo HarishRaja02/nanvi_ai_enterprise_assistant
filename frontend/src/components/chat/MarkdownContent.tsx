@@ -72,9 +72,17 @@ function HighlightedText({ text }: { text: string }) {
 }
 
 function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
+  const notify = useToast();
+  const [copied, setCopied] = useState(false);
   const filePath = document.location || (document.folder ? `${document.folder}/${document.filename}` : document.filename);
-  const handleOpen = () => {
-    window.open(encodeURI(`file:///${filePath.replace(/\\/g, "/")}`), "_blank");
+
+  const handleCopy = async () => {
+    const ok = await copyText(filePath);
+    if (ok) {
+      setCopied(true);
+      notify("Copied file path to clipboard", "success");
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -93,15 +101,17 @@ function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
               <span className="file-name-text">{document.filename}</span>
             </td>
             <td className="cell-path">
-              <code className="file-path-code">{filePath}</code>
+              <code className="file-path-code" onClick={handleCopy} style={{ cursor: "pointer" }} title="Click to copy path">
+                {filePath}
+              </code>
             </td>
             <td className="cell-action">
               <button
                 type="button"
-                className="file-open-btn"
-                onClick={handleOpen}
+                className={`file-copy-btn ${copied ? "is-copied" : ""}`}
+                onClick={handleCopy}
               >
-                Open
+                {copied ? "Copied!" : "Copy Path"}
               </button>
             </td>
           </tr>

@@ -5,8 +5,11 @@ export type FileResultItem = {
   path: string;
   type?: string;
   open_url?: string;
+  full_path?: string;
+  display_path?: string;
   modified_at?: string;
   source?: string;
+  content_snippet?: string;
 };
 
 export type Message = {

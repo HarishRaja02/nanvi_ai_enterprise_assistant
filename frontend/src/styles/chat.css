@@ -2736,16 +2736,16 @@ summary::-webkit-details-marker, summary::marker {
 }
 
 .file-results-table th.col-name {
-  width: 35%;
+  width: 28%;
 }
 
 .file-results-table th.col-path {
-  width: 50%;
+  width: 48%;
 }
 
 .file-results-table th.col-action {
-  width: 15%;
-  text-align: center;
+  width: 24%;
+  text-align: right;
 }
 
 .file-results-table td {
@@ -2786,18 +2786,47 @@ summary::-webkit-details-marker, summary::marker {
   font-size: 11.5px;
   color: var(--text-muted);
   background: var(--bg-subtle, #f1f5f9);
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 4px;
   display: inline-block;
   word-break: break-all;
   max-width: 100%;
+  transition: all 0.15s ease;
+}
+
+.file-path-interactive {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.file-path-interactive:hover .file-path-code {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.file-copy-icon-subtle {
+  width: 13px;
+  height: 13px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.file-path-interactive:hover .file-copy-icon-subtle {
+  color: #0284c7;
+  opacity: 1;
 }
 
 .cell-action {
-  text-align: center;
+  text-align: right;
 }
 
-.file-open-btn {
+.file-copy-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2806,16 +2835,67 @@ summary::-webkit-details-marker, summary::marker {
   font-weight: 600;
   color: #ffffff;
   background: #0284c7;
-  border: none;
+  border: 1px solid #0284c7;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.file-copy-btn:hover {
+  background: #0369a1;
+  border-color: #0369a1;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.25);
+}
+
+.file-copy-btn.is-copied {
+  background: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #ffffff !important;
+}
+
+.file-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.file-preview-btn:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.file-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .file-open-btn:hover:not(:disabled) {
-  background: #0369a1;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .file-open-btn:disabled {
@@ -2823,6 +2903,8 @@ summary::-webkit-details-marker, summary::marker {
   cursor: wait;
 }
 
+.file-copy-btn .btn-icon,
+.file-preview-btn .btn-icon,
 .file-open-btn .btn-icon {
   width: 13px;
   height: 13px;
