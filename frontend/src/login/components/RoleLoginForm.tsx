@@ -35,13 +35,6 @@ export function RoleLoginForm({ onLogin, loading, error }: Props) {
       {(validationError || error) && <p className="role-login-error" role="alert">{validationError || error}</p>}
 
       <label className="role-login-field">
-        <span>Role</span>
-        <select value={role} onChange={(event) => setRole(event.target.value as LocalAccountRole)} disabled={loading}>
-          {ROLES.map((item) => <option key={item} value={item}>{item}</option>)}
-        </select>
-      </label>
-
-      <label className="role-login-field">
         <span>User ID</span>
         <input
           type="text"
@@ -75,6 +68,24 @@ export function RoleLoginForm({ onLogin, loading, error }: Props) {
           </button>
         </span>
       </label>
+
+      <div className="role-login-field">
+        <span id="role-select-label">Role</span>
+        <div className="role-login-role-group" role="group" aria-labelledby="role-select-label">
+          {ROLES.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={`role-login-role-btn ${role === item ? "active" : ""}`}
+              aria-pressed={role === item}
+              onClick={() => setRole(item)}
+              disabled={loading}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <button className="role-login-submit" type="submit" disabled={loading}>
         {loading ? <><LoaderCircle size={18} className="role-login-spinner" aria-hidden="true" /> Signing in…</> : "Sign in"}

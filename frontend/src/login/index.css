@@ -118,7 +118,48 @@ body {
   cursor: pointer;
 }
 .role-login-password-toggle:hover { background: #f3f4f6; color: #111827; }
-.role-login-password-toggle:focus-visible { outline: 2px solid var(--primary-600); outline-offset: 1px; }
+.role-login-role-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.role-login-role-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1.5px solid #cbd2dc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #374151;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 140ms ease-in-out;
+  user-select: none;
+}
+.role-login-role-btn:hover:not(:disabled) {
+  border-color: #006583;
+  background: #f0f9fb;
+  color: #006583;
+}
+.role-login-role-btn.active {
+  border-color: #006583;
+  background: #006583;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 101, 131, 0.25);
+}
+.role-login-role-btn:focus-visible {
+  outline: 2px solid #006583;
+  outline-offset: 2px;
+}
+.role-login-role-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .role-login-submit {
   min-height: 62px;
   display: inline-flex;
