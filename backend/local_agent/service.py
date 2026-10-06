@@ -185,6 +185,11 @@ class LocalAgentService:
             folder_id=folder_id,
         )
 
+    def get_all_local_files(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
+        """List all indexed files across user's approved local folders."""
+        return self.store.get_all_files(tenant_id=tenant_id, user_id=user_id)
+
+
 
 _service_instance: LocalAgentService | None = None
 

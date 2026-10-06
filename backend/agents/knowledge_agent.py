@@ -51,6 +51,14 @@ class KnowledgeAgent(Agent):
                 except Exception as exc:
                     logger.warning("CompanyData file search failed, falling back: %s", exc)
 
+            try:
+                from backend.chat.file_search import execute_file_search
+                ans, files, sources = execute_file_search(request.user, request.query, "local", max_results=10)
+                if files:
+                    return AgentResponse(self.capability, ans, tuple(sources), deterministic=True)
+            except Exception as exc:
+                logger.debug("Local agent fallback file search error: %s", exc)
+
         # 2. Content-first search for Knowledge Questions
         company_data_res = None
         if company_data is not None:

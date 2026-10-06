@@ -168,9 +168,31 @@ class ChatService:
         caps = self._capabilities_for_query(effective_query)
         is_pure_report = (Capability.REPORT in caps and any(w in effective_query.casefold() for w in ("export", "download as", "generate report", "create report")))
 
+        # Check if query already specifies a source (e.g. 'Search in Local Storage for Trichy Hospital')
+        direct_source = self._extract_source_from_query(effective_query)
+        if direct_source and not is_pure_report:
+            clean_search_q = re.sub(
+                r"(?i)\b(?:search\s+(?:in\s+)?|find\s+(?:in\s+)?|look\s+(?:for\s+)?in\s+|from\s+)?(?:local\s+storage|local\s+files?|local\s+folder|database|db|emails?|gmail|inbox|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
+                "",
+                effective_query,
+            ).strip(" :,-")
+            if not clean_search_q:
+                clean_search_q = effective_query
+            from backend.chat.file_search import execute_file_search
+            answer, files, sources = execute_file_search(user, clean_search_q, direct_source, max_results=10)
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=tuple(sources),
+                capability="document_search",
+                trace=(f"File search executed directly on {direct_source}",),
+                history=self._store.get(conversation_id),
+                file_results=tuple(files),
+            )
+
         if not is_pure_report:
-            # Whenever user asks a question, do NOT start search across everything immediately.
-            # Ask the user which source they want to search from first.
+            # Whenever user asks a question without specifying source, prompt user to select source.
             answer = "Which source would you like me to search?\n\n- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"
             self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
             return ChatResponse(

@@ -165,10 +165,67 @@ def execute_file_search(
     # 1. Local Storage
     if clean_src in ("local", "local_storage", "disk", "folder"):
         try:
+            # 1A. Query Windows Local File Agent (synced from user's PC)
+            u_id = str(getattr(user, "user_id", None) or getattr(user, "subject", None) or "default")
+            t_id = str(getattr(user, "tenant_id", None) or "default")
+
+            agent_files: list[dict[str, Any]] = []
+            try:
+                from backend.local_agent.service import get_local_agent_service
+                local_svc = get_local_agent_service()
+
+                if is_generic:
+                    all_agent_files = local_svc.get_all_local_files(t_id, u_id)
+                    if category == "invoice":
+                        agent_files = [
+                            f for f in all_agent_files
+                            if any(k in f["name"].lower() or k in f["path"].lower() for k in ("invoice", "invoices", "bill", "billing", "aging", "ledger"))
+                        ]
+                    elif category == "contract":
+                        agent_files = [
+                            f for f in all_agent_files
+                            if any(k in f["name"].lower() or k in f["path"].lower() for k in ("contract", "contracts", "agreement", "nda", "renewal"))
+                        ]
+                    else:
+                        agent_files = all_agent_files
+                else:
+                    hits = local_svc.search_local_chunks(t_id, u_id, clean_q, top_k=max_results * 2)
+                    if not hits and specific_phrase and specific_phrase != clean_q:
+                        hits = local_svc.search_local_chunks(t_id, u_id, specific_phrase, top_k=max_results * 2)
+                    if not hits and primary_tokens:
+                        hits = local_svc.search_local_chunks(t_id, u_id, " ".join(primary_tokens), top_k=max_results * 2)
+
+                    seen_agent_files = set()
+                    for h in hits:
+                        fn_key = h.filename.lower()
+                        if fn_key in seen_agent_files:
+                            continue
+                        seen_agent_files.add(fn_key)
+
+                        disp_path = h.citation or f"{h.folder_name}/{h.relative_path}".strip("/")
+                        full_open = ""
+                        if h.folder_path and h.relative_path:
+                            full_open = f"{h.folder_path}\\{h.relative_path}".replace("/", "\\")
+                        else:
+                            full_open = disp_path
+
+                        agent_files.append({
+                            "name": h.filename,
+                            "path": disp_path,
+                            "type": Path(h.filename).suffix.lstrip("."),
+                            "modified_at": h.modified_at or "",
+                            "open_url": full_open,
+                            "source": "local",
+                            "content_snippet": (h.text or "")[:400],
+                        })
+            except Exception as agent_exc:
+                logger.debug("Local agent search error: %s", agent_exc)
+
+            # 1B. Discover server disk files (CompanyData folder)
+            server_disk_files: list[dict[str, Any]] = []
             cds = CompanyDataService.for_tenant(user.tenant_id)
             repo_root = Path(cds.root)
 
-            # Discover real files recursively under data directory
             all_disk_files: list[Path] = []
             if repo_root.exists() and repo_root.is_dir():
                 for p in repo_root.rglob("*"):
@@ -207,7 +264,7 @@ def execute_file_search(
 
                 for p in matched_files[:max_results]:
                     disp_path = _to_clean_display_path(p, repo_root)
-                    files.append({
+                    server_disk_files.append({
                         "name": p.name,
                         "path": disp_path,
                         "type": p.suffix.lstrip("."),
@@ -306,7 +363,7 @@ def execute_file_search(
                 scored.sort(key=lambda x: (x[0], x[1].stat().st_mtime if x[1].exists() else 0), reverse=True)
                 for _, p in scored[:max_results]:
                     disp_path = _to_clean_display_path(p, repo_root)
-                    files.append({
+                    server_disk_files.append({
                         "name": p.name,
                         "path": disp_path,
                         "type": p.suffix.lstrip("."),
@@ -314,6 +371,20 @@ def execute_file_search(
                         "open_url": disp_path,
                         "source": "local",
                     })
+
+            # Merge results: Windows Local Agent first, then server disk
+            seen_names = set()
+            for f in agent_files:
+                fn_lower = f["name"].lower()
+                if fn_lower not in seen_names:
+                    files.append(f)
+                    seen_names.add(fn_lower)
+
+            for f in server_disk_files:
+                fn_lower = f["name"].lower()
+                if fn_lower not in seen_names:
+                    files.append(f)
+                    seen_names.add(fn_lower)
 
             for idx, f in enumerate(files, start=1):
                 sources.append(
@@ -674,5 +745,14 @@ def execute_file_search(
         lines.append(f"| {name} | `{path}` | [Open]({open_target}) |")
 
     answer = f"{summary}\n\n" + "\n".join(lines)
+    snippets = [f for f in files if f.get("content_snippet")]
+    if snippets:
+        answer += "\n\n**Relevant Document Excerpts:**\n"
+        for s in snippets[:3]:
+            snip = s["content_snippet"].strip().replace("\n", " ")
+            if len(snip) > 220:
+                snip = snip[:220] + "..."
+            answer += f"• **{s['name']}**: *\"{snip}\"*\n"
+
     return answer, files, sources
 

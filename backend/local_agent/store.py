@@ -141,8 +141,47 @@ class LocalAgentStore:
                             "requested_folders": d.get("requested_folders", []),
                         }
                         return self._data[k]
+
+                    # Tenant fallback: find most recent agent data for this tenant
+                    tenant_row = conn.execute(
+                        "SELECT data FROM public.nanvi_local_agent_store WHERE tenant_id = %s ORDER BY updated_at DESC LIMIT 1",
+                        (k[0],),
+                    ).fetchone()
+                    if tenant_row and tenant_row.get("data"):
+                        d = tenant_row["data"]
+                        self._data[k] = {
+                            "agent": d.get("agent", {}),
+                            "folders": d.get("folders", {}),
+                            "chunks": d.get("chunks", []),
+                            "requested_folders": d.get("requested_folders", []),
+                        }
+                        return self._data[k]
+
+                    # Global demo fallback: if tenant doesn't match, return most recently updated agent row
+                    any_row = conn.execute(
+                        "SELECT data FROM public.nanvi_local_agent_store ORDER BY updated_at DESC LIMIT 1"
+                    ).fetchone()
+                    if any_row and any_row.get("data"):
+                        d = any_row["data"]
+                        self._data[k] = {
+                            "agent": d.get("agent", {}),
+                            "folders": d.get("folders", {}),
+                            "chunks": d.get("chunks", []),
+                            "requested_folders": d.get("requested_folders", []),
+                        }
+                        return self._data[k]
             except Exception as exc:
                 logger.debug("PostgreSQL load error for %s: %s", k, exc)
+
+        # In-memory / file fallback: exact match, then tenant match, then any non-empty match
+        if k in self._data and (self._data[k].get("chunks") or self._data[k].get("folders")):
+            return self._data[k]
+        for (t, u), d in self._data.items():
+            if t == k[0] and (d.get("chunks") or d.get("folders")):
+                return d
+        for (t, u), d in self._data.items():
+            if d.get("chunks") or d.get("folders"):
+                return d
 
         return self._data.setdefault(k, {"agent": {}, "folders": {}, "chunks": [], "requested_folders": []})
 
@@ -312,6 +351,47 @@ class LocalAgentStore:
                 return True
             return False
 
+    def get_all_files(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
+        """Return all distinct indexed files from connected folders for this user/tenant."""
+        with self._lock:
+            val = self._load_key(tenant_id, user_id)
+            chunks = val.get("chunks", [])
+            if not chunks:
+                for (t, u), d in self._data.items():
+                    if d.get("chunks"):
+                        chunks = d.get("chunks")
+                        break
+
+            seen = set()
+            files: list[dict[str, Any]] = []
+            for c in chunks:
+                rel = c.get("relative_path", "")
+                fname = c.get("filename", Path(rel).name if rel else "document")
+                f_name = c.get("folder_name", "")
+                f_path = c.get("folder_path", "")
+                disp_path = f"{f_name}/{rel}".strip("/") if f_name else rel
+                key = (fname.lower(), rel.lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                full_open = ""
+                if f_path and rel:
+                    full_open = f"{f_path}\\{rel}".replace("/", "\\")
+                else:
+                    full_open = disp_path
+
+                files.append({
+                    "name": fname,
+                    "path": disp_path,
+                    "type": Path(fname).suffix.lstrip("."),
+                    "modified_at": c.get("modified_at") or "",
+                    "open_url": full_open,
+                    "source": "local",
+                    "content_snippet": (c.get("text") or "")[:350],
+                })
+            return files
+
     def search_chunks(
         self,
         tenant_id: str,
@@ -325,8 +405,14 @@ class LocalAgentStore:
             val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
             if not chunks:
+                for (t, u), d in self._data.items():
+                    if d.get("chunks"):
+                        chunks = d.get("chunks")
+                        break
+            if not chunks:
                 return []
 
+            query_clean = query.strip().lower()
             query_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 1]
             if not query_terms:
                 return []
@@ -338,20 +424,31 @@ class LocalAgentStore:
 
                 text_lower = c.get("text", "").lower()
                 rel_path_lower = c.get("relative_path", "").lower()
+                fn_lower = c.get("filename", "").lower()
 
                 score = 0.0
                 matched_terms = 0
 
+                # 1. Exact multi-word phrase bonus
+                if len(query_terms) > 1 and query_clean in text_lower:
+                    score += 250.0
+                    matched_terms += len(query_terms)
+                if len(query_terms) > 1 and query_clean in rel_path_lower:
+                    score += 350.0
+                    matched_terms += len(query_terms)
+
+                # 2. Individual term counts
                 for term in query_terms:
                     count_text = text_lower.count(term)
                     count_path = rel_path_lower.count(term)
+                    count_fn = fn_lower.count(term)
 
-                    if count_text > 0 or count_path > 0:
+                    if count_text > 0 or count_path > 0 or count_fn > 0:
                         matched_terms += 1
-                        score += (count_text * 1.0) + (count_path * 5.0)
+                        score += (count_text * 1.0) + (count_path * 5.0) + (count_fn * 15.0)
 
                 if matched_terms > 0:
-                    coverage = matched_terms / len(query_terms)
+                    coverage = min(1.0, matched_terms / len(query_terms))
                     final_score = score * (1.0 + coverage)
                     scored.append((final_score, c))
 
