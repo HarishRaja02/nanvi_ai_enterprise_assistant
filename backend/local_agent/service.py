@@ -124,14 +124,21 @@ class LocalAgentService:
             )
 
     def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> dict[str, Any]:
-        """Record heartbeat and return requested folder paths from Web UI."""
+        """Record heartbeat and return requested folder paths and pending commands."""
         self.store.record_heartbeat(tenant_id, user_id, heartbeat)
         requested_folders = self.store.get_requested_folders(tenant_id, user_id)
+        commands = self.store.pop_commands(tenant_id, user_id)
         return {
             "status": "ok",
             "message": "Heartbeat recorded",
             "requested_folders": requested_folders,
+            "commands": commands,
         }
+
+    def queue_command(self, tenant_id: str, user_id: str, command: str, payload: dict[str, Any]) -> str:
+        """Queue a command (e.g. open_file) to be delivered to user's connected Windows PC agent."""
+        return self.store.queue_command(tenant_id, user_id, command, payload)
+
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> dict[str, Any]:
         """User from Web UI requested a folder to be indexed by their local agent."""
         cleaned = sanitize_folder_path(folder_path)

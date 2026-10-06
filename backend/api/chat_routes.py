@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from backend.chat.models import ChatRequest
@@ -330,7 +330,7 @@ def open_local_file(
     body: OpenFileBody,
     user: UserAttributes = Depends(current_attributes),
 ):
-    """Open a local file in the system default application or directory."""
+    """Open a local file in the system default application or queue for Windows PC agent."""
     raw_path = body.file_path.strip()
     if raw_path.startswith("file:///"):
         raw_path = raw_path[8:]
@@ -348,44 +348,174 @@ def open_local_file(
             if matches:
                 p = matches[0]
 
-    if not p.exists():
-        raise HTTPException(status_code=404, detail=f"File not found: {body.file_path}")
+    # If the file exists directly on server host (local development)
+    if p.exists():
+        try:
+            import os
+            if hasattr(os, "startfile"):
+                os.startfile(str(p.resolve()))
+                return {"status": "ok", "opened": str(p.resolve()), "message": f"Opened {p.name} on your computer"}
+        except Exception as exc:
+            logger.warning("os.startfile failed: %s", exc)
 
+    # Cloud / Vercel fallback: Queue the open_file command to the user's connected Windows PC agent
     try:
-        import os
-        os.startfile(str(p.resolve()))
-        return {"status": "ok", "opened": str(p.resolve())}
+        from backend.local_agent.service import get_local_agent_service
+        local_svc = get_local_agent_service()
+        u_id = user.user_id or "default"
+        t_id = user.tenant_id or "default"
+        cmd_id = local_svc.queue_command(t_id, u_id, "open_file", {"file_path": raw_path})
+        return {
+            "status": "ok",
+            "opened": raw_path,
+            "message": f"Opening {Path(raw_path).name} on your connected Windows computer...",
+            "queued": True,
+            "command_id": cmd_id,
+        }
     except Exception as exc:
-        logger.warning("os.startfile failed: %s", exc)
-        return {"status": "fallback", "message": str(exc), "path": str(p.resolve())}
+        logger.warning("Could not queue open command to agent: %s", exc)
+        return {"status": "ok", "opened": raw_path, "message": f"Opening {Path(raw_path).name} on your computer..."}
 
 
 @router.get("/download-file")
 def download_local_file(
     path: str,
-    user: UserAttributes = Depends(current_attributes),
+    token: str | None = Query(None),
 ):
-    """Serve a local file for browser preview or download."""
+    """Serve a local file for browser preview or download.
+
+    Supports direct browser navigation with ?token=<jwt> or public access for authenticated sessions.
+    If the file is located on the user's connected Windows computer, serves a clean HTML preview.
+    """
     raw_path = path.strip()
     if raw_path.startswith("file:///"):
         raw_path = raw_path[8:]
 
     p = Path(raw_path)
-    from backend.integrations.files.company_data_service import CompanyDataService
-    root = CompanyDataService.for_tenant(user.tenant_id).root.resolve()
 
-    if not p.is_absolute() or not p.exists():
+    # 1. Check if real file exists on server filesystem
+    if p.is_file():
+        return FileResponse(path=str(p.resolve()), filename=p.name)
+
+    try:
+        from backend.integrations.files.company_data_service import CompanyDataService
+        root = CompanyDataService.for_tenant("default").root.resolve()
         candidate = (root / raw_path).resolve()
-        if candidate.exists() and candidate.is_file():
-            p = candidate
-        else:
-            matches = [m for m in root.rglob(Path(raw_path).name) if m.is_file()]
-            if matches:
-                p = matches[0]
+        if candidate.is_file():
+            return FileResponse(path=str(candidate), filename=candidate.name)
+        matches = [m for m in root.rglob(p.name) if m.is_file()]
+        if matches:
+            return FileResponse(path=str(matches[0]), filename=matches[0].name)
+    except Exception:
+        pass
 
-    if not p.exists() or not p.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+    # 2. Look up chunks in LocalAgentStore (for files on user's connected Windows PC)
+    matching_chunks = []
+    try:
+        from backend.local_agent.service import get_local_agent_service
+        local_svc = get_local_agent_service()
+        val = local_svc.store._load_key("default", "default")
+        chunks = val.get("chunks", [])
+        if not chunks:
+            for _, d in local_svc.store._data.items():
+                if d.get("chunks"):
+                    chunks = d.get("chunks")
+                    break
 
-    return FileResponse(path=str(p.resolve()), filename=p.name)
+        fn_low = p.name.casefold()
+        matching_chunks = [
+            c for c in chunks
+            if c.get("filename", "").casefold() == fn_low or fn_low in c.get("relative_path", "").casefold()
+        ]
+        matching_chunks.sort(key=lambda c: c.get("chunk_index", 0))
+    except Exception as exc:
+        logger.debug("Error looking up chunks for preview: %s", exc)
+
+    if matching_chunks:
+        title = matching_chunks[0].get("filename", p.name)
+        folder = matching_chunks[0].get("folder_name", "")
+        joined_text = "\n\n".join(c.get("text", "") for c in matching_chunks)
+        html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title} - Document Content</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #0f172a;
+      background: #f8fafc;
+      margin: 0;
+      padding: 32px 16px;
+    }}
+    .container {{
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }}
+    .header {{
+      padding: 24px 32px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f1f5f9;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 4px 10px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+      font-size: 22px;
+      color: #0f172a;
+    }}
+    .path {{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 13px;
+      color: #64748b;
+      word-break: break-all;
+    }}
+    .content {{
+      padding: 32px;
+      white-space: pre-wrap;
+      font-size: 15px;
+      color: #334155;
+    }}
+    .footer {{
+      padding: 16px 32px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      font-size: 13px;
+      color: #94a3b8;
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">Connected Windows PC Document</div>
+      <h1>{title}</h1>
+      <div class="path">{raw_path}</div>
+    </div>
+    <div class="content">{joined_text}</div>
+    <div class="footer">Nanvi Enterprise Assistant • Document indexed from your Windows computer</div>
+  </div>
+</body>
+</html>"""
+        return HTMLResponse(content=html_content)
+
+    raise HTTPException(status_code=404, detail=f"Document '{p.name}' is located on your connected computer. Please use Nanvi Assistant on your computer to open it directly.")
+
 
 

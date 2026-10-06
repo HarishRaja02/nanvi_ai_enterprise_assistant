@@ -349,7 +349,30 @@ class LocalAgentStore:
                 val["requested_folders"] = [r for r in reqs if r != folder_id and r != folder_path]
                 self._save_key(tenant_id, user_id, val)
                 return True
-            return False
+    def queue_command(self, tenant_id: str, user_id: str, command: str, payload: dict[str, Any]) -> str:
+        """Queue a command (e.g. open_file) to be delivered to user's connected Windows PC agent."""
+        cmd_id = f"cmd_{int(time.time() * 1000)}"
+        with self._lock:
+            val = self._load_key(tenant_id, user_id)
+            cmds = val.setdefault("pending_commands", [])
+            cmds.append({
+                "id": cmd_id,
+                "command": command,
+                "payload": payload,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            self._save_key(tenant_id, user_id, val)
+        return cmd_id
+
+    def pop_commands(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
+        """Retrieve and clear pending commands for the agent on heartbeat."""
+        with self._lock:
+            val = self._load_key(tenant_id, user_id)
+            cmds = list(val.get("pending_commands", []))
+            if cmds:
+                val["pending_commands"] = []
+                self._save_key(tenant_id, user_id, val)
+            return cmds
 
     def get_all_files(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         """Return all distinct indexed files from connected folders for this user/tenant."""

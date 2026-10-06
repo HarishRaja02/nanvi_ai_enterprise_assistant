@@ -423,6 +423,31 @@ class NanviLocalAgent:
                                             self.status_callback(f"✓ Added folder: {Path(clean_rf).name}")
                                 except Exception as exc:
                                     logger.warning("Could not add folder '%s': %s", clean_rf, exc)
+                        commands = data.get("commands", [])
+                        for cmd in commands:
+                            if cmd.get("command") == "open_file":
+                                payload_data = cmd.get("payload", {})
+                                raw_p = payload_data.get("file_path") or cmd.get("path") or ""
+                                if raw_p:
+                                    try:
+                                        target_path = Path(raw_p)
+                                        if not target_path.exists():
+                                            for af in self.approved_folders.keys():
+                                                cand = Path(af) / target_path.name
+                                                if cand.exists():
+                                                    target_path = cand
+                                                    break
+                                                matches = list(Path(af).rglob(target_path.name))
+                                                if matches:
+                                                    target_path = matches[0]
+                                                    break
+                                        if target_path.exists():
+                                            os.startfile(str(target_path.resolve()))
+                                            logger.info("Opened file on local PC: %s", target_path)
+                                            if self.status_callback:
+                                                self.status_callback(f"✓ Opened: {target_path.name}")
+                                    except Exception as exc:
+                                        logger.warning("Could not open file: %s", exc)
                     except Exception:
                         pass
                     return True
@@ -438,7 +463,7 @@ class NanviLocalAgent:
                     self.status_callback("● Connected to Nanvi AI Assistant")
                 else:
                     self.status_callback("○ Reconnecting to Nanvi Cloud...")
-            time.sleep(10)
+            time.sleep(3)
 
     def start(self) -> None:
         self.running = True
