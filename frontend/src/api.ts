@@ -6,6 +6,12 @@ export type ApiClientOptions = {
   onUnauthorized?: () => void;
 };
 
+export type SafeUECPState = {
+  connected: boolean;
+  allowed: boolean;
+  features?: Record<string, boolean>;
+};
+
 export type UserIdentity = {
   subject: string;
   issuer: string;
@@ -14,6 +20,7 @@ export type UserIdentity = {
   tenant_id?: string | null;
   department?: string | null;
   roles: string[];
+  uecp?: SafeUECPState | null;
 };
 
 export type LocalAccountRole = "Superior" | "Supervisor" | "Project Engineer" | "Employee";
@@ -285,6 +292,10 @@ if (!response.ok) {
   }
 
   me() { return this.request<UserIdentity>("/auth/me"); }
+
+  uecpStatus() { return this.request<SafeUECPState>("/uecp/status"); }
+
+  uecpHealth() { return this.request<{ configured: boolean; reachable: boolean }>("/health/uecp"); }
 
   localLogin(username: string, password: string, role: LocalAccountRole) {
     return this.request<{ access_token: string; token_type: string; expires_in: number }>(

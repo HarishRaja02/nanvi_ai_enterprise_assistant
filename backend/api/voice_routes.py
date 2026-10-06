@@ -179,11 +179,15 @@ def is_query_incomplete_or_unclear(query: str, confidence: float | None = None) 
     return False
 
 
+from backend.uecp import require_uecp_access
+
+
 @router.post("/respond")
 def voice_respond(
     body: VoiceChatBody,
     user: UserAttributes = Depends(current_attributes),
     service: ChatService = Depends(get_chat_service),
+    _uecp: Any = Depends(require_uecp_access(permission="ai.chat")),
 ):
     """Execute enterprise voice query through the exact same LangGraph agent orchestration,
 

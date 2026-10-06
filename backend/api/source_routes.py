@@ -1,3 +1,4 @@
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend.security.dependencies import get_current_user
@@ -5,6 +6,8 @@ from backend.security.models import UserIdentity
 from backend.security.authorization import UserAttributes
 from backend.sources.service import SourceReferenceNotFound, SourceReferenceService
 from backend.sources.dependencies import get_source_reference_service
+
+from backend.uecp import require_uecp_access
 
 router = APIRouter()
 
@@ -25,6 +28,7 @@ async def get_source_reference(
     reference_id: str,
     identity: UserIdentity = Depends(get_current_user),
     service: SourceReferenceService = Depends(get_source_reference_service),
+    _uecp: Any = Depends(require_uecp_access(permission="documents.read")),
 ):
     """Return safe citation metadata only; never source content or infrastructure paths."""
     try:

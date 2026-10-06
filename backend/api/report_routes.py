@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -99,12 +100,16 @@ def get_current_user_attributes(identity: UserIdentity = Depends(get_current_use
     )
 
 
+from backend.uecp import require_uecp_access
+
+
 @router.post("/{report_id}/download-url")
 def create_download_url(
     report_id: str,
     ttl_seconds: int = Query(default=300, ge=1, le=3600),
     user: UserAttributes = Depends(get_current_user_attributes),
     service: ReportService = Depends(get_report_service),
+    _uecp: Any = Depends(require_uecp_access(permission="reports.download")),
 ):
     try:
         return {"download_url": service.issue_temporary_download_url(user, report_id, ttl_seconds)}

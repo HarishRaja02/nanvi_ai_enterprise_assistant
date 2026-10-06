@@ -123,16 +123,41 @@ def _probe_oauth() -> dict[str, Any]:
         return {"status": "up", "provider": "google"}
     return {"status": "skipped", "info": "OAuth not configured"}
 
+def _probe_uecp() -> dict[str, Any]:
+    try:
+        from backend.uecp import get_uecp_config, get_uecp_service
+        cfg = get_uecp_config()
+        if not cfg.enabled:
+            return {"status": "skipped", "info": "UECP not enabled"}
+        health = get_uecp_service().client.check_health()
+        if health["reachable"]:
+            return {"status": "up"}
+        if settings.is_production:
+            return {"status": "down", "error": "UECP unreachable"}
+        return {"status": "skipped", "info": "UECP unreachable in development"}
+    except Exception as exc:
+        if settings.is_production:
+            return {"status": "down", "error": str(exc)}
+        return {"status": "skipped", "info": f"UECP probe error: {exc}"}
+
+
+@router.get("/health/uecp")
+async def uecp_health() -> dict[str, bool]:
+    """Safe backend health/integration status endpoint for UECP."""
+    from backend.uecp import get_uecp_service
+    return get_uecp_service().client.check_health()
+
 
 @router.get("/health/ready")
 async def readiness() -> Any:
-    """Comprehensive readiness probe checking DB, Redis, LLM, Storage, and OAuth."""
+    """Comprehensive readiness probe checking DB, Redis, LLM, Storage, OAuth, and UECP."""
     deps = {
         "database": _probe_database(),
         "redis": _probe_redis(),
         "llm": _probe_llm(),
         "storage": _probe_storage(),
         "oauth": _probe_oauth(),
+        "uecp": _probe_uecp(),
     }
 
     is_any_down = any(dep.get("status") == "down" for dep in deps.values())
@@ -157,6 +182,25 @@ async def readiness() -> Any:
     }
 
 
+@router.get("/uecp/status")
+async def uecp_status(user: UserIdentity = Depends(get_current_user)) -> dict[str, Any]:
+    """Safe authorization state for frontend consumption."""
+    from backend.uecp import get_uecp_service
+    safe_state = get_uecp_service().get_safe_state(organization_id=user.tenant_id)
+    return safe_state.to_dict()
+
+
 @router.get("/auth/me")
 async def current_user(user: UserIdentity = Depends(get_current_user)) -> UserIdentity:
-    return user
+    from backend.uecp import get_uecp_service
+    safe_uecp = get_uecp_service().get_safe_state(organization_id=user.tenant_id)
+    return UserIdentity(
+        subject=user.subject,
+        issuer=user.issuer,
+        email=user.email,
+        name=user.name,
+        tenant_id=user.tenant_id,
+        department=user.department,
+        roles=user.roles,
+        uecp=safe_uecp.to_dict(),
+    )

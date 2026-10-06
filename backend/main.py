@@ -65,7 +65,7 @@ else:
 
 @app.middleware("http")
 async def rate_limit(request: Request, call_next):
-    if request.url.path in {"/api/health", "/api/health/ready"}:
+    if request.url.path in {"/api/health", "/api/health/ready", "/api/health/uecp", "/health/uecp"}:
         return await call_next(request)
     key = request.headers.get("X-Forwarded-For", request.client.host if request.client else "unknown").split(",")[0].strip()
     try:

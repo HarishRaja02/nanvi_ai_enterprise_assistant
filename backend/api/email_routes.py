@@ -20,6 +20,7 @@ from backend.integrations.email.user_account_service import (
 from backend.observability.logging import log_event
 from backend.security.dependencies import get_current_user
 from backend.security.models import UserIdentity
+from backend.uecp import require_uecp_access
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class DisconnectRequest(BaseModel):
 def get_google_auth_url(
     redirect_uri: str | None = Query(default=None),
     user: UserIdentity = Depends(get_current_user),
+    _uecp: Any = Depends(require_uecp_access(permission="email.read")),
 ) -> dict[str, str]:
     """Generate a Google OAuth 2.0 authorization URL for connecting a mailbox."""
     from backend.core.config import settings
@@ -71,6 +73,7 @@ def get_google_auth_url(
 def handle_google_callback(
     body: OAuthCallbackRequest,
     user: UserIdentity = Depends(get_current_user),
+    _uecp: Any = Depends(require_uecp_access(permission="email.read")),
 ) -> dict[str, Any]:
     """Exchange authorization code from Google OAuth and save the connected mailbox."""
     from backend.core.config import settings
@@ -218,6 +221,7 @@ def disconnect_mailbox(
 def manual_connect_mailbox(
     body: ManualConnectRequest,
     user: UserIdentity = Depends(get_current_user),
+    _uecp: Any = Depends(require_uecp_access(permission="email.read")),
 ) -> dict[str, Any]:
     """Manually link or update an email account for the user (supports dev & enterprise keys)."""
     from backend.core.config import settings

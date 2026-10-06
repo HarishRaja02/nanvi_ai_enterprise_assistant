@@ -13,6 +13,7 @@ from backend.security.dependencies import get_current_user
 from backend.security.models import UserIdentity
 from backend.security.authorization.rbac import Role
 from backend.observability.logging import log_event
+from backend.uecp import require_uecp_access
 import logging
 import time
 
@@ -63,7 +64,12 @@ def current_attributes(identity: UserIdentity = Depends(get_current_user)) -> Us
     return UserAttributes(identity.subject, identity.tenant_id, identity.department, identity.roles)
 
 @router.post("")
-def chat(body: ChatBody, user: UserAttributes = Depends(current_attributes), service: ChatService = Depends(get_chat_service)):
+def chat(
+    body: ChatBody,
+    user: UserAttributes = Depends(current_attributes),
+    service: ChatService = Depends(get_chat_service),
+    _uecp: Any = Depends(require_uecp_access(permission="ai.chat")),
+):
     started = time.perf_counter()
     log_event(logger, "api_chat_started", actor_id=user.user_id, tenant_id=user.tenant_id,
               query_length=len(body.query), has_conversation=bool(body.conversation_id))
@@ -138,6 +144,7 @@ def chat_stream(
     body: ChatBody,
     user: UserAttributes = Depends(current_attributes),
     service: ChatService = Depends(get_chat_service),
+    _uecp: Any = Depends(require_uecp_access(permission="ai.chat")),
 ):
     """Streaming chat endpoint emitting Server-Sent Events conforming to Section 6.2."""
     generator = service.stream_ask(
@@ -220,6 +227,7 @@ def upload_document_for_rag(
     body: UploadDocumentBody,
     user: UserAttributes = Depends(current_attributes),
     service: ChatService = Depends(get_chat_service),
+    _uecp: Any = Depends(require_uecp_access(permission="documents.write")),
 ):
     """Upload a document directly from chat into the RAG knowledge vault."""
     ext = Path(body.filename).suffix.casefold()
@@ -294,6 +302,7 @@ def file_search(
     body: FileSearchBody,
     user: UserAttributes = Depends(current_attributes),
     service: ChatService = Depends(get_chat_service),
+    _uecp: Any = Depends(require_uecp_access(permission="documents.read")),
 ):
     """Targeted search for files across a user-chosen enterprise source."""
     from backend.chat.file_search import execute_file_search

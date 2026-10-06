@@ -9,6 +9,7 @@ import { SourceDialog } from "./components/chat/SourceDialog";
 import { useToast } from "./components/ui/Toast";
 import { EnterpriseLoginGateway } from "./login/App";
 import { SessionSplash } from "./features/auth/SessionSplash";
+import { AccessUnavailableView } from "./features/auth/AccessUnavailableView";
 import { AuditPage } from "./features/workspaces/AuditPage";
 import { ReportsPage } from "./features/workspaces/ReportsPage";
 import { WorkspacePage } from "./features/workspaces/WorkspacePage";
@@ -245,6 +246,10 @@ export function App() {
         loading={session.signingIn}
       />
     );
+  }
+
+  if (identity.uecp && identity.uecp.allowed === false) {
+    return <AccessUnavailableView onSignOut={session.logout} />;
   }
 
   const displayName = identity.name || identity.email || "User";
