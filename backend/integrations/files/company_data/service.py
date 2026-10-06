@@ -5,7 +5,7 @@ import hashlib
 import logging
 import re
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -112,8 +112,24 @@ class CompanyDataService:
             self._file_hashes = {}
             self._last_indexed = 0.0
         set_persisted_folder(new_path, tenant_id=self.tenant_id)
+        with self._registry_lock:
+            for tid, inst in list(self._instances.items()):
+                if inst is not self:
+                    with inst._index_lock:
+                        inst.root = new_path
+                        inst._chunks = []
+                        inst._indexed_files = {}
+                        inst._file_hashes = {}
+                        inst._last_indexed = 0.0
         logger.info("CompanyData root for tenant '%s' updated to %s — forcing re-index", self.tenant_id, new_path)
         self.ensure_indexed(force=True)
+        with self._registry_lock:
+            for tid, inst in list(self._instances.items()):
+                if inst is not self:
+                    try:
+                        inst.ensure_indexed(force=True)
+                    except Exception as exc:
+                        logger.warning("Could not sync instance for tenant %s: %s", tid, exc)
 
     @property
     def chunks(self) -> list[CompanyChunk]:
@@ -223,21 +239,35 @@ class CompanyDataService:
             return True
         if Role.SUPERVISOR in user_roles:
             return folder_name != "Audit"
-        if Role.PROJECT_ENGINEER in user_roles:
-            return folder_name in {"Projects", "HR"}
-        if Role.EMPLOYEE in user_roles:
-            return folder_name == "HR"
 
-        if folder_name == "Finance":
-            return bool(user_roles & {Role.CEO, Role.FINANCE, Role.MANAGER, Role.IT_ADMIN})
-        if folder_name == "HR":
-            if Role.EMPLOYEE in user_roles and getattr(user, "department", None) == "HR":
+        fn_norm = folder_name.strip()
+        user_dept = str(getattr(user, "department", "") or "").casefold()
+
+        # Restricted departments
+        if fn_norm == "Audit":
+            return bool(user_roles & {Role.SUPERIOR, Role.CEO, Role.IT_ADMIN})
+
+        if fn_norm == "Finance":
+            if user_dept == "finance":
                 return True
-            return bool(user_roles & {Role.CEO, Role.HR, Role.MANAGER, Role.IT_ADMIN})
-        if folder_name == "Contracts":
-            return bool(user_roles & {Role.CEO, Role.FINANCE, Role.MANAGER, Role.IT_ADMIN})
+            return bool(user_roles & {Role.SUPERIOR, Role.SUPERVISOR, Role.CEO, Role.FINANCE, Role.MANAGER, Role.IT_ADMIN})
 
-        all_enterprise_roles = {Role.CEO, Role.FINANCE, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.IT_ADMIN}
+        if fn_norm == "Contracts":
+            if user_dept in ("finance", "legal", "executive"):
+                return True
+            return bool(user_roles & {Role.SUPERIOR, Role.SUPERVISOR, Role.CEO, Role.FINANCE, Role.MANAGER, Role.IT_ADMIN})
+
+        if fn_norm == "Resumes":
+            if user_dept == "hr":
+                return True
+            return bool(user_roles & {Role.SUPERIOR, Role.SUPERVISOR, Role.CEO, Role.HR, Role.MANAGER, Role.IT_ADMIN})
+
+        # HR folder: General HR access allowed for all enterprise users; sensitive HR files filtered in is_file_authorized
+        if fn_norm == "HR":
+            return bool(user_roles & {Role.SUPERIOR, Role.SUPERVISOR, Role.CEO, Role.HR, Role.MANAGER, Role.IT_ADMIN, Role.PROJECT_ENGINEER, Role.EMPLOYEE})
+
+        # Projects, Customers, Uploads, General, and any custom/user-selected folders are authorized for all enterprise roles
+        all_enterprise_roles = {Role.SUPERIOR, Role.SUPERVISOR, Role.CEO, Role.FINANCE, Role.HR, Role.MANAGER, Role.EMPLOYEE, Role.PROJECT_ENGINEER, Role.IT_ADMIN}
         return bool(user_roles & all_enterprise_roles)
 
     def is_file_authorized(self, user: UserAttributes, folder_name: str, relative_path: str) -> bool:
@@ -567,73 +597,277 @@ class CompanyDataService:
             )
 
         scored_files.sort(key=lambda x: x[0], reverse=True)
-        top_files = [f for _, f in scored_files[:5]]
+        # [LEGACY] Begin legacy detailed file discovery formatting:
+        # [LEGACY] top_files = [f for _, f in scored_files[:5]]
+        # [LEGACY] sources: list[SourceReference] = []
+        # [LEGACY] lines: list[str] = []
+        # [LEGACY] is_ambiguous = len(top_files) > 1 and (
+        # [LEGACY]     scored_files[0][0] - scored_files[1][0] < 5.0
+        # [LEGACY]     or any(w in q_lower for w in ("latest", "recent", "all", "which", "available"))
+        # [LEGACY] )
+        # [LEGACY] if is_ambiguous:
+        # [LEGACY]     lines.append("Found multiple matching documents across company records:\n")
+        # [LEGACY]     for idx, f in enumerate(top_files, start=1):
+        # [LEGACY]         fn = f["filename"]
+        # [LEGACY]         dept = f["folder"]
+        # [LEGACY]         path = f.get("full_path") or f.get("file_path", "")
+        # [LEGACY]         preview = f.get("preview", "")[:120].strip()
+        # [LEGACY]         prev_text = f" — *{preview}*" if preview else ""
+        # [LEGACY]         lines.append(f"{idx}. 📁 **[{dept}] {fn}** (`{f['file_id']}`){prev_text}")
+        # [LEGACY]         sources.append(SourceReference(
+        # [LEGACY]             reference_id=f"ref-{idx}-{fn.split('.')[0]}",
+        # [LEGACY]             source_type=SourceType.FILE,
+        # [LEGACY]             display_name=f"[{dept}] {fn}",
+        # [LEGACY]             title=fn,
+        # [LEGACY]             location=path,
+        # [LEGACY]         ))
+        # [LEGACY]     lines.append("\nPlease specify which document or time period you would like details on.")
+        # [LEGACY] else:
+        # [LEGACY]     top_file = top_files[0]
+        # [LEGACY]     fn = top_file["filename"]
+        # [LEGACY]     dept = top_file["folder"]
+        # [LEGACY]     ft = top_file["file_type"].upper()
+        # [LEGACY]     path = top_file.get("full_path") or top_file.get("file_path", "")
+        # [LEGACY]     preview = top_file.get("preview", "")[:250].strip()
+        # [LEGACY]     lines.append("Found the following matching document:\n")
+        # [LEGACY]     lines.append(f"📁 **[{dept}] {fn}**")
+        # [LEGACY]     lines.append(f"• **Location:** `{top_file['file_id']}`")
+        # [LEGACY]     lines.append(f"• **Department:** {dept} | **Type:** {ft}")
+        # [LEGACY]     if preview:
+        # [LEGACY]         lines.append(f"• **Summary:** {preview}")
+        # [LEGACY]     sources.append(SourceReference(
+        # [LEGACY]         reference_id=f"ref-1-{fn.split('.')[0]}",
+        # [LEGACY]         source_type=SourceType.FILE,
+        # [LEGACY]         display_name=f"[{dept}] {fn}",
+        # [LEGACY]         title=fn,
+        # [LEGACY]         location=path,
+        # [LEGACY]     ))
+        # [LEGACY]     if len(top_files) > 1:
+        # [LEGACY]         lines.append("\n*Related documents also found:*")
+        # [LEGACY]         for f in top_files[1:3]:
+        # [LEGACY]             lines.append(f"• 📁 **[{f['folder']}] {f['filename']}** (`{f['file_id']}`)")
+        # [LEGACY]             sources.append(SourceReference(
+        # [LEGACY]                 reference_id=f"ref-{len(sources)+1}-{f['filename'].split('.')[0]}",
+        # [LEGACY]                 source_type=SourceType.FILE,
+        # [LEGACY]                 display_name=f"[{f['folder']}] {f['filename']}",
+        # [LEGACY]                 title=f['filename'],
+        # [LEGACY]                 location=f.get('full_path') or f.get('file_path', ''),
+        # [LEGACY]             ))
+        # [LEGACY] End legacy detailed file discovery formatting.
 
+        # Simplified Document Search: Single table with File Name | File Path | Open button (top 10 results max)
+        top_files = [f for _, f in scored_files[:10]]
         sources: list[SourceReference] = []
-        lines: list[str] = []
-
-        is_ambiguous = len(top_files) > 1 and (
-            scored_files[0][0] - scored_files[1][0] < 5.0
-            or any(w in q_lower for w in ("latest", "recent", "all", "which", "available"))
-        )
-
-        if is_ambiguous:
-            lines.append("Found multiple matching documents across company records:\n")
-            for idx, f in enumerate(top_files, start=1):
-                fn = f["filename"]
-                dept = f["folder"]
-                path = f.get("full_path") or f.get("file_path", "")
-                preview = f.get("preview", "")[:120].strip()
-                prev_text = f" — *{preview}*" if preview else ""
-                lines.append(f"{idx}. 📁 **[{dept}] {fn}** (`{f['file_id']}`){prev_text}")
-                sources.append(SourceReference(
-                    reference_id=f"ref-{idx}-{fn.split('.')[0]}",
-                    source_type=SourceType.FILE,
-                    display_name=f"[{dept}] {fn}",
-                    title=fn,
-                    location=path,
-                ))
-            lines.append("\nPlease specify which document or time period you would like details on.")
-        else:
-            top_file = top_files[0]
-            fn = top_file["filename"]
-            dept = top_file["folder"]
-            ft = top_file["file_type"].upper()
-            path = top_file.get("full_path") or top_file.get("file_path", "")
-            preview = top_file.get("preview", "")[:250].strip()
-
-            lines.append("Found the following matching document:\n")
-            lines.append(f"📁 **[{dept}] {fn}**")
-            lines.append(f"• **Location:** `{top_file['file_id']}`")
-            lines.append(f"• **Department:** {dept} | **Type:** {ft}")
-            if preview:
-                lines.append(f"• **Summary:** {preview}")
-
+        lines = [
+            "| File Name | File Path | Action |",
+            "| --- | --- | --- |",
+        ]
+        for idx, f in enumerate(top_files, start=1):
+            fn = f["filename"]
+            path = f.get("full_path") or f.get("file_path", "")
+            lines.append(f"| {fn} | `{path}` | [Open]({path}) |")
             sources.append(SourceReference(
-                reference_id=f"ref-1-{fn.split('.')[0]}",
+                reference_id=f"ref-{idx}-{fn.split('.')[0]}",
                 source_type=SourceType.FILE,
-                display_name=f"[{dept}] {fn}",
+                display_name=fn,
                 title=fn,
                 location=path,
             ))
-
-            if len(top_files) > 1:
-                lines.append("\n*Related documents also found:*")
-                for f in top_files[1:3]:
-                    lines.append(f"• 📁 **[{f['folder']}] {f['filename']}** (`{f['file_id']}`)")
-                    sources.append(SourceReference(
-                        reference_id=f"ref-{len(sources)+1}-{f['filename'].split('.')[0]}",
-                        source_type=SourceType.FILE,
-                        display_name=f"[{f['folder']}] {f['filename']}",
-                        title=f['filename'],
-                        location=f.get('full_path') or f.get('file_path', ''),
-                    ))
 
         return SearchResult(
             is_exact_match=True,
             answer_content="\n".join(lines),
             sources=sources,
         )
+
+    @staticmethod
+    def extract_date_filter(query: str, ref_now: datetime | None = None) -> tuple[datetime | None, datetime | None]:
+        """Extract explicit or relative date ranges from search queries."""
+        if ref_now is None:
+            ref_now = datetime.now(timezone.utc)
+        q = query.casefold()
+
+        # 1. "last N days" / "past N days"
+        m = re.search(r"\b(?:last|past)\s+(\d+)\s+days?\b", q)
+        if m:
+            days = int(m.group(1))
+            return ref_now - timedelta(days=days), ref_now
+
+        # 2. "last N weeks" / "past N weeks"
+        m = re.search(r"\b(?:last|past)\s+(\d+)\s+weeks?\b", q)
+        if m:
+            weeks = int(m.group(1))
+            return ref_now - timedelta(weeks=weeks), ref_now
+
+        # 3. "last N months" / "past N months"
+        m = re.search(r"\b(?:last|past)\s+(\d+)\s+months?\b", q)
+        if m:
+            months = int(m.group(1))
+            return ref_now - timedelta(days=months * 30), ref_now
+
+        # 4. "last week" / "past week"
+        if re.search(r"\b(?:last|past)\s+week\b", q):
+            return ref_now - timedelta(days=7), ref_now
+
+        # 5. "this week"
+        if re.search(r"\bthis\s+week\b", q):
+            return ref_now - timedelta(days=ref_now.weekday()), ref_now
+
+        # 6. "last month" / "past month"
+        if re.search(r"\b(?:last|past)\s+month\b", q):
+            return ref_now - timedelta(days=30), ref_now
+
+        # 7. "this month"
+        if re.search(r"\bthis\s+month\b", q):
+            return datetime(ref_now.year, ref_now.month, 1, tzinfo=timezone.utc), ref_now
+
+        # 8. "last year" / "past year"
+        if re.search(r"\b(?:last|past)\s+year\b", q):
+            return ref_now - timedelta(days=365), ref_now
+
+        # 9. "today"
+        if re.search(r"\btoday\b", q):
+            return datetime(ref_now.year, ref_now.month, ref_now.day, tzinfo=timezone.utc), ref_now
+
+        # 10. "yesterday"
+        if re.search(r"\byesterday\b", q):
+            start = datetime(ref_now.year, ref_now.month, ref_now.day, tzinfo=timezone.utc) - timedelta(days=1)
+            end = datetime(ref_now.year, ref_now.month, ref_now.day, tzinfo=timezone.utc)
+            return start, end
+
+        # 11. Month names e.g. "september", "october"
+        months_map = {
+            "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+            "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12
+        }
+        for mname, mnum in months_map.items():
+            if re.search(rf"\b{mname}\b", q):
+                yr = ref_now.year if mnum <= ref_now.month else ref_now.year - 1
+                ym = re.search(r"\b(20\d{2})\b", q)
+                if ym:
+                    yr = int(ym.group(1))
+                start = datetime(yr, mnum, 1, tzinfo=timezone.utc)
+                if mnum == 12:
+                    end = datetime(yr + 1, 1, 1, tzinfo=timezone.utc)
+                else:
+                    end = datetime(yr, mnum + 1, 1, tzinfo=timezone.utc)
+                return start, end
+
+        # 12. Explicit 4-digit year e.g. "2025" or "2026"
+        ym = re.search(r"\b(20\d{2})\b", q)
+        if ym:
+            yr = int(ym.group(1))
+            return datetime(yr, 1, 1, tzinfo=timezone.utc), datetime(yr, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+
+        return None, None
+
+    def search_files_simple(
+        self,
+        user: UserAttributes,
+        query: str,
+        max_results: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Simplified file search: extracts keywords and date range, returns top matching files."""
+        if user.tenant_id and self.tenant_id and self.tenant_id != "default" and user.tenant_id != self.tenant_id:
+            raise PermissionError("Tenant access denied")
+        if not self._chunks:
+            self.ensure_indexed()
+
+        query_clean = query.strip()
+        q_lower = query_clean.casefold()
+
+        # Extract date filter
+        date_start, date_end = self.extract_date_filter(query_clean)
+
+        # Extract keywords excluding date terms and generic query fillers
+        date_noise = r"\b(?:last|past|this|days?|weeks?|months?|years?|today|yesterday|january|february|march|april|may|june|july|august|september|october|november|december|\d{1,3})\b"
+        cleaned_for_kws = re.sub(date_noise, " ", q_lower)
+        file_search_noise = STOPWORDS | {
+            "file", "files", "document", "documents", "show", "give", "find", "search",
+            "get", "list", "any", "fetch", "from", "the", "for", "look", "where", "with",
+            "need", "want", "please", "can", "you", "me", "i", "we", "our",
+        }
+        tokens = [w for w in re.findall(r"\w+", cleaned_for_kws) if len(w) > 1 and w not in file_search_noise]
+
+        # Department matches
+        dept_match = None
+        for d in FOLDER_ROLES.keys():
+            if d.casefold() in q_lower:
+                dept_match = d
+                break
+
+        matching: list[tuple[float, dict[str, Any]]] = []
+
+        for rel_path, info in self._indexed_files.items():
+            dept = info["folder"]
+            if not self.is_folder_authorized(user, dept):
+                continue
+
+            fn = info["filename"].casefold()
+            content_lower = info.get("content", "").casefold()
+
+            # Date filtering
+            if date_start:
+                mtime_str = info.get("modified_at") or info.get("created_at")
+                file_in_range = False
+                if mtime_str:
+                    try:
+                        mtime_dt = datetime.fromisoformat(mtime_str)
+                        if mtime_dt.tzinfo is None:
+                            mtime_dt = mtime_dt.replace(tzinfo=timezone.utc)
+                        if date_start <= mtime_dt <= (date_end or datetime.now(timezone.utc)):
+                            file_in_range = True
+                    except Exception:
+                        pass
+                if not file_in_range:
+                    continue
+
+            # Keyword scoring
+            score = 0.0
+            if not tokens:
+                # If no specific keywords (e.g. "files from last 30 days"), all authorized files in date range match
+                score = 10.0
+            else:
+                for kw in tokens:
+                    if kw in fn:
+                        score += 50.0  # Filename match gets highest priority
+                    elif kw in content_lower:
+                        score += 5.0
+
+            if dept_match and dept.casefold() == dept_match.casefold():
+                score += 15.0
+
+            # If tokens were specified, file MUST match at least one token (score > 0)
+            if tokens and score <= 0.0:
+                continue
+
+            if score > 0.0 or not tokens:
+                matching.append((score, info))
+
+        # Sort by score descending (filename matches first), then modified_at descending
+        matching.sort(key=lambda x: (x[0], x[1].get("modified_at", "")), reverse=True)
+
+        seen_filenames = set()
+        results: list[dict[str, Any]] = []
+        for _, info in matching:
+            fn = info["filename"]
+            fn_key = fn.casefold()
+            if fn_key in seen_filenames:
+                continue
+            full_path = info.get("full_path") or info.get("file_path", "")
+            seen_filenames.add(fn_key)
+            results.append({
+                "name": fn,
+                "path": full_path,
+                "type": info.get("file_type", ""),
+                "modified_at": info.get("modified_at", ""),
+                "open_url": full_path,
+                "source": "local",
+            })
+            if len(results) >= max_results:
+                break
+
+        return results
 
     def _analyze_query(self, query: str) -> dict[str, Any]:
         q_lower = query.casefold()

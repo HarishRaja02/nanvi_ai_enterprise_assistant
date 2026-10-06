@@ -26,9 +26,6 @@ def resolve_root(current_root: Path, tenant_id: str) -> Path | None:
     fallback = project_root / "CompanyData"
     if fallback.exists() and fallback.is_dir():
         return fallback
-    test_doc_fallback = project_root / "test_doc"
-    if test_doc_fallback.exists() and test_doc_fallback.is_dir():
-        return test_doc_fallback
     return None
 
 

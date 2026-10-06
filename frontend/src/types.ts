@@ -1,5 +1,14 @@
 import type { SourceView } from "./lib/sources";
 
+export type FileResultItem = {
+  name: string;
+  path: string;
+  type?: string;
+  open_url?: string;
+  modified_at?: string;
+  source?: string;
+};
+
 export type Message = {
   id: string;
   role: "user" | "assistant";
@@ -14,6 +23,9 @@ export type Message = {
   dataSource?: "live" | "synthetic" | string;
   error?: boolean;
   retryAfter?: number;
+  sourceSelectionRequired?: boolean;
+  pendingSearchQuery?: string;
+  fileResults?: FileResultItem[];
 };
 
 export type ConversationSummary = { conversation_id: string; title?: string | null; updated_at?: string };

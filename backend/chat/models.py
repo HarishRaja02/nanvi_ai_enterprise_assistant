@@ -35,4 +35,7 @@ class ChatResponse:
     history: tuple[ChatMessage, ...]
     report_id: str | None = None
     data_source: str = "live"
+    source_selection_required: bool = False
+    pending_search_query: str | None = None
+    file_results: tuple[dict[str, Any], ...] | None = None
 

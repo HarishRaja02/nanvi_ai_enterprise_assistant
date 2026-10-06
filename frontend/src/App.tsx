@@ -328,6 +328,7 @@ export function App() {
                 onDownload={(id) => void downloadReport(id)}
                 onNewConversation={newConversation}
                 onOpenVoiceMode={() => setVoiceModeOpen(true)}
+                onSelectSource={chat.selectSource}
               />
             )}
             {activeView === "Reports" && <ReportsPage onAsk={ask} />}

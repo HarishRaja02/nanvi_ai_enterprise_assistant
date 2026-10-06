@@ -53,6 +53,16 @@ export type ChatResponse = {
   history: Array<{ role: "user" | "assistant"; content: string; created_at: string }>;
   report_id?: string | null;
   data_source?: "live" | "synthetic" | string;
+  source_selection_required?: boolean;
+  pending_search_query?: string;
+  file_results?: Array<{
+    name: string;
+    path: string;
+    type?: string;
+    open_url?: string;
+    modified_at?: string;
+    source?: string;
+  }>;
 };
 
 export type VoiceResponse = {
@@ -295,6 +305,40 @@ if (!response.ok) {
     return this.request<ChatResponse>("/chat", {
       method: "POST",
       body: JSON.stringify({ query, conversation_id: conversationId, rag_enabled: ragEnabled, active_document_id: activeDocumentId }),
+    });
+  }
+
+  fileSearch(query: string, source: string, conversationId?: string, maxResults: number = 10) {
+    return this.request<{
+      conversation_id: string;
+      answer: string;
+      files: Array<{
+        name: string;
+        path: string;
+        type?: string;
+        open_url?: string;
+        modified_at?: string;
+        source?: string;
+      }>;
+      total_count: number;
+      source: string;
+      capability: string;
+      sources: ChatSource[];
+    }>("/chat/file-search", {
+      method: "POST",
+      body: JSON.stringify({
+        query,
+        source,
+        conversation_id: conversationId,
+        max_results: maxResults,
+      }),
+    });
+  }
+
+  openFile(filePath: string) {
+    return this.request<{ status: string; opened?: string; message?: string }>("/chat/open-file", {
+      method: "POST",
+      body: JSON.stringify({ file_path: filePath }),
     });
   }
 

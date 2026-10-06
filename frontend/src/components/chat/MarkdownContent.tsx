@@ -72,58 +72,42 @@ function HighlightedText({ text }: { text: string }) {
 }
 
 function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
-  const [expanded, setExpanded] = useState(false);
-  const { title, items } = parseDocumentContent(document.content);
-  const metadata = [document.folder, document.location].filter(Boolean).join(" · ");
-  const previewIndexes = new Set(items.slice(0, 5).map((_, index) => index));
-  items.forEach((item, index) => {
-    if (item.type === "field" && /(value|amount|progress|status|budget|cost|total|revenue|date|percent|rate|balance)/i.test(item.label)) {
-      previewIndexes.add(index);
-    }
-  });
-  const visibleItems = expanded ? items : items.filter((_, index) => previewIndexes.has(index));
-  const hasToggle = previewIndexes.size < items.length || items.some((item) => item.type === "text" && item.text.length > 280);
+  const filePath = document.location || (document.folder ? `${document.folder}/${document.filename}` : document.filename);
+  const handleOpen = () => {
+    window.open(encodeURI(`file:///${filePath.replace(/\\/g, "/")}`), "_blank");
+  };
 
   return (
-    <article className="document-result-card">
-      <header className="document-result-header">
-        <div className="document-result-title-wrap">
-          <span className="document-result-filename">{document.filename}</span>
-          {metadata && <span className="document-result-meta">{metadata}</span>}
-        </div>
-      </header>
-
-      {title && <h4 className="document-result-heading">{title}</h4>}
-
-      <div className="document-result-content">
-        {visibleItems.map((item, index) => {
-          if (item.type === "field") {
-            return (
-              <div className="document-result-field" key={`${item.label}-${index}`}>
-                <span className="document-result-label">{item.label}</span>
-                <strong className="document-result-value"><HighlightedText text={item.value} /></strong>
-              </div>
-            );
-          }
-          if (item.type === "heading") {
-            return <h5 className="document-result-subheading" key={`${item.text}-${index}`}>{item.text}</h5>;
-          }
-          const text = !expanded && item.text.length > 280 ? `${item.text.slice(0, 280).trimEnd()}…` : item.text;
-          return <p className="document-result-text" key={`${item.text}-${index}`}><HighlightedText text={text} /></p>;
-        })}
-      </div>
-
-      {hasToggle && (
-        <button
-          type="button"
-          className="document-result-toggle"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? "Show less" : "Show full details"}
-        </button>
-      )}
-    </article>
+    <div className="file-results-table-wrapper" style={{ margin: "8px 0" }}>
+      <table className="file-results-table">
+        <thead>
+          <tr>
+            <th className="col-name">File Name</th>
+            <th className="col-path">File Path</th>
+            <th className="col-action">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="file-results-row">
+            <td className="cell-name">
+              <span className="file-name-text">{document.filename}</span>
+            </td>
+            <td className="cell-path">
+              <code className="file-path-code">{filePath}</code>
+            </td>
+            <td className="cell-action">
+              <button
+                type="button"
+                className="file-open-btn"
+                onClick={handleOpen}
+              >
+                Open
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -491,6 +475,7 @@ function parseSegments(text: string): ContentSegment[] {
 export function MarkdownContent({ text }: { text: string }) {
   const displayText = useMemo(
     () => text
+      .replace(/Synthetic vendor invoice created for document-ingestion and RAG testing\.?/gi, "")
       .replace(/^I found relevant information across \*\*multiple sources\*\*:\s*$/mi, "Here’s what I found:")
       .replace(/^###\s*.*Local Files\s*\/\s*Documents\s*$/gmi, "### Company documents"),
     [text],

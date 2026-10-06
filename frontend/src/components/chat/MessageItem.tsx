@@ -8,22 +8,28 @@ import { MarkdownContent } from "./MarkdownContent";
 import { SourceList } from "./SourceList";
 import { TraceDisclosure } from "./TraceDisclosure";
 import { BentoMetrics } from "./BentoMetrics";
+import { SourceSelector } from "./SourceSelector";
+import { FileResultsTable } from "./FileResultsTable";
 import { useCountdown } from "../../hooks/useCountdown";
 import { copyText } from "../../lib/clipboard";
 import { formatTime, humanize } from "../../lib/format";
 import type { ContextMetric } from "../../lib/contextIntelligence";
 import type { SourceView } from "../../lib/sources";
 import type { Message } from "../../types";
+import type { NanviApiClient } from "../../api";
 
 type Props = {
   message: Message;
+  api?: NanviApiClient;
   onOpenSource: (source: SourceView) => void;
   onDownload: (reportId: string) => void;
   onRetry: (messageId: string) => void;
   onFollowup?: (prompt: string) => void;
+  onSelectSource?: (query: string, source: string) => void;
 };
 
 function AssistantHead({ time, capability, dataSource }: { time: number; capability?: string; dataSource?: string }) {
+  const isDocSearch = capability && (capability.includes("document_search") || capability.includes("file_search"));
   const isReport = capability && capability.includes("report");
   const isRag = capability && (capability.includes("knowledge") || capability.includes("rag"));
   const isData = capability && (capability.includes("database") || capability.includes("data"));
@@ -37,10 +43,12 @@ function AssistantHead({ time, capability, dataSource }: { time: number; capabil
       <span className="msg-author">Nanvi Assistant</span>
       {capability && (
         <Badge
-          tone={isReport ? "primary" : isRag ? "accent" : isData ? "primary" : isWeb ? "accent" : "neutral"}
+          tone={isDocSearch ? "primary" : isReport ? "primary" : isRag ? "accent" : isData ? "primary" : isWeb ? "accent" : "neutral"}
           className={isRag ? "rag-badge" : undefined}
         >
-          {isReport
+          {isDocSearch
+            ? "🔍 Document Search"
+            : isReport
             ? "📄 Document Generator"
             : isRag
             ? "Document Search"
@@ -120,7 +128,7 @@ function extractKeyMetrics(text: string): ContextMetric[] {
   return metrics;
 }
 
-function MessageItemBase({ message, onOpenSource, onDownload, onRetry, onFollowup }: Props) {
+function MessageItemBase({ message, api, onOpenSource, onDownload, onRetry, onFollowup, onSelectSource }: Props) {
   const notify = useToast();
   const [copied, setCopied] = useState(false);
 
@@ -167,15 +175,34 @@ function MessageItemBase({ message, onOpenSource, onDownload, onRetry, onFollowu
       <AssistantHead time={message.createdAt} capability={message.capability} dataSource={message.dataSource} />
 
       {/* Render Bento Metrics Strip if key figures are detected */}
-      {metrics.length > 1 && !isDocumentAnswer && (
+      {metrics.length > 1 && !isDocumentAnswer && !message.fileResults?.length && (
         <BentoMetrics metrics={metrics} title="Key Figures Detected" className="msg-bento-metrics" />
       )}
 
-      {/* Render Markdown & Interactive Tables */}
-      <MarkdownContent text={message.text} />
+      {/* Interactive Source Selection Buttons */}
+      {message.sourceSelectionRequired && onSelectSource && (
+        <SourceSelector
+          onSelect={(source) => onSelectSource(message.pendingSearchQuery || message.text, source)}
+        />
+      )}
 
-      {/* Render Interactive Source Cards */}
-      {message.sources && message.sources.length > 0 && (
+      {/* Render Simplified File Results Table */}
+      {message.fileResults && message.fileResults.length > 0 ? (
+        <div className="file-search-result-block">
+          {message.text && (
+            <div className="file-search-summary" style={{ marginBottom: "12px", fontWeight: 500 }}>
+              <MarkdownContent text={message.text.split("\n\n|")[0].replace(/^\|.*$/gm, "").trim()} />
+            </div>
+          )}
+          <FileResultsTable files={message.fileResults} api={api} />
+        </div>
+      ) : (
+        /* Render Markdown & Interactive Tables */
+        <MarkdownContent text={message.text} />
+      )}
+
+      {/* Render Interactive Source Cards only when no fileResults table is displayed */}
+      {message.sources && message.sources.length > 0 && !message.fileResults?.length && (
         <SourceList sources={message.sources} onOpen={onOpenSource} />
       )}
 

@@ -31,6 +31,12 @@ def get_persisted_folder(tenant_id: str = "default") -> Path | None:
                     if saved and Path(saved).exists() and Path(saved).is_dir():
                         return Path(saved).resolve()
 
+            # Fallback to the latest saved folder from any tenant
+            for _, tinfo in sorted(data.items(), key=lambda item: item[1].get("updated_at", ""), reverse=True):
+                saved = tinfo.get("path")
+                if saved and Path(saved).exists() and Path(saved).is_dir():
+                    return Path(saved).resolve()
+
         if ACTIVE_FOLDER_FILE.exists():
             data = json.loads(ACTIVE_FOLDER_FILE.read_text(encoding="utf-8"))
             saved = data.get("path")
@@ -53,19 +59,23 @@ def set_persisted_folder(path: Path | str, tenant_id: str = "default") -> None:
                 all_data = json.loads(ACTIVE_FOLDERS_FILE.read_text(encoding="utf-8"))
             except Exception:
                 all_data = {}
+        now_iso = datetime.now(timezone.utc).isoformat()
         all_data[t_id] = {
             "path": path_str,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": now_iso,
+        }
+        all_data["default"] = {
+            "path": path_str,
+            "updated_at": now_iso,
         }
         ACTIVE_FOLDERS_FILE.write_text(json.dumps(all_data, indent=2), encoding="utf-8")
-        if t_id == "default":
-            try:
-                ACTIVE_FOLDER_FILE.write_text(
-                    json.dumps({"path": path_str, "updated_at": datetime.now(timezone.utc).isoformat()}, indent=2),
-                    encoding="utf-8",
-                )
-            except Exception:
-                pass
+        try:
+            ACTIVE_FOLDER_FILE.write_text(
+                json.dumps({"path": path_str, "updated_at": now_iso}, indent=2),
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
         logger.info("Persisted active company data folder for tenant '%s': %s", t_id, path)
     except Exception as exc:
         logger.warning("Could not persist active folder path for tenant '%s': %s", t_id, exc)

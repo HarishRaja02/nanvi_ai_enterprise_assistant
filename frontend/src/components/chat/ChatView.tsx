@@ -29,6 +29,7 @@ type Props = {
   onDownload: (reportId: string) => void;
   onNewConversation: () => void;
   onOpenVoiceMode?: () => void;
+  onSelectSource?: (query: string, source: string) => void;
 };
 
 export function ChatView({
@@ -48,6 +49,7 @@ export function ChatView({
   onDownload,
   onNewConversation,
   onOpenVoiceMode,
+  onSelectSource,
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   const empty = messages.length === 0 && !busy && !loadingHistory;
@@ -123,10 +125,12 @@ export function ChatView({
               <MessageItem
                 key={m.id}
                 message={m}
+                api={api}
                 onOpenSource={onOpenSource}
                 onDownload={onDownload}
                 onRetry={onRetry}
                 onFollowup={(p) => void onSend(p)}
+                onSelectSource={onSelectSource}
               />
             ))}
 

@@ -103,14 +103,50 @@ class KnowledgeAgent(Agent):
                 return AgentResponse(self.capability, combined_content, combined_sources, deterministic=False)
             return AgentResponse(self.capability, local_text, tuple(local_sources), deterministic=False)
 
-        if company_data_res and company_data_res.answer_content:
-            is_restricted = "Access Restricted" in company_data_res.answer_content
-            is_structured = company_data_res.is_exact_match and ("Found the following" in company_data_res.answer_content)
+        if company_data_res and company_data_res.sources:
+            # [LEGACY] is_restricted = "Access Restricted" in company_data_res.answer_content
+            # [LEGACY] is_structured = company_data_res.is_exact_match and ("Found the following" in company_data_res.answer_content)
+            # [LEGACY] return AgentResponse(self.capability, company_data_res.answer_content, tuple(company_data_res.sources), deterministic=(is_restricted or is_structured))
+            # [LEGACY] End legacy raw chunk output.
+            is_restricted = "Access Restricted" in getattr(company_data_res, "answer_content", "")
+            if is_restricted:
+                return AgentResponse(self.capability, company_data_res.answer_content, (), deterministic=True)
+
+            seen = set()
+            clean_sources = []
+            for s in company_data_res.sources:
+                fn = getattr(s, "display_name", None) or getattr(s, "title", "document")
+                # Clean prefix like [Finance] invoice_003.pdf -> invoice_003.pdf
+                fn_clean = re.sub(r"^\[[^\]]+\]\s*", "", fn)
+                if fn_clean not in seen:
+                    seen.add(fn_clean)
+                    clean_sources.append(s)
+
+            count = len(clean_sources)
+            summary = f"Found **{count}** matching document{'s' if count != 1 else ''}:"
+            lines = [
+                summary,
+                "",
+                "| File Name | File Path | Action |",
+                "| --- | --- | --- |",
+            ]
+            for s in clean_sources[:10]:
+                fn = re.sub(r"^\[[^\]]+\]\s*", "", getattr(s, "display_name", None) or getattr(s, "title", "document"))
+                path = getattr(s, "location", fn) or fn
+                lines.append(f"| {fn} | `{path}` | [Open]({path}) |")
+
+            return AgentResponse(
+                self.capability,
+                "\n".join(lines),
+                tuple(clean_sources),
+                deterministic=True,
+            )
+        elif company_data_res and company_data_res.answer_content:
             return AgentResponse(
                 self.capability,
                 company_data_res.answer_content,
                 tuple(company_data_res.sources),
-                deterministic=(is_restricted or is_structured),
+                deterministic=True,
             )
         elif self._retrieval is None:
             return AgentResponse(

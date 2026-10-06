@@ -44,6 +44,9 @@ export function useChat(api: NanviApiClient, identity: UserIdentity | null, onAn
         capability: response.capability,
         reportId: response.report_id,
         dataSource: response.data_source,
+        sourceSelectionRequired: response.source_selection_required,
+        pendingSearchQuery: response.pending_search_query,
+        fileResults: response.file_results,
       }]);
       onAnswered?.();
     } catch (error) {
@@ -58,6 +61,55 @@ export function useChat(api: NanviApiClient, identity: UserIdentity | null, onAn
       }]);
     } finally {
       if (epoch === epochRef.current) { busyRef.current = false; setBusy(false); }
+    }
+  }, [api, onAnswered, setConversation]);
+
+  const selectSource = useCallback(async (query: string, source: string) => {
+    const epoch = epochRef.current;
+    busyRef.current = true;
+    setBusy(true);
+
+    const friendlySource = source === "local" ? "Local Storage" :
+      source === "database" ? "Database" :
+      source === "email" ? "Email" :
+      source === "drive" ? "Google Drive" :
+      source === "cloud" ? "Cloud" : source;
+
+    setMessages((m) => [...m, {
+      id: uid(),
+      role: "user",
+      text: `Search in ${friendlySource}`,
+      createdAt: Date.now(),
+    }]);
+
+    try {
+      const response = await api.fileSearch(query, source, idRef.current);
+      if (epoch !== epochRef.current) return;
+      setConversation(response.conversation_id);
+      setMessages((m) => [...m, {
+        id: uid(),
+        role: "assistant",
+        text: response.answer,
+        createdAt: Date.now(),
+        sources: (response.sources || []).map(toSourceView),
+        capability: response.capability || "document_search",
+        fileResults: response.files,
+      }]);
+      onAnswered?.();
+    } catch (error) {
+      if (epoch !== epochRef.current) return;
+      setMessages((m) => [...m, {
+        id: uid(),
+        role: "assistant",
+        text: error instanceof Error ? error.message : "Nanvi could not complete the file search.",
+        createdAt: Date.now(),
+        error: true,
+      }]);
+    } finally {
+      if (epoch === epochRef.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }, [api, onAnswered, setConversation]);
 
@@ -137,5 +189,5 @@ export function useChat(api: NanviApiClient, identity: UserIdentity | null, onAn
   // Signing out (or a 401) must never leave the previous user's conversation on screen.
   useEffect(() => { if (!identity) reset(); }, [identity, reset]);
 
-  return { messages, busy, conversationId, setConversationId: setConversation, resumed, loadingHistory, ragEnabled, setRagEnabled, send, retry, reset, resume, appendTurn };
+  return { messages, busy, conversationId, setConversationId: setConversation, resumed, loadingHistory, ragEnabled, setRagEnabled, send, selectSource, retry, reset, resume, appendTurn };
 }

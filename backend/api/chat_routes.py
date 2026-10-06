@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from backend.chat.models import ChatRequest
@@ -119,6 +119,9 @@ def chat(body: ChatBody, user: UserAttributes = Depends(current_attributes), ser
         "history": [asdict(m) for m in response.history],
         "report_id": getattr(response, "report_id", None),
         "data_source": getattr(response, "data_source", "live"),
+        "source_selection_required": getattr(response, "source_selection_required", False),
+        "pending_search_query": getattr(response, "pending_search_query", None),
+        "file_results": list(getattr(response, "file_results", []) or []) if getattr(response, "file_results", None) else None,
     }
 
 
@@ -273,4 +276,116 @@ def upload_document_for_rag(
         "size_bytes": len(data),
         "message": f"Successfully ingested {clean_filename} into RAG Knowledge Vault",
     }
+
+
+class FileSearchBody(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    source: str = Field(description="local, database, email, drive, or cloud")
+    conversation_id: str | None = None
+    max_results: int = 10
+
+
+class OpenFileBody(BaseModel):
+    file_path: str = Field(min_length=1)
+
+
+@router.post("/file-search")
+def file_search(
+    body: FileSearchBody,
+    user: UserAttributes = Depends(current_attributes),
+    service: ChatService = Depends(get_chat_service),
+):
+    """Targeted search for files across a user-chosen enterprise source."""
+    from backend.chat.file_search import execute_file_search
+    from backend.chat.models import ChatMessage
+    from datetime import datetime, timezone
+
+    conversation_id = body.conversation_id or "default"
+    answer, files, sources = execute_file_search(
+        user=user,
+        query=body.query,
+        source=body.source,
+        max_results=body.max_results,
+    )
+
+    if hasattr(service, "_store") and service._store is not None:
+        try:
+            service._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+        except Exception as exc:
+            logger.warning("Could not append file search to store: %s", exc)
+
+    return {
+        "conversation_id": conversation_id,
+        "answer": answer,
+        "files": files,
+        "total_count": len(files),
+        "source": body.source,
+        "capability": "document_search",
+        "sources": [s.to_frontend_dict() for s in sources],
+    }
+
+
+@router.post("/open-file")
+def open_local_file(
+    body: OpenFileBody,
+    user: UserAttributes = Depends(current_attributes),
+):
+    """Open a local file in the system default application or directory."""
+    raw_path = body.file_path.strip()
+    if raw_path.startswith("file:///"):
+        raw_path = raw_path[8:]
+
+    p = Path(raw_path)
+    if not p.is_absolute() or not p.exists():
+        from backend.integrations.files.company_data_service import CompanyDataService
+        root = CompanyDataService.for_tenant(user.tenant_id).root
+        candidate = root / raw_path
+        if candidate.exists():
+            p = candidate
+        else:
+            fn = p.name
+            matches = [m for m in root.rglob(fn) if m.is_file()]
+            if matches:
+                p = matches[0]
+
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {body.file_path}")
+
+    try:
+        import os
+        os.startfile(str(p.resolve()))
+        return {"status": "ok", "opened": str(p.resolve())}
+    except Exception as exc:
+        logger.warning("os.startfile failed: %s", exc)
+        return {"status": "fallback", "message": str(exc), "path": str(p.resolve())}
+
+
+@router.get("/download-file")
+def download_local_file(
+    path: str,
+    user: UserAttributes = Depends(current_attributes),
+):
+    """Serve a local file for browser preview or download."""
+    raw_path = path.strip()
+    if raw_path.startswith("file:///"):
+        raw_path = raw_path[8:]
+
+    p = Path(raw_path)
+    from backend.integrations.files.company_data_service import CompanyDataService
+    root = CompanyDataService.for_tenant(user.tenant_id).root.resolve()
+
+    if not p.is_absolute() or not p.exists():
+        candidate = (root / raw_path).resolve()
+        if candidate.exists() and candidate.is_file():
+            p = candidate
+        else:
+            matches = [m for m in root.rglob(Path(raw_path).name) if m.is_file()]
+            if matches:
+                p = matches[0]
+
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(path=str(p.resolve()), filename=p.name)
+
 

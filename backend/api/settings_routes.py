@@ -70,7 +70,9 @@ class CompanyFolderUpdateResponse(BaseModel):
 
 
 def _is_admin(user: UserIdentity) -> bool:
-    """Check if the user has an administrative role."""
+    """Check if the user has permission to manage or select company folders."""
+    if not settings.is_production:
+        return True
     roles_normalized = {
         r.lower().replace(" ", "").replace("_", "").replace("-", "")
         for r in user.roles
@@ -87,6 +89,13 @@ def _get_filesystem_root_entries() -> list[dict[str, str | bool]]:
     repo_data = project_root / "CompanyData"
     if repo_data.is_dir():
         entries.append({"name": "Bundled Company Data (Repository)", "path": str(repo_data), "is_dir": True})
+
+    # 2. Common User folders (Downloads, Desktop, Documents)
+    home = Path.home()
+    for name, sub in [("Downloads", "Downloads"), ("Desktop", "Desktop"), ("Documents", "Documents")]:
+        folder = home / sub
+        if folder.is_dir():
+            entries.append({"name": f"{name} ({folder.name})", "path": str(folder), "is_dir": True})
 
     # 2. Filesystem roots
     if os.name == "nt":
@@ -117,18 +126,18 @@ def _get_filesystem_root_entries() -> list[dict[str, str | bool]]:
 def _resolve_requested_path(path: str) -> Path:
     """Resolve a user-selected path without restricting it to configured roots."""
     try:
-        clean = path.strip()
+        clean = os.path.expandvars(path.strip())
         # Aliases for repository bundled CompanyData
         if clean.lower() in {"default", "reset", "companydata", "./companydata", "repo"}:
             repo_data = Path(__file__).resolve().parents[2] / "CompanyData"
             if repo_data.is_dir():
                 return repo_data
-        p = Path(clean)
+        p = Path(clean).expanduser()
         if not p.is_absolute():
             candidate = Path(__file__).resolve().parents[2] / clean
             if candidate.exists() and candidate.is_dir():
                 return candidate.resolve()
-        return p.expanduser().resolve()
+        return p.resolve()
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,14 +154,14 @@ def _folder_stats(folder_path: str) -> dict:
     folder_count = 0
     file_count = 0
     try:
-        for entry in p.iterdir():
-            if entry.name.startswith("."):
+        for entry in p.rglob("*"):
+            if entry.name.startswith(".") or entry.name.startswith("~$"):
                 continue
             if entry.is_dir():
                 folder_count += 1
             elif entry.is_file():
                 file_count += 1
-    except PermissionError:
+    except (PermissionError, OSError):
         pass
     return {"exists": True, "folder_count": folder_count, "file_count": file_count}
 
@@ -239,6 +248,7 @@ async def update_company_folder(
 
     stats = _folder_stats(str(p))
     indexed = len(service.files)
+    file_count = indexed if indexed > 0 else stats["file_count"]
 
     logger.info("Company data folder updated to %s by user %s (indexed %d files)", p, user.subject, indexed)
 
@@ -247,7 +257,7 @@ async def update_company_folder(
         path=str(p),
         exists=stats["exists"],
         folder_count=stats["folder_count"],
-        file_count=stats["file_count"],
+        file_count=file_count,
         indexed_files=indexed,
         message=f"Company data folder updated to {p}. {indexed} files indexed.",
     )

@@ -113,14 +113,45 @@ class ChatService:
                 history=self._store.get(conversation_id),
             )
 
-        # 2. Contextualize query if prior history exists (resolves pronouns, deictic references, ordinals, and why follow-ups)
+        # Check if user is responding to a source selection prompt
+        prior_asst_msgs = [m.content for m in prior_history if m.role == "assistant"]
+        prior_user_msgs = [m.content for m in prior_history if m.role == "user"]
+        is_answering_source = (
+            bool(prior_asst_msgs)
+            and "Which source would you like me to search?" in prior_asst_msgs[-1]
+            and bool(self._extract_source_from_query(query) or query.strip().casefold() in ("local", "database", "email", "google drive", "drive", "cloud", "local storage", "1", "2", "3", "4", "5"))
+        )
+        if is_answering_source and prior_user_msgs:
+            selected_source = self._extract_source_from_query(query) or query.strip().casefold()
+            # Retrieve the user question that prompted source selection
+            original_query = ""
+            for m in reversed(prior_user_msgs):
+                m_clean = m.strip().casefold()
+                if not self._extract_source_from_query(m) and m_clean not in ("local", "database", "email", "google drive", "drive", "cloud", "local storage", "1", "2", "3", "4", "5"):
+                    original_query = m
+                    break
+            if not original_query and prior_user_msgs:
+                original_query = prior_user_msgs[-1]
+
+            from backend.chat.file_search import execute_file_search
+            answer, files, sources = execute_file_search(user, original_query, selected_source, max_results=10)
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=tuple(sources),
+                capability="document_search",
+                trace=(f"File search executed on {selected_source}",),
+                history=self._store.get(conversation_id),
+                file_results=tuple(files),
+            )
+
+        # 2. Contextualize query if prior history exists
         effective_query = query
         from backend.chat.deictic_resolver import DeicticResolver
         from backend.chat.context_engine import context_manager
 
         ctx = context_manager.get(conversation_id)
-        prior_user_msgs = [m.content for m in prior_history if m.role == "user"]
-        prior_asst_msgs = [m.content for m in prior_history if m.role == "assistant"]
         prior_user = prior_user_msgs[-1] if prior_user_msgs else ""
         prior_asst = prior_asst_msgs[-1] if prior_asst_msgs else ""
 
@@ -132,23 +163,26 @@ class ChatService:
         )
         if deictic_query != query:
             effective_query = deictic_query
-        else:
-            from backend.retrieval.intent import classify_retrieval_intent, QueryIntent
-            intent = classify_retrieval_intent(query)
-            if prior_history and intent != QueryIntent.FILE_SEARCH:
-                # Deterministic heuristic contextualization first to avoid unnecessary LLM calls
-                heuristic_query = self._fallback_contextualize(query, prior_history)
-                if heuristic_query != query:
-                    effective_query = heuristic_query
-                elif hasattr(self._answerer, "_provider") and hasattr(self._answerer._provider, "contextualize_query"):
-                    # Only invoke LLM contextualization if query contains unresolved pronouns
-                    q_words = set(query.casefold().split())
-                    if q_words.intersection({"it", "its", "they", "them", "their", "this", "that", "these", "those", "which", "who", "whom", "one", "her", "his", "him", "she", "he"}):
-                        try:
-                            effective_query = self._answerer._provider.contextualize_query(query, prior_history)
-                        except Exception as exc:
-                            logger.warning("Query contextualization skipped: %s", exc)
-                            effective_query = heuristic_query
+
+        # Check if this is an explicit report export/generation query (e.g. export to pdf, download as word)
+        caps = self._capabilities_for_query(effective_query)
+        is_pure_report = (Capability.REPORT in caps and any(w in effective_query.casefold() for w in ("export", "download as", "generate report", "create report")))
+
+        if not is_pure_report:
+            # Whenever user asks a question, do NOT start search across everything immediately.
+            # Ask the user which source they want to search from first.
+            answer = "Which source would you like me to search?\n\n- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=(),
+                capability="document_search",
+                trace=("Prompting user for source selection",),
+                history=self._store.get(conversation_id),
+                source_selection_required=True,
+                pending_search_query=effective_query,
+            )
 
         # 3. Route capabilities using effective query
         capabilities = self._capabilities_for_query(effective_query)
@@ -499,18 +533,16 @@ class ChatService:
                 if cap not in found:
                     found.append(cap)
 
-        # A direct file discovery request searches every connected enterprise
-        # source. Knowledge keeps its existing local-file search behavior; the
-        # other source agents run independently and contribute their own sources.
-        from backend.retrieval.intent import classify_retrieval_intent, QueryIntent
-        is_file_discovery = (
-            classify_retrieval_intent(query) == QueryIntent.FILE_SEARCH
-            and re.search(r"\b(?:find|search|locate|look\s+for|where\s+is|where\s+are|show\s+me)\b", text)
-        )
-        if is_file_discovery and not is_report_request:
-            for cap in (Capability.KNOWLEDGE, Capability.DATABASE, Capability.EMAIL, Capability.GOOGLE_DRIVE):
-                if cap not in found:
-                    found.append(cap)
+        # [LEGACY] Old automatic cross-source file discovery search everywhere:
+        # [LEGACY] from backend.retrieval.intent import classify_retrieval_intent, QueryIntent
+        # [LEGACY] is_file_discovery = (
+        # [LEGACY]     classify_retrieval_intent(query) == QueryIntent.FILE_SEARCH
+        # [LEGACY]     and re.search(r"\b(?:find|search|locate|look\s+for|where\s+is|where\s+are|show\s+me)\b", text)
+        # [LEGACY] )
+        # [LEGACY] if is_file_discovery and not is_report_request:
+        # [LEGACY]     for cap in (Capability.KNOWLEDGE, Capability.DATABASE, Capability.EMAIL, Capability.GOOGLE_DRIVE):
+        # [LEGACY]         if cap not in found:
+        # [LEGACY]             found.append(cap)
 
         # Default to Knowledge for general queries
         if not found:
@@ -571,6 +603,68 @@ class ChatService:
             "Hello! I'm **Nanvi**, your enterprise assistant. "
             "How can I assist you today? You can ask me to search company documents, query the database, check emails, or generate reports."
         )
+
+    @staticmethod
+    def _extract_source_from_query(query: str) -> str | None:
+        q = query.casefold().strip()
+        if any(w in q for w in ("local storage", "local folder", "local file", "local files", "on disk", "local disk", "c:\\")) or q in ("local", "1", "local storage"):
+            return "local"
+        if any(w in q for w in ("database", "data base", "db record", "db records", "from db", "in db", "from database", "in database")) or q in ("database", "db", "2"):
+            return "database"
+        if any(w in q for w in ("gmail", "email", "emails", "inbox", "mail", "sent mail")) or q in ("email", "mail", "3"):
+            return "email"
+        if any(w in q for w in ("google drive", "gdrive", "drive folder", "in drive", "on drive")) or q in ("google drive", "drive", "4"):
+            return "drive"
+        if any(w in q for w in ("cloud storage", "cloud files", "in cloud", "on cloud", "from cloud")) or q in ("cloud", "5"):
+            return "cloud"
+        return None
+
+    @classmethod
+    def _is_file_search_query(cls, query: str) -> bool:
+        q = query.casefold().strip()
+        # Exclude report generation requests
+        if any(w in q for w in ("generate report", "create report", "export report", "export to word", "export to excel", "export to pdf", "download as word", "download as pdf", "generate document", "create document", "renewal schedule", "contract schedule")):
+            return False
+
+        # Exclude conversational greetings
+        if cls._is_conversational_query(q):
+            return False
+
+        # [LEGACY] has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch)\b", q))
+        # [LEGACY] has_file_target = bool(re.search(r"\b(file|files|document|documents|pdf|docx|xlsx|spreadsheet|sheet|invoice|invoices|contract|contracts|resume|resumes|policy|handbook)\b", q))
+        # [LEGACY] has_date_phrase = bool(re.search(r"\b(last|past|this)\s+(\d+\s+)?(days?|weeks?|months?|years?)\b", q))
+        # [LEGACY] if has_file_target and (has_action or has_date_phrase or "file" in q):
+        # [LEGACY]     return True
+        # [LEGACY] End legacy file search intent check.
+
+        # File extension present (e.g. .pdf, .docx, .xlsx, .csv)
+        if re.search(r"\b[\w-]+\.(pdf|docx|xlsx|csv|txt|md|pptx)\b", q):
+            return True
+
+        # Has business data / file targets (e.g. "what invoices are overdue", "show contracts", "customer records")
+        has_file_target = bool(re.search(
+            r"\b(file|files|document|documents|pdf|docx|xlsx|csv|spreadsheet|sheet|sheets|"
+            r"invoice|invoices|bill|bills|billing|overdue|receipt|receipts|"
+            r"contract|contracts|agreement|agreements|nda|ndas|renewal|"
+            r"resume|resumes|policy|policies|handbook|statement|statements|"
+            r"customer|customers|employee|employees|salary|salaries|budget|budgets|"
+            r"transaction|transactions|expense|expenses|project|projects)\b",
+            q,
+        ))
+        if has_file_target:
+            return True
+
+        has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch|check|see|what|which|who|how\s+many)\b", q))
+        has_date_phrase = bool(re.search(r"\b(last|past|this)\s+(\d+\s+)?(days?|weeks?|months?|years?)\b", q))
+
+        if has_action or has_date_phrase:
+            return True
+
+        from backend.retrieval.intent import classify_retrieval_intent, QueryIntent
+        if classify_retrieval_intent(query) in (QueryIntent.FILE_SEARCH, QueryIntent.DIRECTORY_LISTING):
+            return True
+
+        return False
 
     @staticmethod
     def _extract_conversation_entity(text: str) -> str | None:
