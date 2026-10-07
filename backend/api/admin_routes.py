@@ -33,9 +33,11 @@ def _require_admin_or_ceo(user: UserIdentity) -> None:
     Superior level role access cannot use or see the admin dashboard.
     """
     is_admin = (
-        user.subject == "admin"
+        user.subject.lower() == "admin"
         or (user.email and user.email.lower() in {"admin@company", "admin@company.com"})
+        or Role.ADMIN in user.roles
         or "Admin" in user.roles
+        or any(getattr(r, "value", str(r)).lower() == "admin" for r in user.roles)
     )
     if not is_admin:
         raise HTTPException(
@@ -117,13 +119,23 @@ def get_admin_overview(
     _require_admin_or_ceo(user)
 
     tenant_id = user.tenant_id or "enterprise-tenant"
-    accounts = account_store.list_accounts(tenant_id)
-    total_users = len(accounts)
-    active_users = sum(1 for a in accounts if a.get("active"))
+    total_users = 0
+    active_users = 0
+    try:
+        accounts = account_store.list_accounts(tenant_id)
+        total_users = len(accounts)
+        active_users = sum(1 for a in accounts if a.get("active"))
+    except Exception as exc:
+        logger.warning("Could not fetch accounts in overview: %s", exc)
 
-    tickets = ticket_store.list_tickets()
-    total_tickets = len(tickets)
-    open_tickets = sum(1 for t in tickets if t.get("status", "").lower() in {"open", "in progress", "investigating"})
+    total_tickets = 0
+    open_tickets = 0
+    try:
+        tickets = ticket_store.list_tickets()
+        total_tickets = len(tickets)
+        open_tickets = sum(1 for t in tickets if t.get("status", "").lower() in {"open", "in progress", "investigating"})
+    except Exception as exc:
+        logger.warning("Could not fetch tickets in overview: %s", exc)
 
     # Probe Database Connection
     db_target = settings.supabase_database_url or settings.database_url
@@ -135,7 +147,7 @@ def get_admin_overview(
         try:
             import psycopg
             t0 = time.perf_counter()
-            with psycopg.connect(db_target, connect_timeout=3) as conn:
+            with psycopg.connect(db_target, connect_timeout=5) as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT 1;")
                     cur.fetchone()
@@ -146,6 +158,8 @@ def get_admin_overview(
     else:
         db_connected = True
         db_latency_ms = 0.5
+
+    role_strings = [r.value if hasattr(r, "value") else str(r) for r in user.roles]
 
     return {
         "total_users": total_users,
@@ -161,7 +175,7 @@ def get_admin_overview(
         "current_admin": {
             "name": user.name or user.subject,
             "email": user.email,
-            "roles": list(user.roles),
+            "roles": role_strings,
         },
     }
 
@@ -176,7 +190,11 @@ def list_accounts_admin(
     """List all user accounts in the platform."""
     _require_admin_or_ceo(user)
     tenant_id = user.tenant_id or "enterprise-tenant"
-    return store.list_accounts(tenant_id)
+    try:
+        return store.list_accounts(tenant_id)
+    except Exception as exc:
+        logger.warning("Could not list accounts for admin: %s", exc)
+        return []
 
 
 @router.post("/accounts", status_code=status.HTTP_201_CREATED)
@@ -268,7 +286,11 @@ def list_tickets_admin(
 ) -> list[dict[str, Any]]:
     """List all user-submitted trouble reports and support tickets."""
     _require_admin_or_ceo(user)
-    return store.list_tickets(status=status_filter if status_filter != "all" else None)
+    try:
+        return store.list_tickets(status=status_filter if status_filter != "all" else None)
+    except Exception as exc:
+        logger.warning("Could not list support tickets for admin: %s", exc)
+        return []
 
 
 @router.patch("/tickets/{ticket_id}")

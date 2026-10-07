@@ -203,17 +203,23 @@ def disconnect_mailbox(
     user: UserIdentity = Depends(get_current_user),
 ) -> dict[str, str]:
     """Disconnect the active or specified mailbox for the current user."""
-    account_service = get_user_email_account_service()
     account_id = body.account_id if body else None
-    account_service.disconnect_account(user.subject, account_id=account_id)
+    try:
+        account_service = get_user_email_account_service()
+        account_service.disconnect_account(user.subject, account_id=account_id)
+    except Exception as exc:
+        logger.warning("Error during disconnect_mailbox for %s: %s", user.subject, exc)
 
-    log_event(
-        logger,
-        "email_account_disconnected",
-        actor_id=user.subject,
-        tenant_id=user.tenant_id,
-        account_id=account_id,
-    )
+    try:
+        log_event(
+            logger,
+            "email_account_disconnected",
+            actor_id=user.subject,
+            tenant_id=user.tenant_id,
+            account_id=account_id,
+        )
+    except Exception:
+        pass
     return {"status": "disconnected"}
 
 

@@ -21,7 +21,11 @@ from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-STORAGE_PATH = Path("backend/storage/user_email_accounts.json")
+STORAGE_PATH = (
+    Path("/tmp/user_email_accounts.json")
+    if (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("VERCEL_ENV"))
+    else Path("backend/storage/user_email_accounts.json")
+)
 
 
 @dataclass
@@ -104,8 +108,12 @@ class UserEmailAccountService:
             return []
 
     def _write_local_accounts(self, accounts: list[dict[str, Any]]) -> None:
-        with open(self._path, "w", encoding="utf-8") as f:
-            json.dump(accounts, f, indent=2)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._path, "w", encoding="utf-8") as f:
+                json.dump(accounts, f, indent=2)
+        except OSError as exc:
+            logger.warning("Could not write local accounts file (%s): %s", self._path, exc)
 
     def get_accounts(self, user_id: str) -> list[UserEmailAccount]:
         """Fetch all connected email accounts for a specific user."""

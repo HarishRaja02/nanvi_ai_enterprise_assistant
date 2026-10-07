@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import threading
 import uuid
@@ -42,13 +43,15 @@ class SupportTicketStore:
 
     def __init__(self, dsn: str = "", sqlite_path: str | Path | None = None) -> None:
         self._dsn = dsn
-        self._sqlite_path = (
-            Path(sqlite_path)
-            if sqlite_path
-            else Path(__file__).resolve().parents[1] / "storage" / "support_tickets.sqlite3"
-        )
+        if sqlite_path:
+            self._sqlite_path = Path(sqlite_path)
+        elif os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or os.getenv("VERCEL_ENV"):
+            self._sqlite_path = Path("/tmp/support_tickets.sqlite3")
+        else:
+            self._sqlite_path = Path(__file__).resolve().parents[1] / "storage" / "support_tickets.sqlite3"
         self._lock = threading.Lock()
         self._initialized = False
+        self._memory_conn: sqlite3.Connection | None = None
 
     @property
     def _table(self) -> str:
@@ -59,67 +62,81 @@ class SupportTicketStore:
             try:
                 import psycopg
                 from psycopg.rows import dict_row
-                return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=3)
+                return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=5)
             except Exception as exc:
                 logger.warning("PostgreSQL support tickets connection failed (%s); falling back to SQLite.", exc)
                 self._dsn = ""
 
-        self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._sqlite_path, timeout=10)
+        try:
+            self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(self._sqlite_path, timeout=10)
+        except Exception as exc:
+            logger.warning("SQLite storage file %s failed (%s); using in-memory store.", self._sqlite_path, exc)
+            if self._memory_conn is None:
+                self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
+                self._memory_conn.row_factory = sqlite3.Row
+            return self._memory_conn
+
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
         return conn
 
     def initialize(self) -> None:
         with self._lock:
             if self._initialized:
                 return
-            with self._connect() as conn:
-                if self._dsn:
-                    conn.execute(
-                        f"""
-                        CREATE TABLE IF NOT EXISTS {self._table} (
-                            id TEXT PRIMARY KEY,
-                            reporter_id TEXT NOT NULL,
-                            reporter_name TEXT NOT NULL,
-                            reporter_email TEXT NOT NULL,
-                            reporter_role TEXT NOT NULL,
-                            category TEXT NOT NULL,
-                            severity TEXT NOT NULL,
-                            subject TEXT NOT NULL,
-                            description TEXT NOT NULL,
-                            status TEXT NOT NULL DEFAULT 'Open',
-                            admin_notes TEXT,
-                            diagnostic_info TEXT,
-                            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            try:
+                with self._connect() as conn:
+                    if self._dsn:
+                        conn.execute(
+                            f"""
+                            CREATE TABLE IF NOT EXISTS {self._table} (
+                                id TEXT PRIMARY KEY,
+                                reporter_id TEXT NOT NULL,
+                                reporter_name TEXT NOT NULL,
+                                reporter_email TEXT NOT NULL,
+                                reporter_role TEXT NOT NULL,
+                                category TEXT NOT NULL,
+                                severity TEXT NOT NULL,
+                                subject TEXT NOT NULL,
+                                description TEXT NOT NULL,
+                                status TEXT NOT NULL DEFAULT 'Open',
+                                admin_notes TEXT,
+                                diagnostic_info TEXT,
+                                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                            )
+                            """
                         )
-                        """
-                    )
-                    conn.commit()
-                else:
-                    conn.execute(
-                        f"""
-                        CREATE TABLE IF NOT EXISTS {self._table} (
-                            id TEXT PRIMARY KEY,
-                            reporter_id TEXT NOT NULL,
-                            reporter_name TEXT NOT NULL,
-                            reporter_email TEXT NOT NULL,
-                            reporter_role TEXT NOT NULL,
-                            category TEXT NOT NULL,
-                            severity TEXT NOT NULL,
-                            subject TEXT NOT NULL,
-                            description TEXT NOT NULL,
-                            status TEXT NOT NULL DEFAULT 'Open',
-                            admin_notes TEXT,
-                            diagnostic_info TEXT,
-                            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        conn.commit()
+                    else:
+                        conn.execute(
+                            f"""
+                            CREATE TABLE IF NOT EXISTS {self._table} (
+                                id TEXT PRIMARY KEY,
+                                reporter_id TEXT NOT NULL,
+                                reporter_name TEXT NOT NULL,
+                                reporter_email TEXT NOT NULL,
+                                reporter_role TEXT NOT NULL,
+                                category TEXT NOT NULL,
+                                severity TEXT NOT NULL,
+                                subject TEXT NOT NULL,
+                                description TEXT NOT NULL,
+                                status TEXT NOT NULL DEFAULT 'Open',
+                                admin_notes TEXT,
+                                diagnostic_info TEXT,
+                                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            )
+                            """
                         )
-                        """
-                    )
-                    conn.commit()
-            self._initialized = True
+                        conn.commit()
+                self._initialized = True
+            except Exception as exc:
+                logger.warning("Failed to initialize support ticket store (%s). Continuing with dynamic initialization.", exc)
 
     def create_ticket(
         self,
@@ -196,6 +213,14 @@ class SupportTicketStore:
                     d["diagnostic_info"] = json.loads(d["diagnostic_info"])
                 except Exception:
                     d["diagnostic_info"] = {}
+            if isinstance(d.get("created_at"), datetime):
+                d["created_at"] = d["created_at"].isoformat()
+            elif d.get("created_at") is not None:
+                d["created_at"] = str(d["created_at"])
+            if isinstance(d.get("updated_at"), datetime):
+                d["updated_at"] = d["updated_at"].isoformat()
+            elif d.get("updated_at") is not None:
+                d["updated_at"] = str(d["updated_at"])
             results.append(d)
         return results
 
@@ -213,6 +238,14 @@ class SupportTicketStore:
                 d["diagnostic_info"] = json.loads(d["diagnostic_info"])
             except Exception:
                 d["diagnostic_info"] = {}
+        if isinstance(d.get("created_at"), datetime):
+            d["created_at"] = d["created_at"].isoformat()
+        elif d.get("created_at") is not None:
+            d["created_at"] = str(d["created_at"])
+        if isinstance(d.get("updated_at"), datetime):
+            d["updated_at"] = d["updated_at"].isoformat()
+        elif d.get("updated_at") is not None:
+            d["updated_at"] = str(d["updated_at"])
         return d
 
     def update_ticket_status(
@@ -257,5 +290,5 @@ def get_support_ticket_store() -> SupportTicketStore:
         with _ticket_lock:
             if _ticket_store is None:
                 dsn = settings.supabase_database_url or settings.database_url
-                _ticket_store = SupportTicketStore(dsn=dsn if settings.is_production else "")
+                _ticket_store = SupportTicketStore(dsn=dsn or "")
     return _ticket_store
