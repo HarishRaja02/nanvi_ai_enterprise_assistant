@@ -41,3 +41,4 @@ frontend/dist/
 *.tar.gz
 *.tgz
 project_for_deepseek.txt
+scratch/

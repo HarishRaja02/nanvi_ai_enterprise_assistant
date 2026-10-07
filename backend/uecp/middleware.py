@@ -34,6 +34,20 @@ def require_uecp_access(permission: str | None = None) -> Callable[..., UECPAcce
         # Organization mapping derived strictly from authenticated server-side user context
         organization_id = user.tenant_id
 
+        # Emergency break-glass admin bypass: strictly admin user / admin@company or Admin role.
+        # Superior is a user, so if UECP blocks, Superior will be blocked like other users.
+        if (
+            user.subject == "admin"
+            or "Admin" in user.roles
+            or (user.email and user.email.lower() in {"admin@company", "admin@company.com"})
+        ):
+            return UECPAccessState(
+                allowed=True,
+                reason="admin_override",
+                entitlements=tuple(["*"]),
+                organization_id=organization_id,
+            )
+
         # Correlation ID from request headers if present
         cid = (
             request.headers.get("X-Request-ID")

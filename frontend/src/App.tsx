@@ -15,6 +15,8 @@ import { ReportsPage } from "./features/workspaces/ReportsPage";
 import { WorkspacePage } from "./features/workspaces/WorkspacePage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { VoiceAssistantMode } from "./features/voice/VoiceAssistantMode";
+import { AdminDashboard } from "./features/admin/AdminDashboard";
+import { ReportIssueModal } from "./components/support/ReportIssueModal";
 
 import { useChat } from "./hooks/useChat";
 import { useHistory } from "./hooks/useHistory";
@@ -63,14 +65,31 @@ export function App() {
   const [mailboxStatus, setMailboxStatus] = useState<EmailStatusResponse | null>(null);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const previousView = useRef<View>("Chat");
 
 
   // UX-only capability set derived from backend-reported roles. Authorization stays server-side.
   const permissions = useMemo(() => permissionsFor(identity?.roles ?? []), [identity]);
-  const groups = useMemo(() => visibleNav(permissions), [permissions]);
-  const allowedViews = useMemo(() => groups.flatMap((g) => g.items.map((i) => i.id)), [groups]);
+  const canAccessAdmin = useMemo(() => {
+    if (!identity) return false;
+    return (
+      identity.subject === "admin" ||
+      Boolean(identity.email && identity.email.toLowerCase().includes("admin@company")) ||
+      identity.roles.some((r) => r.toLowerCase() === "admin") ||
+      Boolean(identity.name && identity.name.toLowerCase().includes("system administrator")) ||
+      permissions.includes("ADMIN_ACCESS")
+    );
+  }, [identity, permissions]);
+  const groups = useMemo(() => visibleNav(permissions, canAccessAdmin), [permissions, canAccessAdmin]);
+  const allowedViews = useMemo(() => {
+    const list = groups.flatMap((g) => g.items.map((i) => i.id));
+    if (canAccessAdmin && !list.includes("AdminDashboard")) {
+      list.push("AdminDashboard");
+    }
+    return list;
+  }, [groups, canAccessAdmin]);
   const activeView: View = allowedViews.includes(view) ? view : "Chat";
   const starters = useMemo(() => visiblePrompts(ROTATING_STARTERS, permissions), [permissions]);
 
@@ -249,11 +268,13 @@ export function App() {
   }
 
   if (identity.uecp && identity.uecp.allowed === false) {
-    return <AccessUnavailableView onSignOut={session.logout} />;
+    if (!canAccessAdmin) {
+      return <AccessUnavailableView onSignOut={session.logout} />;
+    }
   }
 
   const displayName = identity.name || identity.email || "User";
-  const primaryRole = identity.roles.find(isRole) ?? "Authorized user";
+  const primaryRole = canAccessAdmin ? "Admin" : (identity.roles.find(isRole) ?? "Authorized user");
   const isChat = activeView === "Chat";
   const subtitle = isChat
     ? chat.resumed
@@ -311,6 +332,9 @@ export function App() {
             description: "This environment uses synthetic data and fallbacks. Do not use production credentials.",
           } : undefined}
           panel={isChat ? { open: panelOpen, onToggle: () => setPanelOpen((o) => !o) } : undefined}
+          onOpenReportIssue={() => setReportModalOpen(true)}
+          canAccessAdmin={canAccessAdmin}
+          onOpenAdmin={() => goTo("AdminDashboard")}
         />
 
         <div className="app-body">
@@ -341,7 +365,10 @@ export function App() {
             {activeView === "Settings" && (
               <SettingsPage api={api} identity={identity} fontScale={fontScale} onFontScaleChange={setFontScale} />
             )}
-            {activeView !== "Chat" && activeView !== "Reports" && activeView !== "Audit" && activeView !== "Settings" && (
+            {activeView === "AdminDashboard" && (
+              <AdminDashboard api={api} identity={identity} onNavigateHome={() => goTo("Chat")} />
+            )}
+            {activeView !== "Chat" && activeView !== "Reports" && activeView !== "Audit" && activeView !== "Settings" && activeView !== "AdminDashboard" && (
               <WorkspacePage view={activeView} permissions={permissions} onAsk={ask} api={api} />
             )}
 
@@ -405,6 +432,13 @@ export function App() {
           }}
         />
       )}
+
+      <ReportIssueModal
+        api={api}
+        identity={identity}
+        open={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+      />
     </div>
   );
 }

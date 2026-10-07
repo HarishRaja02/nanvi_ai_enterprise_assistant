@@ -86,6 +86,8 @@ from backend.connections.oauth_routes import (
 )
 
 from backend.local_agent.routes import router as local_agent_router
+from backend.api.admin_routes import router as admin_router
+from backend.api.support_routes import router as support_router
 
 app.include_router(router, prefix="/api")
 app.include_router(router)
@@ -98,6 +100,11 @@ app.include_router(chat_router)
 app.include_router(voice_router, prefix="/api")
 app.include_router(voice_router)
 app.include_router(local_auth_router, prefix="/api")
+app.include_router(local_auth_router)
+app.include_router(admin_router, prefix="/api")
+app.include_router(admin_router)
+app.include_router(support_router, prefix="/api")
+app.include_router(support_router)
 app.include_router(email_router, prefix="/api")
 app.include_router(email_router)
 app.include_router(settings_router, prefix="/api")

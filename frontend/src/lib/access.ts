@@ -4,18 +4,19 @@
  */
 export type Role =
   | "Superior" | "Supervisor" | "Project Engineer" | "Employee"
-  | "CEO" | "Finance" | "HR" | "Manager" | "IT Admin";
+  | "CEO" | "Finance" | "HR" | "Manager" | "IT Admin" | "Admin";
 
 export type Permission =
   | "FILE_READ" | "FILE_WRITE" | "EMAIL_READ" | "EMAIL_SEND"
   | "DATABASE_READ" | "DATABASE_WRITE" | "REPORT_CREATE" | "REPORT_DOWNLOAD"
-  | "FINANCE_READ" | "HR_READ" | "AUDIT_READ" | "USER_MANAGE";
+  | "FINANCE_READ" | "HR_READ" | "AUDIT_READ" | "USER_MANAGE" | "ADMIN_ACCESS";
 
-export type View = "Chat" | "Knowledge" | "Email" | "Data" | "Reports" | "Finance" | "HR" | "Audit" | "Settings";
+export type View = "Chat" | "Knowledge" | "Email" | "Data" | "Reports" | "Finance" | "HR" | "Audit" | "Settings" | "AdminDashboard";
 
-export type CanonicalRole = "Superior" | "Supervisor" | "Project Engineer" | "Employee";
+export type CanonicalRole = "Admin" | "Superior" | "Supervisor" | "Project Engineer" | "Employee";
 
 export const ROLE_PERMISSIONS: Record<CanonicalRole, Permission[]> = {
+  Admin: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE", "ADMIN_ACCESS"],
   Superior: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE"],
   Supervisor: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "USER_MANAGE"],
   "Project Engineer": ["FILE_READ"],
@@ -23,6 +24,8 @@ export const ROLE_PERMISSIONS: Record<CanonicalRole, Permission[]> = {
 };
 
 const ROLE_ALIASES: Record<string, CanonicalRole> = {
+  admin: "Admin",
+  Administrator: "Admin",
   CEO: "Superior",
   Finance: "Supervisor",
   Manager: "Supervisor",
@@ -72,6 +75,12 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "administration", label: "Administration",
+    items: [
+      { id: "AdminDashboard", label: "Admin Console", permission: "ADMIN_ACCESS" },
+    ],
+  },
+  {
     id: "governance", label: "Governance",
     items: [
       { id: "Audit", label: "Audit", permission: "AUDIT_READ" },
@@ -81,9 +90,17 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 
-export function visibleNav(permissions: readonly Permission[]): NavGroup[] {
+export function visibleNav(permissions: readonly Permission[], canAccessAdmin: boolean = false): NavGroup[] {
   return NAV_GROUPS
-    .map((g) => ({ ...g, items: g.items.filter((i) => !i.permission || permissions.includes(i.permission)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((i) => {
+        if (i.id === "AdminDashboard") {
+          return canAccessAdmin || permissions.includes("ADMIN_ACCESS");
+        }
+        return !i.permission || permissions.includes(i.permission);
+      }),
+    }))
     .filter((g) => g.items.length > 0);
 }
 

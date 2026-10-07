@@ -13,6 +13,7 @@ class Role(str, Enum):
     MANAGER = "Manager"
     EMPLOYEE = "Employee"
     IT_ADMIN = "IT Admin"
+    ADMIN = "Admin"
 
 
 LEGACY_ROLE_ALIASES: dict[str, Role] = {
@@ -21,6 +22,10 @@ LEGACY_ROLE_ALIASES: dict[str, Role] = {
     Role.MANAGER.value: Role.SUPERVISOR,
     Role.HR.value: Role.PROJECT_ENGINEER,
     Role.IT_ADMIN.value: Role.SUPERVISOR,
+    "Admin": Role.ADMIN,
+    "admin": Role.ADMIN,
+    "Administrator": Role.ADMIN,
+    "administrator": Role.ADMIN,
 }
 
 
@@ -34,6 +39,14 @@ def normalize_role(value: str) -> Role | None:
 # RBAC grants coarse-grained capabilities. Resource/department constraints
 # are enforced separately by ABAC and policy evaluation.
 ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
+    Role.ADMIN: frozenset({
+        "FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND",
+        "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD",
+        "FINANCE_READ", "HR_READ", "AUDIT_READ", "WEB_SEARCH", "USER_MANAGE",
+        "CONNECTION_READ", "CONNECTION_WRITE", "CONNECTION_DELETE", "CONNECTION_ADMIN",
+        "CONNECTION_USE", "CONNECTION_OWN_MANAGE", "CONNECTION_ORG_VIEW", "CONNECTION_ORG_MANAGE",
+        "CONNECTION_AUDIT_VIEW", "ADMIN_ACCESS",
+    }),
     Role.SUPERIOR: frozenset({
         "FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND",
         "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD",

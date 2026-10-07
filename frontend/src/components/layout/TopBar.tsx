@@ -1,4 +1,4 @@
-import { Menu, Moon, PanelRight, Search, Sun } from "lucide-react";
+import { LifeBuoy, Menu, Moon, PanelRight, Search, ShieldCheck, Sun } from "lucide-react";
 import { Button, IconButton } from "../ui/Button";
 
 type Props = {
@@ -9,6 +9,9 @@ type Props = {
   theme?: "light" | "dark";
   onToggleTheme?: () => void;
   environmentMode?: { label: string; description: string };
+  onOpenReportIssue?: () => void;
+  onOpenAdmin?: () => void;
+  canAccessAdmin?: boolean;
   /** Present only on views that have a details panel. */
   panel?: { open: boolean; onToggle: () => void };
 };
@@ -21,6 +24,9 @@ export function TopBar({
   theme = "light",
   onToggleTheme,
   environmentMode,
+  onOpenReportIssue,
+  onOpenAdmin,
+  canAccessAdmin,
   panel,
 }: Props) {
 
@@ -43,6 +49,45 @@ export function TopBar({
           >
             {environmentMode.label}
           </span>
+        )}
+
+        {onOpenReportIssue && (
+          <button
+            type="button"
+            className="topbar-support-btn"
+            onClick={onOpenReportIssue}
+            title="Report an issue or request developer support"
+            aria-label="Report trouble or request support"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.375rem",
+              padding: "0.4rem 0.75rem",
+              borderRadius: "0.5rem",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              background: "rgba(239, 68, 68, 0.08)",
+              color: "#fca5a5",
+              fontSize: "0.8125rem",
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            <LifeBuoy size={14} style={{ color: "#ef4444" }} />
+            <span>Need Help?</span>
+          </button>
+        )}
+
+        {canAccessAdmin && onOpenAdmin && (
+          <button
+            type="button"
+            className="topbar-admin-btn"
+            onClick={onOpenAdmin}
+            title="Open Platform Administration Console"
+            aria-label="Open Platform Administration Console"
+          >
+            <ShieldCheck size={14} style={{ color: "#818cf8" }} />
+            <span>Admin Console</span>
+          </button>
         )}
 
         {onOpenPalette && (

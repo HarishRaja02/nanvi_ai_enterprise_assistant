@@ -66,7 +66,7 @@ export function useSession() {
 
   useEffect(() => { void checkExistingSession(); }, [checkExistingSession]);
 
-  const signInLocal = useCallback(async (username: string, password: string, role: LocalAccountRole) => {
+  const signInLocal = useCallback(async (username: string, password: string, role?: LocalAccountRole | string) => {
     setSigningIn(true);
     setAuthError("");
     try {

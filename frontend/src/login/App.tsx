@@ -4,7 +4,7 @@ import { RoleLoginForm } from "./components/RoleLoginForm";
 
 export interface LoginGatewayProps {
   error?: string;
-  onLogin: (username: string, password: string, role: LocalAccountRole) => Promise<void> | void;
+  onLogin: (username: string, password: string, role: LocalAccountRole | string) => Promise<void> | void;
   loading?: boolean;
 }
 

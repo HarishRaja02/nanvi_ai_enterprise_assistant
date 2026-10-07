@@ -23,7 +23,7 @@ export type UserIdentity = {
   uecp?: SafeUECPState | null;
 };
 
-export type LocalAccountRole = "Superior" | "Supervisor" | "Project Engineer" | "Employee";
+export type LocalAccountRole = "Superior" | "Supervisor" | "Project Engineer" | "Employee" | "Admin";
 export type LocalAccount = {
   id: string;
   username: string;
@@ -297,7 +297,7 @@ if (!response.ok) {
 
   uecpHealth() { return this.request<{ configured: boolean; reachable: boolean }>("/health/uecp"); }
 
-  localLogin(username: string, password: string, role: LocalAccountRole) {
+  localLogin(username: string, password: string, role?: LocalAccountRole | string) {
     return this.request<{ access_token: string; token_type: string; expires_in: number }>(
       "/auth/login",
       { method: "POST", body: JSON.stringify({ username, password, role }) },
@@ -801,6 +801,102 @@ if (!response.ok) {
   listConnectionAuditEvents() {
     return this.request<any[]>("/connections/audit/events");
   }
+
+  // --- Admin Console & Website Management ---
+  adminOverview() {
+    return this.request<AdminOverview>("/admin/overview");
+  }
+
+  adminListAccounts() {
+    return this.request<LocalAccount[]>("/admin/accounts");
+  }
+
+  adminCreateAccount(account: LocalAccountCreate) {
+    return this.request<LocalAccount>("/admin/accounts", {
+      method: "POST",
+      body: JSON.stringify(account),
+    });
+  }
+
+  adminUpdateAccount(id: string, data: Partial<LocalAccount>) {
+    return this.request<LocalAccount>(`/admin/accounts/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  adminResetPassword(id: string, newPassword: string) {
+    return this.request<LocalAccount>(`/admin/accounts/${encodeURIComponent(id)}/reset-password`, {
+      method: "POST",
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+  }
+
+  adminDeleteAccount(id: string) {
+    return this.request<void>(`/admin/accounts/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  adminListTickets(statusFilter?: string) {
+    const q = statusFilter && statusFilter !== "all" ? `?status=${encodeURIComponent(statusFilter)}` : "";
+    return this.request<SupportTicket[]>(`/admin/tickets${q}`);
+  }
+
+  adminUpdateTicket(id: string, data: { status: string; admin_notes?: string }) {
+    return this.request<SupportTicket>(`/admin/tickets/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  adminDeleteTicket(id: string) {
+    return this.request<void>(`/admin/tickets/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  adminGetDatabaseConfig() {
+    return this.request<DatabaseConfig>("/admin/database/config");
+  }
+
+  adminTestDatabase(data?: { database_url?: string; supabase_database_url?: string }) {
+    return this.request<{ success: boolean; message: string; latency_ms: number; server_version?: string }>(
+      "/admin/database/test",
+      {
+        method: "POST",
+        body: JSON.stringify(data || {}),
+      }
+    );
+  }
+
+  adminUpdateDatabaseConfig(data: Partial<DatabaseConfig> & { pool_min_size?: number; pool_max_size?: number }) {
+    return this.request<{ success: boolean; message: string; updated_keys: string[] }>(
+      "/admin/database/config",
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  // --- User Trouble & Issue Reporting ---
+  submitSupportTicket(ticket: {
+    category: string;
+    severity?: string;
+    subject: string;
+    description: string;
+    diagnostic_info?: Record<string, any>;
+  }) {
+    return this.request<SupportTicket>("/support/tickets", {
+      method: "POST",
+      body: JSON.stringify(ticket),
+    });
+  }
+
+  getMySupportTickets() {
+    return this.request<SupportTicket[]>("/support/my-tickets");
+  }
 }
 
 
@@ -939,5 +1035,62 @@ export type TestConnectionResponse = {
   ok: boolean;
   message: string;
   details?: Record<string, any>;
+};
+
+export type AdminOverview = {
+  total_users: number;
+  active_users: number;
+  total_tickets: number;
+  open_tickets: number;
+  db_type: string;
+  db_connected: boolean;
+  db_latency_ms: number;
+  multi_tenant_status: string;
+  uecp_status: string;
+  app_env: string;
+  current_admin: {
+    name: string;
+    email?: string;
+    roles: string[];
+  };
+};
+
+export type SupportTicket = {
+  id: string;
+  reporter_id: string;
+  reporter_name: string;
+  reporter_email: string;
+  reporter_role: string;
+  category: string;
+  severity: string;
+  subject: string;
+  description: string;
+  status: string;
+  admin_notes?: string | null;
+  diagnostic_info?: Record<string, any> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DatabaseConfig = {
+  database_type: string;
+  database_url_masked: string;
+  supabase_database_url_masked: string;
+  supabase_url: string;
+  supabase_key_masked: string;
+  host: string;
+  port: number | string;
+  database_name: string;
+  username: string;
+  pool_min_size: number;
+  pool_max_size: number;
+  is_connected: boolean;
+  latency_ms: number;
+  server_version?: string;
+  table_stats: Record<string, number>;
+  multi_tenant_partitioning: {
+    status: string;
+    description: string;
+  };
 };
 

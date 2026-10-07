@@ -156,6 +156,48 @@ body {
   outline: 2px solid #006583;
   outline-offset: 2px;
 }
+.role-login-role-btn.role-admin {
+  grid-column: span 2;
+  border-color: #c7d2fe;
+  background: #f5f3ff;
+  color: #4338ca;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.role-login-role-btn.role-admin:hover:not(:disabled) {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #3730a3;
+}
+.role-login-role-btn.role-admin.active {
+  border-color: #4f46e5;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+}
+.role-login-role-btn.role-superior {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.role-login-role-btn.role-superior:hover:not(:disabled) {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #15803d;
+}
+.role-login-role-btn.role-superior.active {
+  border-color: #15803d;
+  background: #15803d;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.3);
+}
 .role-login-role-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
