@@ -3,10 +3,14 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
+  BookOpen,
+  Building2,
   CheckCircle2,
   Database,
   Eye,
   EyeOff,
+  FileText,
+  FileUp,
   HardDrive,
   KeyRound,
   LifeBuoy,
@@ -19,6 +23,7 @@ import {
   Shield,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Trash2,
   UserCheck,
   UserPlus,
@@ -28,6 +33,7 @@ import {
 } from "lucide-react";
 import type {
   AdminOverview,
+  CompanyMemory,
   DatabaseConfig,
   LocalAccount,
   LocalAccountRole,
@@ -43,7 +49,7 @@ interface Props {
   onNavigateHome?: () => void;
 }
 
-type Tab = "overview" | "accounts" | "tickets" | "database";
+type Tab = "overview" | "accounts" | "tickets" | "database" | "company";
 
 export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
   const notify = useToast();
@@ -95,6 +101,17 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency_ms?: number } | null>(null);
   const [savingDb, setSavingDb] = useState(false);
 
+  // Company Memory State
+  const [companyMemory, setCompanyMemory] = useState<CompanyMemory | null>(null);
+  const [loadingMemory, setLoadingMemory] = useState(false);
+  const [companyNameInput, setCompanyNameInput] = useState("");
+  const [taglineInput, setTaglineInput] = useState("");
+  const [detailsInput, setDetailsInput] = useState("");
+  const [savingMemory, setSavingMemory] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [appendPdf, setAppendPdf] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+
   // Check administrative privilege: strictly Admin only; Superior level role cannot use or view Admin Dashboard
   const isAdmin =
     identity?.subject === "admin" ||
@@ -110,6 +127,21 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
       notify(err instanceof Error ? err.message : "Failed to load overview data", "danger");
     } finally {
       setLoadingOverview(false);
+    }
+  }, [api, notify]);
+
+  const loadCompanyMemory = useCallback(async () => {
+    setLoadingMemory(true);
+    try {
+      const data = await api.adminGetCompanyMemory();
+      setCompanyMemory(data);
+      setCompanyNameInput(data.company_name || "");
+      setTaglineInput(data.tagline || "");
+      setDetailsInput(data.details || "");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to load company memory", "danger");
+    } finally {
+      setLoadingMemory(false);
     }
   }, [api, notify]);
 
@@ -157,13 +189,15 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
 
   useEffect(() => {
     void loadOverview();
-  }, [loadOverview]);
+    void loadCompanyMemory();
+  }, [loadOverview, loadCompanyMemory]);
 
   useEffect(() => {
     if (activeTab === "accounts") void loadAccounts();
     if (activeTab === "tickets") void loadTickets();
     if (activeTab === "database") void loadDatabaseConfig();
-  }, [activeTab, loadAccounts, loadTickets, loadDatabaseConfig]);
+    if (activeTab === "company") void loadCompanyMemory();
+  }, [activeTab, loadAccounts, loadTickets, loadDatabaseConfig, loadCompanyMemory]);
 
   if (!isAdmin) {
     return (
@@ -364,6 +398,81 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
     }
   };
 
+  // --- Company Memory Actions ---
+  const handleSaveCompanyMemory = async (e: FormEvent) => {
+    e.preventDefault();
+    setSavingMemory(true);
+    try {
+      const updated = await api.adminSaveCompanyMemory({
+        company_name: companyNameInput.trim() || "Nanvi AI Enterprise",
+        tagline: taglineInput.trim() || undefined,
+        details: detailsInput.trim(),
+      });
+      setCompanyMemory(updated);
+      notify("Company memory saved successfully! Nanvi will now use this context.", "success");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to save company memory", "danger");
+    } finally {
+      setSavingMemory(false);
+    }
+  };
+
+  const handleUploadPdf = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pdfFile) {
+      notify("Please select a PDF file first.", "warning");
+      return;
+    }
+    setUploadingPdf(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const b64 = reader.result as string;
+          const res = await api.adminUploadCompanyPdfBase64({
+            filename: pdfFile.name,
+            content_base64: b64,
+            append: appendPdf,
+          });
+          setCompanyMemory(res.memory);
+          setCompanyNameInput(res.memory.company_name || "");
+          setTaglineInput(res.memory.tagline || "");
+          setDetailsInput(res.memory.details || "");
+          setPdfFile(null);
+          notify(res.message, "success");
+        } catch (innerErr) {
+          notify(innerErr instanceof Error ? innerErr.message : "PDF upload failed", "danger");
+        } finally {
+          setUploadingPdf(false);
+        }
+      };
+      reader.onerror = () => {
+        notify("Failed to read PDF file.", "danger");
+        setUploadingPdf(false);
+      };
+      reader.readAsDataURL(pdfFile);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to process PDF", "danger");
+      setUploadingPdf(false);
+    }
+  };
+
+  const handleClearCompanyMemory = async () => {
+    if (!window.confirm("Are you sure you want to reset company memory back to baseline defaults?")) {
+      return;
+    }
+    try {
+      const reset = await api.adminClearCompanyMemory();
+      setCompanyMemory(reset);
+      setCompanyNameInput(reset.company_name || "");
+      setTaglineInput(reset.tagline || "");
+      setDetailsInput(reset.details || "");
+      notify("Company memory reset to baseline.", "success");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Failed to reset memory", "danger");
+    }
+  };
+
   const filteredAccounts = accounts.filter((acc) => {
     const matchesSearch =
       acc.username.toLowerCase().includes(accountSearch.toLowerCase()) ||
@@ -445,6 +554,20 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
         >
           <Database size={16} />
           <span>Backend Database Connection (Admin / CEO)</span>
+        </button>
+
+        <button
+          type="button"
+          className={`admin-tab-btn ${activeTab === "company" ? "is-active" : ""}`}
+          onClick={() => setActiveTab("company")}
+        >
+          <Building2 size={16} />
+          <span>Company Details & Memory</span>
+          {companyMemory?.is_configured ? (
+            <span className="admin-badge-count is-verified">Active</span>
+          ) : (
+            <span className="admin-badge-count">Configure</span>
+          )}
         </button>
       </nav>
 
@@ -1182,6 +1305,276 @@ export function AdminDashboard({ api, identity, onNavigateHome }: Props) {
                   </button>
                 </div>
               </form>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 5: COMPANY DETAILS & MEMORY (ADMIN & CEO) ────────────────── */}
+      {activeTab === "company" && (
+        <div style={{ maxWidth: "1020px", display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+          {/* Header Info Banner */}
+          <div className="alert alert-info" style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-3)" }}>
+            <Building2 size={20} style={{ flexShrink: 0, marginTop: "2px" }} />
+            <div className="alert-body">
+              <div className="alert-title">Enterprise Knowledge & Chat Memory</div>
+              <p style={{ margin: "3px 0 0", fontSize: "var(--text-xs)", lineHeight: 1.5 }}>
+                Configure the institutional memory Nanvi uses to converse interactively like <strong>ChatGPT</strong> while representing your organization.
+                Paste company background or upload a corporate PDF. Our intelligent intent layer ensures the assistant speaks naturally without getting distracted or confused by file searches.
+              </p>
+            </div>
+          </div>
+
+          {loadingMemory ? (
+            <div style={{ textAlign: "center", padding: "var(--space-10) 0" }}>
+              <LoaderCircle size={32} className="spin" style={{ color: "var(--primary-600)", margin: "0 auto" }} />
+              <div style={{ marginTop: "var(--space-2)", color: "var(--text-secondary)" }}>Loading company memory…</div>
+            </div>
+          ) : (
+            <>
+              {/* Stat Cards Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--space-3)" }}>
+                <div className="admin-stat-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Memory Status</span>
+                    <Sparkles size={16} style={{ color: companyMemory?.is_configured ? "var(--success-fg)" : "var(--primary-600)" }} />
+                  </div>
+                  <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-bold)", color: "var(--text)", marginTop: "var(--space-2)" }}>
+                    {companyMemory?.is_configured ? "Active Context" : "Baseline Default"}
+                  </div>
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    {companyMemory?.is_configured ? "Custom enterprise context loaded" : "Generic assistant mode"}
+                  </div>
+                </div>
+
+                <div className="admin-stat-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Company Name</span>
+                    <Building2 size={16} style={{ color: "var(--primary-600)" }} />
+                  </div>
+                  <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-bold)", color: "var(--text)", marginTop: "var(--space-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {companyMemory?.company_name || "Nanvi AI Enterprise"}
+                  </div>
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {companyMemory?.tagline || "Workplace AI Copilot"}
+                  </div>
+                </div>
+
+                <div className="admin-stat-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Knowledge Volume</span>
+                    <BookOpen size={16} style={{ color: "var(--primary-600)" }} />
+                  </div>
+                  <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-bold)", color: "var(--text)", marginTop: "var(--space-2)" }}>
+                    {companyMemory?.character_count?.toLocaleString() || 0} chars
+                  </div>
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    {companyMemory?.word_count?.toLocaleString() || 0} words • {companyMemory?.source_type === "pdf_upload" ? "PDF Upload" : companyMemory?.source_type === "pasted" ? "Pasted Text" : companyMemory?.source_type === "combined" ? "Combined" : "Default"}
+                  </div>
+                </div>
+
+                <div className="admin-stat-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>Last Updated</span>
+                    <RefreshCw size={16} style={{ color: "var(--primary-600)" }} />
+                  </div>
+                  <div style={{ fontSize: "var(--text-lg)", fontWeight: "var(--weight-bold)", color: "var(--text)", marginTop: "var(--space-2)" }}>
+                    {companyMemory?.updated_at ? new Date(companyMemory.updated_at).toLocaleDateString() : "Just now"}
+                  </div>
+                  <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)", marginTop: "2px" }}>
+                    Updated by {companyMemory?.updated_by || "admin"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Two Column Layout: Paste Text vs PDF Upload */}
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "var(--space-4)" }}>
+                {/* Column 1: Paste Text Content */}
+                <div className="admin-card" style={{ padding: "var(--space-5)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+                    <FileText size={18} style={{ color: "var(--primary-600)" }} />
+                    <h3 style={{ margin: 0, fontSize: "var(--text-md)", color: "var(--text)" }}>Paste Company Information</h3>
+                  </div>
+                  <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                    Type or paste information about your company. You can include company overview, services, key people, policies, and mission.
+                  </p>
+
+                  <form onSubmit={handleSaveCompanyMemory} style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+                    <div className="field">
+                      <label className="field-label">Company / Organization Name</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. Nanvi AI Enterprise, Acme Corp"
+                        value={companyNameInput}
+                        onChange={(e) => setCompanyNameInput(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label className="field-label">Tagline or Domain (Optional)</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. Enterprise Artificial Intelligence & Security"
+                        value={taglineInput}
+                        onChange={(e) => setTaglineInput(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="field">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <label className="field-label">Company Details / Memory Content</label>
+                        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
+                          {detailsInput.length.toLocaleString()} characters
+                        </span>
+                      </div>
+                      <textarea
+                        className="textarea"
+                        style={{ minHeight: "220px", fontSize: "var(--text-sm)", lineHeight: 1.5, resize: "vertical" }}
+                        placeholder="Paste company background, mission, core products, key personnel, contact info, office locations, customer policies, etc..."
+                        value={detailsInput}
+                        onChange={(e) => setDetailsInput(e.target.value)}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", marginTop: "var(--space-2)" }}>
+                      <button type="submit" className="btn btn-primary" disabled={savingMemory}>
+                        {savingMemory ? <LoaderCircle size={15} className="spin" /> : <CheckCircle2 size={15} />}
+                        <span>Save Company Memory</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Column 2: Upload PDF Document */}
+                <div className="admin-card" style={{ padding: "var(--space-5)", display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
+                    <FileUp size={18} style={{ color: "var(--primary-600)" }} />
+                    <h3 style={{ margin: 0, fontSize: "var(--text-md)", color: "var(--text)" }}>Upload Company PDF</h3>
+                  </div>
+                  <p style={{ margin: "0 0 var(--space-4)", fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                    Upload a PDF document (company profile, brochure, employee handbook, or corporate overview). We will automatically extract the text into chat memory.
+                  </p>
+
+                  <form onSubmit={handleUploadPdf} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", flex: 1 }}>
+                    <div
+                      style={{
+                        border: "2px dashed var(--border)",
+                        borderRadius: "var(--radius-lg)",
+                        padding: "var(--space-6) var(--space-4)",
+                        textAlign: "center",
+                        background: "var(--bg-secondary)",
+                        cursor: "pointer",
+                        transition: "border-color 0.2s ease",
+                      }}
+                      onClick={() => document.getElementById("company-pdf-file-input")?.click()}
+                    >
+                      <input
+                        id="company-pdf-file-input"
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setPdfFile(file);
+                        }}
+                      />
+                      <FileUp size={36} style={{ color: "var(--primary-600)", margin: "0 auto var(--space-2)" }} />
+                      <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", color: "var(--text)" }}>
+                        {pdfFile ? pdfFile.name : "Choose or drag a PDF here"}
+                      </div>
+                      <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "4px" }}>
+                        {pdfFile ? `${(pdfFile.size / 1024).toFixed(1)} KB • Click to change` : "Supported format: PDF up to 25MB"}
+                      </div>
+                    </div>
+
+                    {pdfFile && (
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "var(--space-2) var(--space-3)", background: "var(--bg-tertiary)", borderRadius: "var(--radius-md)", fontSize: "var(--text-xs)" }}>
+                        <span style={{ color: "var(--text)", fontWeight: "var(--weight-medium)" }}>Selected: {pdfFile.name}</span>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ padding: "2px 6px", height: "auto" }}
+                          onClick={() => setPdfFile(null)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-xs)" }}>
+                      <input
+                        type="checkbox"
+                        id="append-pdf-checkbox"
+                        checked={appendPdf}
+                        onChange={(e) => setAppendPdf(e.target.checked)}
+                      />
+                      <label htmlFor="append-pdf-checkbox" style={{ color: "var(--text-secondary)", cursor: "pointer" }}>
+                        Append to existing memory instead of replacing
+                      </label>
+                    </div>
+
+                    <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
+                      <button type="submit" className="btn btn-primary" disabled={!pdfFile || uploadingPdf} style={{ width: "100%" }}>
+                        {uploadingPdf ? <LoaderCircle size={15} className="spin" /> : <FileUp size={15} />}
+                        <span>{uploadingPdf ? "Extracting & Saving…" : "Extract & Save PDF to Memory"}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* Bottom Card: Active Memory Preview */}
+              <div className="admin-card" style={{ padding: "var(--space-5)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-3)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <BookOpen size={18} style={{ color: "var(--primary-600)" }} />
+                    <h3 style={{ margin: 0, fontSize: "var(--text-md)", color: "var(--text)" }}>Active Knowledge Memory Preview</h3>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => void loadCompanyMemory()}
+                    >
+                      <RefreshCw size={14} />
+                      <span>Refresh</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => void handleClearCompanyMemory()}
+                    >
+                      <Trash2 size={14} />
+                      <span>Reset Memory</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    maxHeight: "260px",
+                    overflowY: "auto",
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: "var(--space-4)",
+                    fontSize: "var(--text-xs)",
+                    lineHeight: 1.6,
+                    color: "var(--text-secondary)",
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "var(--font-mono)",
+                  }}
+                >
+                  {companyMemory?.details || (
+                    <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+                      No custom memory configured. Paste details or upload a PDF above to load memory for Nanvi.
+                    </span>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </div>

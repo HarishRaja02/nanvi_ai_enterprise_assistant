@@ -488,3 +488,112 @@ def update_database_config(
         "message": f"Database configuration updated successfully ({', '.join(updated_keys)}).",
         "updated_keys": updated_keys,
     }
+
+
+# --- Company Details & AI Memory Management ---
+
+from backend.services.company_memory import company_memory_service
+import base64
+
+
+class CompanyDetailsUpdateRequest(BaseModel):
+    company_name: str = Field(min_length=1, max_length=200)
+    tagline: str | None = Field(default=None, max_length=500)
+    details: str = Field(default="", max_length=500000)
+
+
+class CompanyPdfUploadRequest(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_base64: str = Field(min_length=1)
+    append: bool = Field(default=False)
+
+
+@router.get("/company-details")
+def get_company_details(
+    user: UserIdentity = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Retrieve current company details and AI memory."""
+    _require_admin_or_ceo(user)
+    tenant_id = user.tenant_id or "enterprise-tenant"
+    return company_memory_service.get_memory(tenant_id)
+
+
+@router.post("/company-details")
+def update_company_details(
+    body: CompanyDetailsUpdateRequest,
+    user: UserIdentity = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Save or update company details pasted by the administrator."""
+    _require_admin_or_ceo(user)
+    tenant_id = user.tenant_id or "enterprise-tenant"
+    admin_name = user.name or user.subject or "admin"
+    return company_memory_service.save_memory(
+        details=body.details,
+        company_name=body.company_name,
+        tagline=body.tagline or "",
+        source_type="pasted",
+        source_filename=None,
+        updated_by=admin_name,
+        tenant_id=tenant_id,
+    )
+
+
+@router.post("/company-details/upload-pdf")
+def upload_company_pdf_base64(
+    body: CompanyPdfUploadRequest,
+    user: UserIdentity = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Upload a company PDF profile/document to extract and store as AI memory."""
+    _require_admin_or_ceo(user)
+    tenant_id = user.tenant_id or "enterprise-tenant"
+    admin_name = user.name or user.subject or "admin"
+
+    try:
+        raw_b64 = body.content_base64
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        pdf_bytes = base64.b64decode(raw_b64)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid base64 PDF payload.") from exc
+
+    try:
+        extracted_text = company_memory_service.extract_text_from_pdf(pdf_bytes)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"PDF extraction failed: {str(exc)}") from exc
+
+    if body.append:
+        res = company_memory_service.append_memory(
+            additional_details=extracted_text,
+            source_filename=body.filename,
+            updated_by=admin_name,
+            tenant_id=tenant_id,
+        )
+    else:
+        current = company_memory_service.get_memory(tenant_id)
+        res = company_memory_service.save_memory(
+            details=extracted_text,
+            company_name=current.get("company_name", "Nanvi AI Enterprise"),
+            tagline=current.get("tagline", ""),
+            source_type="pdf_upload",
+            source_filename=body.filename,
+            updated_by=admin_name,
+            tenant_id=tenant_id,
+        )
+
+    return {
+        "success": True,
+        "message": f"Successfully extracted {len(extracted_text)} characters from '{body.filename}'.",
+        "memory": res,
+    }
+
+
+@router.delete("/company-details")
+def clear_company_details(
+    user: UserIdentity = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Reset company memory back to baseline."""
+    _require_admin_or_ceo(user)
+    tenant_id = user.tenant_id or "enterprise-tenant"
+    admin_name = user.name or user.subject or "admin"
+    return company_memory_service.clear_memory(updated_by=admin_name, tenant_id=tenant_id)
+

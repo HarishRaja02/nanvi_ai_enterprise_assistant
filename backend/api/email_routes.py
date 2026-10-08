@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -147,11 +148,110 @@ def handle_google_callback(
     }
 
 
+@router.post("/oauth/google/connect-saved")
+def connect_saved_mailbox(
+    user: UserIdentity = Depends(get_current_user),
+    _uecp: Any = Depends(require_uecp_access(permission="email.read")),
+) -> dict[str, Any]:
+    """Connect the enterprise Gmail mailbox configured in the server environment (e.g. Vercel env or .env)."""
+    from backend.core.config import settings
+    if not settings.gmail_refresh_token or not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No saved Gmail credentials configured on the server.",
+        )
+    oauth = get_google_oauth_service()
+    account_service = get_user_email_account_service()
+
+    try:
+        access_token, expires_in = oauth.refresh_access_token(settings.gmail_refresh_token)
+        userinfo = oauth.fetch_userinfo(access_token) if access_token else {}
+    except Exception as exc:
+        logger.error("Failed to connect saved Gmail account: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to refresh saved Google account: {exc}",
+        )
+
+    email_address = userinfo.get("email") or f"{user.subject}@gmail.com"
+    display_name = userinfo.get("name") or user.name or "Google Workspace Account"
+    avatar_url = userinfo.get("picture")
+
+    saved = account_service.save_account(
+        UserEmailAccount(
+            id=str(uuid.uuid4()),
+            user_id=user.subject,
+            tenant_id=user.tenant_id or "enterprise-tenant",
+            email_address=email_address,
+            display_name=display_name,
+            provider="google",
+            access_token=access_token,
+            refresh_token=settings.gmail_refresh_token,
+            token_expires_at=time.time() + expires_in,
+            scopes="gmail.readonly,email,profile",
+            avatar_url=avatar_url,
+            is_active=True,
+        )
+    )
+
+    log_event(
+        logger,
+        "email_account_connected",
+        actor_id=user.subject,
+        tenant_id=user.tenant_id,
+        email_address=email_address,
+        provider="google",
+    )
+
+    return {
+        "status": "connected",
+        "account": {
+            "id": saved.id,
+            "email_address": saved.email_address,
+            "display_name": saved.display_name,
+            "provider": saved.provider,
+            "avatar_url": saved.avatar_url,
+            "connected_at": saved.connected_at,
+        },
+    }
+
+
 @router.get("/status")
 def get_mailbox_status(user: UserIdentity = Depends(get_current_user)) -> dict[str, Any]:
     """Get the current user's connected mailbox status."""
+    from backend.core.config import settings
     account_service = get_user_email_account_service()
     account = account_service.get_active_account(user.subject)
+
+    # If no mailbox is actively linked for this user, but verified server credentials exist, auto-link
+    if not account and settings.gmail_refresh_token and settings.google_client_id and settings.google_client_secret:
+        try:
+            oauth = get_google_oauth_service()
+            access_token, expires_in = oauth.refresh_access_token(settings.gmail_refresh_token)
+            userinfo = oauth.fetch_userinfo(access_token) if access_token else {}
+            email_address = userinfo.get("email") or f"{user.subject}@gmail.com"
+            display_name = userinfo.get("name") or user.name or "Google Workspace Account"
+            avatar_url = userinfo.get("picture")
+
+            account = account_service.save_account(
+                UserEmailAccount(
+                    id=str(uuid.uuid4()),
+                    user_id=user.subject,
+                    tenant_id=user.tenant_id or "enterprise-tenant",
+                    email_address=email_address,
+                    display_name=display_name,
+                    provider="google",
+                    access_token=access_token,
+                    refresh_token=settings.gmail_refresh_token,
+                    token_expires_at=time.time() + expires_in,
+                    scopes="gmail.readonly,email,profile",
+                    avatar_url=avatar_url,
+                    is_active=True,
+                )
+            )
+            logger.info("Auto-connected configured Gmail account for user '%s': %s", user.subject, email_address)
+        except Exception as exc:
+            logger.warning("Auto-linking configured Gmail account failed: %s", exc)
 
     if account:
         return {
@@ -167,8 +267,6 @@ def get_mailbox_status(user: UserIdentity = Depends(get_current_user)) -> dict[s
             },
         }
 
-    # If no account connected yet, check if enterprise fallback token is configured in .env
-    from backend.core.config import settings
     has_enterprise_fallback = bool(settings.gmail_refresh_token or settings.gmail_access_token)
 
     return {

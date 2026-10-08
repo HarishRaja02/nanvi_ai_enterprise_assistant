@@ -236,7 +236,7 @@ export class NanviApiClient {
     const token = this.getAccessToken ? await this.getAccessToken() : null;
     const headers = new Headers(init.headers);
     headers.set("Accept", "application/json");
-    if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (token) headers.set("Authorization", `Bearer ${token}`);
 
     let response: Response;
@@ -641,6 +641,12 @@ if (!response.ok) {
     });
   }
 
+  connectSavedEmail() {
+    return this.request<{ status: string; account: EmailAccount }>("/email/oauth/google/connect-saved", {
+      method: "POST",
+    });
+  }
+
   disconnectEmail(accountId?: string) {
     return this.request<{ status: string }>("/email/disconnect", {
       method: "POST",
@@ -880,6 +886,54 @@ if (!response.ok) {
     );
   }
 
+  // --- Company Details & AI Memory Management ---
+  adminGetCompanyMemory() {
+    return this.request<CompanyMemory>("/admin/company-details");
+  }
+
+  adminSaveCompanyMemory(data: { company_name: string; details: string; tagline?: string }) {
+    return this.request<CompanyMemory>("/admin/company-details", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async adminUploadCompanyPdf(file: File, append = false) {
+    return new Promise<{ success: boolean; message: string; memory: CompanyMemory }>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await this.adminUploadCompanyPdfBase64({
+            filename: file.name,
+            content_base64: reader.result as string,
+            append,
+          });
+          resolve(res);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async adminUploadCompanyPdfBase64(data: { filename: string; content_base64: string; append?: boolean }) {
+    return this.request<{ success: boolean; message: string; memory: CompanyMemory }>(
+      "/admin/company-details/upload-pdf",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  adminClearCompanyMemory() {
+    return this.request<CompanyMemory>("/admin/company-details", {
+      method: "DELETE",
+    });
+  }
+
   // --- User Trouble & Issue Reporting ---
   submitSupportTicket(ticket: {
     category: string;
@@ -1093,4 +1147,18 @@ export type DatabaseConfig = {
     description: string;
   };
 };
+
+export type CompanyMemory = {
+  company_name: string;
+  tagline?: string;
+  details: string;
+  source_type: "pasted" | "pdf_upload" | "combined" | "default";
+  source_filename?: string | null;
+  updated_at: string;
+  updated_by: string;
+  character_count: number;
+  word_count: number;
+  is_configured: boolean;
+};
+
 

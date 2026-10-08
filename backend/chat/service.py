@@ -97,22 +97,6 @@ class ChatService:
 
         request_id = get_request_id() if get_request_id() != "-" else uuid4().hex
 
-        # Check for conversational greeting / chitchat first (never trigger RAG or load files on greetings)
-        if self._is_conversational_query(query):
-            answer = self._generate_conversational_reply(query)
-            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
-            log_event(logger, "chat_service_completed", actor_id=user.user_id, tenant_id=user.tenant_id,
-                      request_id=request_id, capability="", source_count=0,
-                      history_count=len(self._store.get(conversation_id)))
-            return ChatResponse(
-                conversation_id=conversation_id,
-                answer=answer,
-                sources=(),
-                capability="",
-                trace=("Conversational greeting handled directly",),
-                history=self._store.get(conversation_id),
-            )
-
         # Check if user is responding to a source selection prompt
         prior_asst_msgs = [m.content for m in prior_history if m.role == "assistant"]
         prior_user_msgs = [m.content for m in prior_history if m.role == "user"]
@@ -164,6 +148,30 @@ class ChatService:
         if deictic_query != query:
             effective_query = deictic_query
 
+        # Check intent decision using dedicated IntentRouter layer
+        # This layer prevents distraction between conversational chat/company memory vs file search
+        from backend.chat.intent_router import intent_router, ChatIntent
+        intent_decision = intent_router.classify(effective_query, prior_history)
+
+        if intent_decision.intent == ChatIntent.CONVERSATION:
+            answer = self._generate_chatgpt_conversational_reply(
+                query=effective_query,
+                prior_history=prior_history,
+                tenant_id=user.tenant_id,
+            )
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            log_event(logger, "chat_service_completed", actor_id=user.user_id, tenant_id=user.tenant_id,
+                      request_id=request_id, capability="conversation", source_count=0,
+                      history_count=len(self._store.get(conversation_id)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=(),
+                capability="conversation",
+                trace=(f"Conversational intent handled via ChatGPT-style LLM ({intent_decision.reason})",),
+                history=self._store.get(conversation_id),
+            )
+
         # Check if this is an explicit report export/generation query (e.g. export to pdf, download as word)
         caps = self._capabilities_for_query(effective_query)
         is_pure_report = (Capability.REPORT in caps and any(w in effective_query.casefold() for w in ("export", "download as", "generate report", "create report")))
@@ -192,7 +200,7 @@ class ChatService:
             )
 
         if not is_pure_report:
-            # Whenever user asks a question without specifying source, prompt user to select source.
+            # Whenever user asks a specific file/data search question without specifying source, prompt user to select source.
             answer = "Which source would you like me to search?\n\n- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"
             self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
             return ChatResponse(
@@ -599,31 +607,86 @@ class ChatService:
                 return True
         return False
 
+    def _generate_chatgpt_conversational_reply(
+        self,
+        query: str,
+        prior_history: Sequence[ChatMessage] | None = None,
+        tenant_id: str = "enterprise-tenant",
+    ) -> str:
+        from backend.services.company_memory import company_memory_service
+        mem = company_memory_service.get_memory(tenant_id)
+        company_name = mem.get("company_name") or "Nanvi AI Enterprise"
+        company_context = company_memory_service.build_system_context(tenant_id)
+
+        system_prompt = (
+            f"You are Nanvi, an intelligent, empathetic, articulate, and friendly enterprise AI copilot for {company_name}.\n"
+            f"You speak and interact with the natural conversational warmth, cadence, clarity, and helpfulness of ChatGPT.\n\n"
+            f"{company_context}\n\n"
+            f"INTERACTION DIRECTIVES:\n"
+            f"1. Converse naturally and interactively. Do not provide rigid, robotic, or hardcoded answers.\n"
+            f"2. When greeted ('hi', 'hello', 'hey', 'good morning', etc.), welcome the user warmly as Nanvi, acknowledge the enterprise ({company_name}), and offer proactive assistance.\n"
+            f"3. When users ask questions about {company_name}, its background, leadership, mission, products, services, or internal policies, use your Enterprise Context & Memory above to answer authoritatively, proudly, and accurately.\n"
+            f"4. For general chat, brainstorming, drafting emails, writing summaries, technical or workplace advice, deliver insightful, well-structured, ChatGPT-quality responses.\n"
+            f"5. If the user explicitly asks to search or retrieve specific files, spreadsheets, invoices, contracts, or database records, warmly inform them that you can search across company sources (Local Storage, Database, Email, Google Drive) and ask what document they need.\n"
+            f"6. Use clean Markdown formatting (bold text, lists, sections) when helpful for readability."
+        )
+
+        messages_history: list[dict[str, str]] = []
+        if prior_history:
+            for m in prior_history[-10:]:
+                if m.content and m.content.strip():
+                    messages_history.append({"role": m.role, "content": m.content})
+
+        provider = getattr(self._answerer, "_provider", None)
+        if provider is not None:
+            try:
+                reply = provider.generate(
+                    query,
+                    system=system_prompt,
+                    messages_history=messages_history,
+                )
+                if reply and reply.strip():
+                    return reply.strip()
+            except Exception as exc:
+                logger.warning("LLM conversational generation failed: %s; using contextual fallback", exc)
+
+        return self._generate_conversational_reply(query, mem)
+
     @staticmethod
-    def _generate_conversational_reply(query: str) -> str:
+    def _generate_conversational_reply(query: str, mem: dict[str, Any] | None = None) -> str:
         clean = re.sub(r"[^\w\s]", "", query.strip().casefold())
         clean = re.sub(r"\s+", " ", clean).strip()
+        comp_name = (mem or {}).get("company_name", "Nanvi AI Enterprise")
+        details = (mem or {}).get("details", "")
+
         if any(clean.startswith(w) for w in ("who are you", "what are you", "what can you do", "help", "tell me about yourself")):
+            intro = f"I'm **Nanvi**, your intelligent enterprise AI copilot for **{comp_name}**."
+            if details:
+                intro += f"\n\n**About {comp_name}:**\n{details[:400]}..."
             return (
-                "I'm **Nanvi**, your enterprise AI copilot designed for secure and intelligent workplace assistance.\n\n"
-                "Here is what I can help you with:\n"
-                "- **Document Retrieval (RAG)**: Search and extract information across PDFs, Word docs, Excel sheets, and CSVs.\n"
-                "- **Enterprise Database**: Query business records, transactions, invoices, and analytics.\n"
-                "- **Email Intelligence**: Retrieve messages, communications, and project updates.\n"
-                "- **Data Analysis & Calculations**: Aggregate numbers, analyze trends, and compute metrics.\n"
-                "- **Executive Reports**: Generate structured reports with source citations.\n"
-                "- **Web Intelligence**: Search live web data when needed.\n\n"
-                "All operations strictly enforce enterprise Zero-Trust RBAC access policies. What would you like to explore today?"
+                f"{intro}\n\n"
+                f"Here is how I can assist you:\n"
+                f"- **Interactive Workplace Chat**: Brainstorming, drafting, strategy, and company Q&A.\n"
+                f"- **Company Memory & Policies**: Instant guidance on company products, mission, and guidelines.\n"
+                f"- **Document & File Search**: Search and retrieve contracts, invoices, and reports across local files.\n"
+                f"- **Enterprise Database**: Query records, analytics, transactions, and customers.\n"
+                f"- **Email Intelligence**: Retrieve emails, communications, and project updates.\n\n"
+                f"How can I help you right now?"
             )
         if any(clean.startswith(w) for w in ("thank", "thanks")):
-            return "You're very welcome! Let me know if you need anything else."
+            return f"You're very welcome! Let me know if there's anything else I can do for you at {comp_name}."
         if any(clean.startswith(w) for w in ("how are you",)):
-            return "I'm ready to help with company documents, data, and reports. What do you need?"
+            return f"I'm doing great and ready to help! How are things going with you today at {comp_name}?"
         if any(clean.startswith(w) for w in ("bye", "goodbye")):
-            return "Goodbye! Have a productive day ahead."
+            return "Goodbye! Have a productive and wonderful day ahead."
+
+        if details and any(w in clean for w in ("company", "about", "mission", "vision", "product", "service", "what do we do")):
+            return f"**About {comp_name}:**\n\n{details}"
+
         return (
-            "Hello! I'm **Nanvi**, your enterprise assistant. "
-            "How can I assist you today? You can ask me to search company documents, query the database, check emails, or generate reports."
+            f"Hello! 👋 I'm **Nanvi**, your enterprise AI copilot for **{comp_name}**. "
+            f"How can I help you today? You can chat with me naturally, ask questions about our company, "
+            f"or ask me to look up files and records."
         )
 
     @staticmethod

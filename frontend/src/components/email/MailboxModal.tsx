@@ -48,7 +48,7 @@ export function MailboxModal({ api, open, onClose, onAskPrompt }: Props) {
   const handleConnectGoogle = async () => {
     try {
       setConnecting(true);
-      const { auth_url } = await api.googleAuthUrl();
+      const { auth_url } = await api.googleAuthUrl(window.location.origin);
       window.location.href = auth_url;
     } catch {
       notify("Failed to initiate Google authorization. Please check backend configuration.", "error");
@@ -347,11 +347,53 @@ export function MailboxModal({ api, open, onClose, onAskPrompt }: Props) {
               </div>
             </div>
 
-            {/* Enterprise Fallback Notice if system token exists */}
+            {/* 1-Click Connect Saved Account if server token exists */}
             {status?.has_enterprise_fallback && (
-              <Alert tone="warning" title="Demo Mode Active">
-                A shared system inbox is configured as fallback. Connect your personal Google account above to query your own live inbox.
-              </Alert>
+              <div
+                style={{
+                  padding: "var(--space-3)",
+                  backgroundColor: "var(--primary-50)",
+                  border: "1px solid var(--primary-100)",
+                  borderRadius: "var(--radius-lg)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-2)",
+                }}
+              >
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-secondary)" }}>
+                  Verified Google credentials are configured on the server. You can link them with one click:
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      setConnecting(true);
+                      const res = await api.connectSavedEmail();
+                      notify(`Mailbox connected: ${res.account.email_address}`, "success");
+                      await loadStatus();
+                    } catch {
+                      notify("Failed to connect saved mailbox.", "error");
+                    } finally {
+                      setConnecting(false);
+                    }
+                  }}
+                  disabled={connecting}
+                  className="btn btn-primary btn-block"
+                  style={{
+                    minHeight: "38px",
+                    fontSize: "var(--text-sm)",
+                    fontWeight: "var(--weight-semibold)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "var(--space-2)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <CheckCircle2 size={16} />
+                  <span>1-Click Connect Saved Account (harishraja806@gmail.com)</span>
+                </button>
+              </div>
             )}
 
             {/* Manual Email Input Option */}

@@ -2,6 +2,8 @@
 backend/storage/*
 backend/storage/user_email_accounts.json
 !backend/storage/.gitkeep
+storage/*
+!storage/.gitkeep
 data/
 *.db
 *.sqlite
@@ -42,3 +44,6 @@ frontend/dist/
 *.tgz
 project_for_deepseek.txt
 scratch/
+
+.vercel
+.env*
