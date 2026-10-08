@@ -65,7 +65,8 @@ def _classify_query(query: str) -> tuple[bool, str, list[str], list[str], str]:
         "ids", "code", "no", "number", "numbers", "specifi", "specify", "specified",
         "specific", "data", "info", "information", "detail", "details", "about",
         "called", "named", "to", "of", "and", "or", "a", "an", "as", "at", "it",
-        "this", "that", "these", "those"
+        "this", "that", "these", "those", "related", "realted", "associated",
+        "regarding", "pertaining", "concerning", "linked"
     }
 
     # Category classification
@@ -125,6 +126,71 @@ def _to_clean_display_path(file_path: Path, repo_root: Path) -> str:
         if idx != -1:
             return p_str[idx:]
     return file_path.name
+
+
+def _extract_date_filter(query: str) -> tuple[str | None, int | None, int | None, int | None]:
+    """Extract explicit date expression from query.
+
+    Returns:
+        (display_str, year, month, day) or (None, None, None, None)
+    """
+    q = query.casefold()
+
+    if "today" in q:
+        d = datetime.now(timezone.utc)
+        return "Today", d.year, d.month, d.day
+    if "yesterday" in q:
+        from datetime import timedelta
+        d = datetime.now(timezone.utc) - timedelta(days=1)
+        return "Yesterday", d.year, d.month, d.day
+
+    # ISO formats: 2026-10-05, 2026/10/05, 2026-03-14
+    iso_m = re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", q)
+    if iso_m:
+        y, m, d = int(iso_m.group(1)), int(iso_m.group(2)), int(iso_m.group(3))
+        return f"{y:04d}-{m:02d}-{d:02d}", y, m, d
+
+    # Numeric formats: 10/05/2026, 05-10-2026
+    dmy_m = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", q)
+    if dmy_m:
+        p1, p2, y = int(dmy_m.group(1)), int(dmy_m.group(2)), int(dmy_m.group(3))
+        if p1 > 12:
+            d, m = p1, p2
+        else:
+            m, d = p1, p2
+        return f"{y:04d}-{m:02d}-{d:02d}", y, m, d
+
+    months = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
+        "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+        "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
+        "nov": 11, "november": 11, "dec": 12, "december": 12,
+    }
+    m_names = "|".join(months.keys())
+
+    # Form A: "Oct 5", "October 5th, 2026"
+    pat_a = rf"\b({m_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s*(\d{{4}}))?\b"
+    match_a = re.search(pat_a, q)
+    if match_a:
+        m_str = match_a.group(1)
+        day_val = int(match_a.group(2))
+        year_val = int(match_a.group(3)) if match_a.group(3) else 2026
+        month_val = months[m_str]
+        disp = f"{m_str.capitalize()} {day_val}, {year_val}"
+        return disp, year_val, month_val, day_val
+
+    # Form B: "5th Oct", "5 October 2026"
+    pat_b = rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({m_names})(?:,?\s*(\d{{4}}))?\b"
+    match_b = re.search(pat_b, q)
+    if match_b:
+        day_val = int(match_b.group(1))
+        m_str = match_b.group(2)
+        year_val = int(match_b.group(3)) if match_b.group(3) else 2026
+        month_val = months[m_str]
+        disp = f"{m_str.capitalize()} {day_val}, {year_val}"
+        return disp, year_val, month_val, day_val
+
+    return None, None, None, None
 
 
 def execute_file_search(
@@ -603,7 +669,7 @@ def execute_file_search(
 
             # Build targeted Gmail query
             if is_generic:
-                search_q = category if category != "general" else "has:attachment"
+                search_q = category if category != "general" else ""
             else:
                 search_q = " ".join(specific_tokens) if specific_tokens else clean_q
 
@@ -718,16 +784,48 @@ def execute_file_search(
         answer = f"No documents matching **\"{clean_q}\"** were found in **Cloud Storage**."
         return answer, [], []
 
-    # If no files found in this specific source, return clean empty result
+    # Check if query requests a specific date
+    date_label, dy, dm, dd = _extract_date_filter(clean_q)
+    summary = ""
+    if date_label is not None:
+        date_matched_files = []
+        for f in files:
+            m_str = f.get("modified_at") or ""
+            if m_str:
+                target_iso = f"{dy:04d}-{dm:02d}-{dd:02d}"
+                if target_iso in m_str:
+                    date_matched_files.append(f)
+                    continue
+                try:
+                    f_dt = datetime.fromisoformat(m_str.replace("Z", "+00:00"))
+                    if f_dt.year == dy and f_dt.month == dm and f_dt.day == dd:
+                        date_matched_files.append(f)
+                        continue
+                except Exception:
+                    pass
+        if date_matched_files:
+            files = date_matched_files
+            summary = f"Found **{len(files)}** document{'s' if len(files) != 1 else ''} modified on **{date_label}** in **{friendly_source}**:"
+        else:
+            summary = f"No documents modified specifically on **{date_label}** were found in **{friendly_source}**. Here are the most recent documents in this source:"
+
+    # If no files found at all in this specific source, return clean empty result
     if not files:
-        answer = f"No documents matching **\"{clean_q}\"** were found in **{friendly_source}**."
+        answer = (
+            f"No documents matching **\"{clean_q}\"** were found in **{friendly_source}**.\n\n"
+            "---\n"
+            "💡 **Would you like to search another source?** You can choose:\n"
+            "- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"
+        )
         return answer, [], []
 
     # Limit to max_results (top 5 to 10)
     files = files[:max_results]
 
     q_low = clean_q.casefold()
-    if is_generic:
+    if date_label is not None and summary:
+        pass  # summary already formatted above
+    elif is_generic:
         cat_desc = f"{category} " if category != "general" else ""
         summary = f"Found **{len(files)}** recently added {cat_desc}document{'s' if len(files) != 1 else ''} in **{friendly_source}**:"
     elif "overdue" in q_low and any(w in q_low for w in ("invoice", "invoices", "bill", "due")):
@@ -759,6 +857,15 @@ def execute_file_search(
             if len(snip) > 220:
                 snip = snip[:220] + "..."
             answer += f"• **{s['name']}**: *\"{snip}\"*\n"
+
+    # Offer follow-up date filter prompt if query didn't already have one
+    if date_label is None:
+        answer += (
+            "\n\n---\n"
+            "💡 **Looking for a specific timeframe?** You can provide a specific date "
+            "(e.g. *\"files modified on Oct 5\"* or *\"modified last week\"*), "
+            "and I'll filter for files updated on that day."
+        )
 
     return answer, files, sources
 

@@ -367,6 +367,16 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
         sender_filter = (request.sender or "").strip().casefold()
         subject_filter = (request.subject or "").strip().casefold()
 
+        GENERIC_EMAIL_TERMS = {
+            "recent", "email", "emails", "mail", "mails", "inbox", "gmail",
+            "message", "messages", "top", "get", "fetch", "show", "check",
+            "view", "read", "latest", "new", "all", "the", "my", "me", "any",
+            "1", "2", "3", "4", "5", "10"
+        }
+        words_in_q = set(re.findall(r"\w+", q))
+        if words_in_q and words_in_q.issubset(GENERIC_EMAIL_TERMS):
+            q = ""
+
         matches: list[EmailMessage] = []
         for msg in SAMPLE_GMAIL_MESSAGES:
             attachment_names = " ".join(attachment.name.casefold() for attachment in msg.attachments)
@@ -380,7 +390,7 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
                 in_sender = q in (msg.sender.name or "").casefold() or q in (msg.sender.address if msg.sender else "").casefold()
                 in_attachment = q in attachment_names
                 if not (in_subject or in_body or in_sender or in_attachment):
-                    terms = [t for t in q.split() if len(t) > 2 and t not in ("check", "name", "called", "named", "with", "from", "about", "search", "find", "file", "files", "document", "documents")]
+                    terms = [t for t in q.split() if len(t) > 2 and t not in ("check", "name", "called", "named", "with", "from", "about", "search", "find", "file", "files", "document", "documents", "email", "emails", "recent", "latest")]
                     searchable = " ".join((msg.subject.casefold(), (msg.body_preview or "").casefold(), attachment_names))
                     if terms and any(t in searchable for t in terms):
                         pass
@@ -415,8 +425,18 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
             "Accept": "application/json",
         }
         params: dict[str, Any] = {"maxResults": min(request.max_results, 25)}
-        if request.query:
-            params["q"] = request.query
+        GENERIC_EMAIL_TERMS = {
+            "recent", "email", "emails", "mail", "mails", "inbox", "gmail",
+            "message", "messages", "top", "get", "fetch", "show", "check",
+            "view", "read", "latest", "new", "all", "the", "my", "me", "any",
+            "1", "2", "3", "4", "5", "10"
+        }
+        q_str = (request.query or "").strip()
+        words_in_q = set(re.findall(r"\w+", q_str.casefold()))
+        if words_in_q and words_in_q.issubset(GENERIC_EMAIL_TERMS):
+            q_str = ""
+        if q_str:
+            params["q"] = q_str
         if request.cursor:
             params["pageToken"] = request.cursor
 
@@ -456,6 +476,14 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
                         snippet = m_data.get("snippet", "")
                         headers_list = m_data.get("payload", {}).get("headers", [])
                         header_map = {h.get("name", "").lower(): h.get("value", "") for h in headers_list}
+                        date_raw = header_map.get("date")
+                        msg_date = datetime.now(timezone.utc)
+                        if date_raw:
+                            try:
+                                from email.utils import parsedate_to_datetime
+                                msg_date = parsedate_to_datetime(date_raw)
+                            except Exception:
+                                pass
                         attachments = _gmail_attachments(m_data.get("payload", {}))
                         messages.append(EmailMessage(
                             id=msg_id,
@@ -464,7 +492,7 @@ class GmailEmailProvider(EmailRepository, EmailProvider):
                             sender=EmailAddress(header_map.get("from", "unknown@gmail.com")),
                             to_recipients=(EmailAddress(header_map.get("to", "")),),
                             cc_recipients=(),
-                            received_at=datetime.now(timezone.utc),
+                            received_at=msg_date,
                             sent_at=None,
                             body_preview=snippet,
                             has_attachments=bool(attachments),

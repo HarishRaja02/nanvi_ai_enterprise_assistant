@@ -2,6 +2,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 from backend.security.ai.context import PromptContext, PromptContextBuilder
 from uuid import uuid4
@@ -10,6 +11,7 @@ from backend.agents.models import AgentRequest, AgentResponse, Capability, Orche
 from backend.agents.orchestrator import EnterpriseOrchestrator
 from backend.security.authorization import UserAttributes
 from backend.security.validation import validate_non_empty
+from backend.sources.models import SourceReference, SourceType
 from backend.observability.logging import get_request_id, log_event
 import logging
 import re
@@ -117,6 +119,19 @@ class ChatService:
             if not original_query and prior_user_msgs:
                 original_query = prior_user_msgs[-1]
 
+            if selected_source == "email" and (self._is_direct_email_query(original_query) or any(w in original_query.casefold() for w in ("email", "emails", "gmail", "inbox", "mail"))):
+                answer, files, sources = self._handle_direct_email_query(user, original_query)
+                self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                return ChatResponse(
+                    conversation_id=conversation_id,
+                    answer=answer,
+                    sources=tuple(sources),
+                    capability="document_search",
+                    trace=("Direct email query executed for selected source email",),
+                    history=self._store.get(conversation_id),
+                    file_results=tuple(files),
+                )
+
             from backend.chat.file_search import execute_file_search
             answer, files, sources = execute_file_search(user, original_query, selected_source, max_results=10)
             self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
@@ -126,6 +141,71 @@ class ChatService:
                 sources=tuple(sources),
                 capability="document_search",
                 trace=(f"File search executed on {selected_source}",),
+                history=self._store.get(conversation_id),
+                file_results=tuple(files),
+            )
+
+        # Check if user is refining an email search with date or sender/keyword
+        is_email_refinement = False
+        if prior_asst_msgs:
+            last_asst = prior_asst_msgs[-1]
+            if (
+                "put a sender name" in last_asst
+                or ("Here are your" in last_asst and "recent email" in last_asst.casefold())
+            ):
+                if not self._is_conversational_greeting(query):
+                    is_email_refinement = True
+
+        if is_email_refinement:
+            answer, files, sources = self._handle_direct_email_query(user, query)
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=tuple(sources),
+                capability="document_search",
+                trace=("Email refinement search executed",),
+                history=self._store.get(conversation_id),
+                file_results=tuple(files),
+            )
+
+        # Check if user is refining a previous file search with a timeframe/date
+        from backend.chat.file_search import _extract_date_filter
+        date_label, dy, dm, dd = _extract_date_filter(query)
+        is_date_refinement = False
+        prior_file_source = ""
+        prior_search_topic = ""
+
+        if date_label is not None and prior_asst_msgs:
+            last_asst = prior_asst_msgs[-1]
+            if (
+                "Looking for a specific timeframe?" in last_asst
+                or "| File Name | File Path | Action |" in last_asst
+            ):
+                is_date_refinement = True
+                m_src = re.search(r"\bin\s+\*\*([A-Za-z\s]+)\*\*", last_asst)
+                if m_src:
+                    prior_file_source = self._extract_source_from_query(m_src.group(1)) or "local"
+                else:
+                    prior_file_source = "local"
+
+                for um in reversed(prior_user_msgs):
+                    clean_um = um.strip().casefold()
+                    if clean_um not in ("local", "database", "email", "google drive", "drive", "cloud", "local storage", "1", "2", "3", "4", "5") and not _extract_date_filter(um)[0]:
+                        prior_search_topic = um
+                        break
+
+        if is_date_refinement:
+            from backend.chat.file_search import execute_file_search
+            combined_query = f"{prior_search_topic} {query}".strip()
+            answer, files, sources = execute_file_search(user, combined_query, prior_file_source, max_results=10)
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=tuple(sources),
+                capability="document_search",
+                trace=(f"File date refinement executed on {prior_file_source}",),
                 history=self._store.get(conversation_id),
                 file_results=tuple(files),
             )
@@ -147,6 +227,21 @@ class ChatService:
         )
         if deictic_query != query:
             effective_query = deictic_query
+
+        # Direct email query check (e.g. "recent email", "top 5 recent email")
+        # Returns concrete email results immediately without prompting questions
+        if self._is_direct_email_query(effective_query):
+            answer, files, sources = self._handle_direct_email_query(user, effective_query)
+            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+            return ChatResponse(
+                conversation_id=conversation_id,
+                answer=answer,
+                sources=tuple(sources),
+                capability="document_search",
+                trace=("Direct email query executed",),
+                history=self._store.get(conversation_id),
+                file_results=tuple(files),
+            )
 
         # Check intent decision using dedicated IntentRouter layer
         # This layer prevents distraction between conversational chat/company memory vs file search
@@ -688,6 +783,208 @@ class ChatService:
             f"How can I help you today? You can chat with me naturally, ask questions about our company, "
             f"or ask me to look up files and records."
         )
+
+    @staticmethod
+    def _is_conversational_greeting(query: str) -> bool:
+        clean = re.sub(r"[^\w\s]", "", query.strip().casefold())
+        clean = re.sub(r"\s+", " ", clean).strip()
+        from backend.chat.intent_router import IntentRouter
+        if clean in IntentRouter._GREETINGS:
+            return True
+        tokens = clean.split()
+        if len(tokens) <= 3 and tokens[0] in ("hi", "hello", "hey", "hola", "namaste", "howdy", "sup", "yo"):
+            return True
+        return False
+
+    @classmethod
+    def _is_direct_email_query(cls, query: str) -> bool:
+        """Identify direct requests to fetch or view recent/inbox emails."""
+        q = query.strip().casefold()
+        clean = re.sub(r"[^\w\s]", " ", q)
+        clean = re.sub(r"\s+", " ", clean).strip()
+
+        if clean in (
+            "recent email", "recent emails", "top 5 recent email", "top 5 recent emails",
+            "top 5 emails", "top five emails", "top emails", "emails", "email",
+            "my email", "my emails", "gmail", "inbox", "recent mail", "recent mails",
+            "latest email", "latest emails", "new emails", "unread emails",
+        ):
+            return True
+
+        action_pattern = (
+            r"\b(?:check|show|get|fetch|list|read|view|find|display|pull)\s+"
+            r"(?:me\s+)?(?:all\s+)?(?:my\s+)?(?:the\s+)?(?:top\s+\d+\s+)?(?:recent|latest|new|unread)?\s*"
+            r"(?:emails?|gmail|inbox|messages?|mails?)\b"
+        )
+        if re.search(action_pattern, clean):
+            return True
+
+        if re.search(r"\b(?:recent|latest|top\s+\d+)\s+(?:emails?|gmail|inbox|messages?|mails?)\b", clean):
+            return True
+
+        return False
+
+    def _handle_direct_email_query(
+        self, user: UserAttributes, query: str, limit: int = 5
+    ) -> tuple[str, list[dict[str, Any]], list[SourceReference]]:
+        """Retrieve recent emails and format them immediately without blocking questions.
+
+        Returns top 5 emails followed by a non-blocking prompt offering date or name filtering.
+        """
+        from backend.integrations.email.gmail import GmailEmailProvider
+        from backend.integrations.email.models import EmailProviderContext, EmailSearchRequest
+        from backend.chat.file_search import _extract_date_filter
+
+        provider = GmailEmailProvider()
+        u_id = getattr(user, "user_id", None) or getattr(user, "subject", "user")
+        t_id = getattr(user, "tenant_id", None) or "default"
+        ctx = EmailProviderContext(
+            access_token="live_auth",
+            user_id=u_id,
+            tenant_id=t_id,
+        )
+
+        date_disp, dy, dm, dd = _extract_date_filter(query)
+
+        # Check if query targets a specific sender name
+        clean_q = query.strip()
+        sender_target = ""
+        m_from = re.search(r"\b(?:from|by|sent\s+by)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\b", clean_q, re.I)
+        if m_from:
+            sender_target = m_from.group(1).strip()
+        elif not self._is_direct_email_query(clean_q) and date_disp is None:
+            tokens = clean_q.split()
+            if len(tokens) <= 3 and not any(t.casefold() in ("email", "emails", "mail", "inbox", "gmail") for t in tokens):
+                sender_target = clean_q
+
+        req_q = ""
+        if not self._is_direct_email_query(clean_q):
+            req_q = re.sub(
+                r"(?i)\b(?:recent|emails?|gmail|inbox|messages?|mails?|check|show|get|fetch|list|from|for|on|date|name)\b",
+                "",
+                clean_q,
+            ).strip()
+
+        try:
+            search_req = EmailSearchRequest(
+                query=req_q,
+                sender=sender_target if sender_target else None,
+                max_results=limit * 2 if (date_disp or sender_target) else limit,
+            )
+            raw_msgs = provider.search(ctx, search_req)
+        except Exception as exc:
+            logger.warning("Email retrieval error in direct query: %s", exc)
+            raw_msgs = []
+
+        if dy is not None and dm is not None and dd is not None:
+            filtered_msgs = []
+            for m in raw_msgs:
+                if m.received_at and m.received_at.year == dy and m.received_at.month == dm and m.received_at.day == dd:
+                    filtered_msgs.append(m)
+            msgs = filtered_msgs[:limit] if filtered_msgs else raw_msgs[:limit]
+        else:
+            msgs = raw_msgs[:limit]
+
+        files: list[dict[str, Any]] = []
+        sources: list[SourceReference] = []
+
+        if not msgs:
+            if sender_target:
+                answer = (
+                    f"No emails from **{sender_target}** were found in your connected mailbox.\n\n"
+                    "---\n"
+                    "💡 **Looking for something specific?** You can specify another sender name or date, and I will search specifically for that."
+                )
+            elif date_disp:
+                answer = (
+                    f"No emails received on **{date_disp}** were found in your connected mailbox.\n\n"
+                    "---\n"
+                    "💡 **Looking for something specific?** You can specify another date or sender name, and I will search specifically for that."
+                )
+            else:
+                answer = (
+                    "No recent emails were found in your connected mailbox.\n\n"
+                    "---\n"
+                    "💡 **Looking for something specific?** You can specify a date (e.g. *\"emails from yesterday\"* or *\"Oct 5\"*) "
+                    "or put a sender name (e.g. *\"emails from Arjun\"*), and I will search specifically for that."
+                )
+            return answer, files, sources
+
+        if sender_target:
+            header_title = f"Found **{len(msgs)}** email{'s' if len(msgs) != 1 else ''} from **{sender_target}**:"
+        elif date_disp:
+            header_title = f"Found **{len(msgs)}** email{'s' if len(msgs) != 1 else ''} received on **{date_disp}**:"
+        else:
+            header_title = f"Here are your **{len(msgs)} most recent email{'s' if len(msgs) != 1 else ''}**:"
+
+        lines = [
+            f"{header_title}\n",
+            "| # | Subject | From | Date | Attachments | Action |",
+            "|---|---|---|---|---|---|",
+        ]
+
+        previews: list[str] = []
+        for idx, m in enumerate(msgs, start=1):
+            subj = m.subject.strip() or "(No Subject)"
+            sender_name = m.sender.name if m.sender and m.sender.name else (m.sender.address if m.sender else "Unknown")
+            sender_addr = m.sender.address if m.sender and m.sender.address else ""
+            sender_cell = f"{sender_name} (`{sender_addr}`)" if sender_addr and sender_addr != sender_name else sender_name
+
+            dt_str = m.received_at.strftime("%b %d, %Y, %I:%M %p") if m.received_at else "Recent"
+            att_names = ", ".join(f"`{a.name}`" for a in m.attachments) if m.attachments else "—"
+            web_link = m.web_link or f"https://mail.google.com/mail/u/0/#inbox/{m.id}"
+
+            safe_subj = subj.replace("|", "/")
+            safe_sender = sender_cell.replace("|", "/")
+            lines.append(f"| {idx} | **{safe_subj}** | {safe_sender} | {dt_str} | {att_names} | [Open in Gmail]({web_link}) |")
+
+            snippet = (m.body_preview or "").strip().replace("\n", " ")
+            if len(snippet) > 200:
+                snippet = snippet[:200] + "..."
+            if snippet:
+                previews.append(f"{idx}. **{safe_subj}**: *\"{snippet}\"*")
+
+            files.append({
+                "name": f"{subj}.eml",
+                "path": f"Email: {subj} (From: {sender_name})",
+                "type": "eml",
+                "modified_at": m.received_at.isoformat() if m.received_at else "",
+                "open_url": web_link,
+                "source": "email",
+                "content_snippet": snippet,
+            })
+            if m.attachments:
+                for att in m.attachments:
+                    files.append({
+                        "name": att.name,
+                        "path": f"Attachment in: {subj}",
+                        "type": Path(att.name).suffix.lstrip(".") or "pdf",
+                        "modified_at": m.received_at.isoformat() if m.received_at else "",
+                        "open_url": web_link,
+                        "source": "email",
+                    })
+
+            sources.append(
+                SourceReference(
+                    reference_id=f"ref-email-{idx}",
+                    source_type=SourceType.EMAIL,
+                    display_name=subj,
+                    title=subj,
+                    location=f"From: {sender_name} ({sender_addr})" if sender_addr else f"From: {sender_name}",
+                )
+            )
+
+        table_md = "\n".join(lines)
+        preview_md = "\n\n**Email Previews:**\n" + "\n".join(previews) if previews else ""
+
+        follow_up = (
+            "\n\n---\n"
+            "💡 **Looking for something specific?** You can specify a date (e.g. *\"emails from yesterday\"* or *\"Oct 5\"*) "
+            "or put a sender name (e.g. *\"emails from Arjun\"*), and I will search specifically for that."
+        )
+
+        answer = f"{table_md}{preview_md}{follow_up}"
+        return answer, files, sources
 
     @staticmethod
     def _extract_source_from_query(query: str) -> str | None:

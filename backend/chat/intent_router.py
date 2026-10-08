@@ -75,8 +75,11 @@ class IntentRouter:
         # Storage keywords
         r"\b(?:local\s+storage|google\s+drive|gdrive|database\s+record|db\s+records?|c:\\)\b",
         # Explicit file actions
-        r"\b(?:find|search|locate|look\s+for|where\s+is|fetch)\s+(?:the\s+)?(?:file|files|document|documents|pdf|sheet|spreadsheet|invoice|invoices|contract|contracts|resume|resumes)\b",
-        r"\b(?:list|show|browse)\s+(?:all\s+)?(?:files|documents|folders?|invoices|contracts|records)\b",
+        r"\b(?:check|find|search|locate|look\s+for|where\s+is|fetch)\s+(?:the\s+)?(?:file|files|document|documents|pdf|sheet|spreadsheet|invoice|invoices|contract|contracts|resume|resumes|emails?|records)\b",
+        r"\b(?:list|show|browse)\s+(?:all\s+)?(?:files|documents|folders?|invoices|contracts|records|emails?)\b",
+        # Email directives
+        r"\b(?:recent|latest|unread|top\s+\d+|check|show|get|fetch|list|search|find|view|read)\s+(?:my\s+)?(?:emails?|gmail|inbox|messages?|mails?)\b",
+        r"\b(?:recent\s+emails?|top\s+\d+\s+emails?)\b",
         # Explicit report generation / export
         r"\b(?:export|download|generate)\s+(?:report|document|schedule|as\s+pdf|as\s+excel|as\s+word|as\s+docx)\b",
         # SQL and DB execution
@@ -131,8 +134,8 @@ class IntentRouter:
             )
 
         # 5. Check if query asks for specific business entities combined with search/list/find verbs
-        has_action_verb = bool(re.search(r"\b(find|search|show|get|list|look\s+for|locate|where\s+is|fetch|pull)\b", q_lower))
-        has_file_noun = bool(re.search(r"\b(file|files|document|documents|pdf|docx|xlsx|csv|attachment|folder|directory)\b", q_lower))
+        has_action_verb = bool(re.search(r"\b(check|find|search|show|get|list|look\s+for|locate|where\s+is|fetch|pull|read|display)\b", q_lower))
+        has_file_noun = bool(re.search(r"\b(file|files|document|documents|pdf|docx|xlsx|csv|attachment|folder|directory|email|emails|mail|mails|message|messages|inbox)\b", q_lower))
         if has_action_verb and has_file_noun:
             return IntentDecision(
                 ChatIntent.FILE_OR_DATA_QUERY,
@@ -151,7 +154,7 @@ class IntentRouter:
             )
 
         # 7. Check if query is conversational general Q&A (e.g. "what is artificial intelligence", "can you tell me a story")
-        if not re.search(r"\b(invoice|contract|customer|employee|database|record|ledger|file|document|balance|salary)\b", q_lower):
+        if not re.search(r"\b(invoice|contract|customer|employee|database|record|ledger|file|document|balance|salary|email|emails|gmail|inbox|mail|message|messages)\b", q_lower):
             # No enterprise data keywords present
             return IntentDecision(
                 ChatIntent.CONVERSATION,

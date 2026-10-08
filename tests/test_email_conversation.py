@@ -317,12 +317,18 @@ def test_voice_routes_email_interception(monkeypatch):
     app.dependency_overrides[current_attributes] = lambda: mock_user
 
     try:
+        dev_resp = client.post(
+            "/api/dev/token",
+            json={"role": "Finance", "department": "Finance"},
+        )
+        auth_headers = {"Authorization": f"Bearer {dev_resp.json()['access_token']}"} if dev_resp.status_code == 200 else {}
         response = client.post(
             "/api/voice/respond",
             json={
                 "query": "What are my recent emails?",
                 "conversation_id": "test-route-conv",
             },
+            headers=auth_headers,
         )
         assert response.status_code == 200
         data = response.json()
