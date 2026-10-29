@@ -69,14 +69,19 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     }
 
     setOpeningIdx(idx);
-    notify(`Copied path to clipboard! Requesting open on computer...`, "success");
+    notify(`Requesting open on your computer...`, "success");
 
     try {
       if (api && typeof api.openFile === "function") {
-        await Promise.race([
+        const resp = await Promise.race([
           api.openFile(exactPath),
-          new Promise((resolve) => setTimeout(resolve, 1500)),
+          new Promise<{ status: string; message?: string }>((resolve) =>
+            setTimeout(() => resolve({ status: "timeout" }), 5000),
+          ),
         ]);
+        if (resp && resp.status === "ok") {
+          notify(`✓ Opening ${file.name} on your computer...`, "success");
+        }
       }
     } catch {
       // Handled silently since path is already copied to clipboard

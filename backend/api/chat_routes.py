@@ -345,20 +345,9 @@ def open_local_file(
         raw_path = raw_path[8:]
 
     p = Path(raw_path)
-    if not p.is_absolute() or not p.exists():
-        from backend.integrations.files.company_data_service import CompanyDataService
-        root = CompanyDataService.for_tenant(user.tenant_id).root
-        candidate = root / raw_path
-        if candidate.exists():
-            p = candidate
-        else:
-            fn = p.name
-            matches = [m for m in root.rglob(fn) if m.is_file()]
-            if matches:
-                p = matches[0]
 
-    # If the file exists directly on server host (local development)
-    if p.exists():
+    # 1. If running locally on server host with file available (local development)
+    if p.is_absolute() and p.exists():
         try:
             import os
             if hasattr(os, "startfile"):
@@ -367,7 +356,7 @@ def open_local_file(
         except Exception as exc:
             logger.warning("os.startfile failed: %s", exc)
 
-    # Cloud / Vercel fallback: Queue the open_file command to the user's connected Windows PC agent
+    # 2. Fast Cloud / Vercel fallback: Queue the open_file command to the user's connected Windows PC agent
     try:
         from backend.local_agent.service import get_local_agent_service
         local_svc = get_local_agent_service()

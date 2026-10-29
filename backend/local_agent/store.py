@@ -370,25 +370,50 @@ class LocalAgentStore:
 
     def pop_commands(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         """Retrieve and clear pending commands for the agent on heartbeat."""
+        clean_t = str(tenant_id or "default").strip()
+        clean_u = str(user_id or "default").strip()
+
         with self._lock:
-            val = self._load_key(tenant_id, user_id)
+            # 1. Exact match for this tenant and user
+            val = self._load_key(clean_t, clean_u)
             cmds = list(val.get("pending_commands", []))
             if cmds:
                 val["pending_commands"] = []
-                self._save_key(tenant_id, user_id, val)
+                self._save_key(clean_t, clean_u, val)
                 return cmds
 
-            # Fallback 1: check under tenant with "default" user
-            if str(user_id or "").strip() != "default":
-                def_val = self._load_key(tenant_id, "default")
-                def_cmds = list(def_val.get("pending_commands", []))
-                if def_cmds:
-                    def_val["pending_commands"] = []
-                    self._save_key(tenant_id, "default", def_val)
-                    return def_cmds
+            # 2. Check PostgreSQL directly for ANY pending commands in this tenant
+            if self._dsn:
+                try:
+                    import psycopg
+                    from psycopg.rows import dict_row
+                    with psycopg.connect(self._dsn, autocommit=True, connect_timeout=3, row_factory=dict_row) as conn:
+                        rows = conn.execute(
+                            """
+                            SELECT user_id, data FROM public.nanvi_local_agent_store 
+                            WHERE tenant_id = %s AND (data->>'pending_commands') IS NOT NULL AND jsonb_array_length(data->'pending_commands') > 0
+                            LIMIT 5
+                            """,
+                            (clean_t,),
+                        ).fetchall()
+                        for r in rows:
+                            row_d = r.get("data") or {}
+                            row_cmds = list(row_d.get("pending_commands", []))
+                            if row_cmds:
+                                row_d["pending_commands"] = []
+                                conn.execute(
+                                    "UPDATE public.nanvi_local_agent_store SET data = %s::jsonb, updated_at = NOW() WHERE tenant_id = %s AND user_id = %s",
+                                    (json.dumps(row_d), clean_t, r["user_id"]),
+                                )
+                                # Update in-memory cache if present
+                                k_other = self._key(clean_t, r["user_id"])
+                                if k_other in self._data:
+                                    self._data[k_other]["pending_commands"] = []
+                                return row_cmds
+                except Exception as exc:
+                    logger.debug("PostgreSQL pop_commands error: %s", exc)
 
-            # Fallback 2: check if any pending command in memory for this tenant
-            clean_t = str(tenant_id or "default").strip()
+            # 3. Fallback: check in-memory dictionary for this tenant
             for (t, u), d in self._data.items():
                 if t == clean_t and d.get("pending_commands"):
                     pending = list(d["pending_commands"])
