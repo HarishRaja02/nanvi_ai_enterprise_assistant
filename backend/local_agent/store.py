@@ -115,6 +115,7 @@ class LocalAgentStore:
                     "folders": val.get("folders", {}),
                     "chunks": val.get("chunks", []),
                     "requested_folders": val.get("requested_folders", []),
+                    "pending_commands": val.get("pending_commands", []),
                 })
             self._path.write_text(json.dumps(export, indent=2), encoding="utf-8")
         except Exception as exc:
@@ -139,6 +140,7 @@ class LocalAgentStore:
                             "folders": d.get("folders", {}),
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
+                            "pending_commands": d.get("pending_commands", []),
                         }
                         return self._data[k]
 
@@ -154,6 +156,7 @@ class LocalAgentStore:
                             "folders": d.get("folders", {}),
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
+                            "pending_commands": d.get("pending_commands", []),
                         }
                         return self._data[k]
 
@@ -168,6 +171,7 @@ class LocalAgentStore:
                             "folders": d.get("folders", {}),
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
+                            "pending_commands": d.get("pending_commands", []),
                         }
                         return self._data[k]
             except Exception as exc:
@@ -183,7 +187,7 @@ class LocalAgentStore:
             if d.get("chunks") or d.get("folders"):
                 return d
 
-        return self._data.setdefault(k, {"agent": {}, "folders": {}, "chunks": [], "requested_folders": []})
+        return self._data.setdefault(k, {"agent": {}, "folders": {}, "chunks": [], "requested_folders": [], "pending_commands": []})
 
     def _save_key(self, tenant_id: str, user_id: str, val: dict[str, Any]) -> None:
         """Persist state for a tenant/user to PostgreSQL and local file."""
@@ -372,7 +376,27 @@ class LocalAgentStore:
             if cmds:
                 val["pending_commands"] = []
                 self._save_key(tenant_id, user_id, val)
-            return cmds
+                return cmds
+
+            # Fallback 1: check under tenant with "default" user
+            if str(user_id or "").strip() != "default":
+                def_val = self._load_key(tenant_id, "default")
+                def_cmds = list(def_val.get("pending_commands", []))
+                if def_cmds:
+                    def_val["pending_commands"] = []
+                    self._save_key(tenant_id, "default", def_val)
+                    return def_cmds
+
+            # Fallback 2: check if any pending command in memory for this tenant
+            clean_t = str(tenant_id or "default").strip()
+            for (t, u), d in self._data.items():
+                if t == clean_t and d.get("pending_commands"):
+                    pending = list(d["pending_commands"])
+                    d["pending_commands"] = []
+                    self._save_key(t, u, d)
+                    return pending
+
+            return []
 
     def get_all_files(self, tenant_id: str, user_id: str) -> list[dict[str, Any]]:
         """Return all distinct indexed files from connected folders for this user/tenant."""

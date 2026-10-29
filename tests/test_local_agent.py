@@ -292,3 +292,32 @@ def test_sanitize_folder_path_strips_prefixes(local_service, mock_user):
     assert sanitize_folder_path("  'C:\\Data\\Reports'  ") == "C:\\Data\\Reports"
     assert sanitize_folder_path("python nanvi_local_agent.py add C:\\Docs") == "C:\\Docs"
 
+
+def test_command_queue_and_heartbeat_dispatch(local_service, mock_user):
+    tenant_id = mock_user.tenant_id
+    user_id = mock_user.subject
+
+    # Queue an open_file command
+    cmd_id = local_service.queue_command(tenant_id, user_id, "open_file", {"file_path": r"C:\CompanyData\test.pdf"})
+    assert cmd_id.startswith("cmd_")
+
+    # Agent heartbeats and receives the command in response
+    hb_resp = local_service.record_heartbeat(
+        tenant_id,
+        user_id,
+        LocalAgentHeartbeat(agent_version="1.1.0", folders=[]),
+    )
+    assert hb_resp["status"] == "ok"
+    assert len(hb_resp["commands"]) == 1
+    assert hb_resp["commands"][0]["command"] == "open_file"
+    assert hb_resp["commands"][0]["payload"]["file_path"] == r"C:\CompanyData\test.pdf"
+
+    # Second heartbeat should have no commands (popped)
+    hb_resp_2 = local_service.record_heartbeat(
+        tenant_id,
+        user_id,
+        LocalAgentHeartbeat(agent_version="1.1.0", folders=[]),
+    )
+    assert len(hb_resp_2["commands"]) == 0
+
+

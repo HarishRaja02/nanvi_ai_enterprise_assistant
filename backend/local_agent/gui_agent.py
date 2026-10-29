@@ -423,12 +423,79 @@ class NanviLocalAgent:
                                             self.status_callback(f"✓ Added folder: {Path(clean_rf).name}")
                                 except Exception as exc:
                                     logger.warning("Could not add folder '%s': %s", clean_rf, exc)
+                        # Execute any remote commands queued by the cloud (e.g. open_file)
+                        commands = data.get("commands", [])
+                        for cmd in commands:
+                            c_type = cmd.get("command")
+                            payload_data = cmd.get("payload", {})
+                            if c_type == "open_file":
+                                fp = payload_data.get("file_path", "")
+                                if fp:
+                                    self._execute_open_file(fp)
                     except Exception:
                         pass
                     return True
                 return False
         except Exception:
             return False
+
+    def _execute_open_file(self, file_path: str) -> None:
+        """Safely open a file in the user's default Windows application."""
+        clean = sanitize_folder_path(file_path)
+        if not clean:
+            return
+        if clean.startswith("file:///"):
+            clean = clean[8:]
+
+        p = Path(clean).expanduser().resolve()
+
+        if not p.exists() or not p.is_file():
+            found = False
+            # Search inside approved folders
+            for folder_str in list(self.approved_folders.keys()):
+                folder_p = Path(folder_str)
+                cand = (folder_p / clean).resolve()
+                if cand.is_file():
+                    p = cand
+                    found = True
+                    break
+                matches = list(folder_p.rglob(Path(clean).name))
+                if matches and matches[0].is_file():
+                    p = matches[0]
+                    found = True
+                    break
+            if not found:
+                # Common fallback locations
+                for fallback_root in [Path(r"C:\CompanyData"), Path.home() / "Downloads"]:
+                    if fallback_root.exists():
+                        cand = (fallback_root / clean).resolve()
+                        if cand.is_file():
+                            p = cand
+                            found = True
+                            break
+                        matches = list(fallback_root.rglob(Path(clean).name))
+                        if matches and matches[0].is_file():
+                            p = matches[0]
+                            found = True
+                            break
+
+        if p.exists() and p.is_file():
+            logger.info("Opening local file requested by Nanvi Cloud: %s", p)
+            try:
+                import os
+                if hasattr(os, "startfile"):
+                    os.startfile(str(p))
+                else:
+                    import subprocess
+                    subprocess.Popen(["cmd", "/c", "start", "", str(p)], shell=True)
+                if self.status_callback:
+                    self.status_callback(f"✓ Opened: {p.name}")
+            except Exception as exc:
+                logger.warning("Failed to open file %s: %s", p, exc)
+        else:
+            logger.warning("Requested file not found on computer: %s", clean)
+            if self.status_callback:
+                self.status_callback(f"⚠️ File not found: {Path(clean).name}")
 
     def _heartbeat_loop(self) -> None:
         while self.running:
@@ -438,7 +505,7 @@ class NanviLocalAgent:
                     self.status_callback("● Connected to Nanvi AI Assistant")
                 else:
                     self.status_callback("○ Reconnecting to Nanvi Cloud...")
-            time.sleep(10)
+            time.sleep(3)
 
     def start(self) -> None:
         self.running = True
