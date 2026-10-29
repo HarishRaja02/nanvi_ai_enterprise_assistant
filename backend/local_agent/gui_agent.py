@@ -27,11 +27,18 @@ from urllib.request import Request, urlopen
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-# Setup logging
+# Setup logging (writes to console and file)
+_log_dir = Path.home() / "AppData" / "Local" / "NanviAgent"
+_log_dir.mkdir(parents=True, exist_ok=True)
+_log_file = _log_dir / "agent.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler(str(_log_file), encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 logger = logging.getLogger("NanviLocalAgent")
 
@@ -101,6 +108,7 @@ class NanviLocalAgent:
         self._sync_lock = threading.Lock()
         self.status_callback = None
         self.folder_callback = None
+        self._last_opened_time = 0.0
         self._load_config()
 
     def _load_config(self) -> None:
@@ -481,6 +489,7 @@ class NanviLocalAgent:
 
         if p.exists() and p.is_file():
             logger.info("Opening local file requested by Nanvi Cloud: %s", p)
+            self._last_opened_time = time.time()
             try:
                 import os
                 if hasattr(os, "startfile"):
@@ -494,18 +503,20 @@ class NanviLocalAgent:
                 logger.warning("Failed to open file %s: %s", p, exc)
         else:
             logger.warning("Requested file not found on computer: %s", clean)
+            self._last_opened_time = time.time()
             if self.status_callback:
                 self.status_callback(f"⚠️ File not found: {Path(clean).name}")
 
     def _heartbeat_loop(self) -> None:
         while self.running:
             ok = self.send_heartbeat()
-            if self.status_callback:
+            # Only revert to generic status if 6 seconds have passed since last open notification
+            if self.status_callback and (time.time() - self._last_opened_time > 6):
                 if ok:
                     self.status_callback("● Connected to Nanvi AI Assistant")
                 else:
                     self.status_callback("○ Reconnecting to Nanvi Cloud...")
-            time.sleep(3)
+            time.sleep(2)
 
     def start(self) -> None:
         self.running = True

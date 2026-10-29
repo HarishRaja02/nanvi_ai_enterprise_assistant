@@ -36,6 +36,24 @@ export type LocalAccount = {
 };
 export type LocalAccountCreate = Omit<LocalAccount, "id" | "active" | "created_at"> & { password: string };
 
+export type ForgotPasswordResponse = {
+  status: string;
+  message: string;
+  dev_reset_link?: string;
+};
+
+export type VerifyResetTokenResponse = {
+  valid: boolean;
+  username: string;
+  email: string;
+  display_name: string;
+};
+
+export type ResetPasswordResponse = {
+  status: string;
+  message: string;
+};
+
 export type ChatSource = {
   reference_id: string;
   source_type: string;
@@ -305,6 +323,38 @@ if (!response.ok) {
     );
   }
 
+  forgotPassword(username: string, email: string) {
+    return this.request<ForgotPasswordResponse>(
+      "/auth/forgot-password",
+      { method: "POST", body: JSON.stringify({ username, email }) },
+      true,
+    );
+  }
+
+  verifyResetToken(token: string) {
+    return this.request<VerifyResetTokenResponse>(
+      `/auth/verify-reset-token?token=${encodeURIComponent(token)}`,
+      { method: "GET" },
+      true,
+    );
+  }
+
+  resetPasswordWithToken(token: string, newPassword: string) {
+    return this.request<ResetPasswordResponse>(
+      "/auth/reset-password",
+      { method: "POST", body: JSON.stringify({ token, new_password: newPassword }) },
+      true,
+    );
+  }
+
+  registerAccount(account: { username: string; email: string; password: string; display_name: string; department?: string }) {
+    return this.request<LocalAccount>(
+      "/auth/register",
+      { method: "POST", body: JSON.stringify(account) },
+      true,
+    );
+  }
+
   listLocalAccounts() { return this.request<LocalAccount[]>("/auth/accounts"); }
 
   createLocalAccount(account: LocalAccountCreate) {
@@ -353,7 +403,7 @@ if (!response.ok) {
   }
 
   openFile(filePath: string) {
-    return this.request<{ status: string; opened?: string; message?: string }>("/chat/open-file", {
+    return this.request<{ status: string; opened?: string; message?: string }>("/local-agent/open-file", {
       method: "POST",
       body: JSON.stringify({ file_path: filePath }),
     });
@@ -952,6 +1002,8 @@ if (!response.ok) {
     return this.request<SupportTicket[]>("/support/my-tickets");
   }
 }
+
+export const api = new NanviApiClient();
 
 
 export type EmailAccount = {

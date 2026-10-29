@@ -6,6 +6,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 
+from pydantic import BaseModel
+
 from backend.security.dependencies import get_current_user, get_optional_current_user
 from backend.security.models import UserIdentity
 from .models import (
@@ -47,6 +49,35 @@ def _extract_agent_identity(
 
 def _get_user_id(user: UserIdentity) -> str:
     return str(getattr(user, "subject", None) or getattr(user, "user_id", "default"))
+
+
+class OpenFileRequest(BaseModel):
+    file_path: str
+
+
+@router.post("/open-file")
+async def local_agent_open_file(
+    body: OpenFileRequest,
+    user: UserIdentity | None = Depends(get_optional_current_user),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> dict[str, Any]:
+    """Queue an open_file command to the user's connected Windows PC agent."""
+    raw_path = body.file_path.strip()
+    if raw_path.startswith("file:///"):
+        raw_path = raw_path[8:]
+
+    t_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
+    u_id = _get_user_id(user) if user else "default"
+
+    from pathlib import Path
+    cmd_id = service.queue_command(t_id, u_id, "open_file", {"file_path": raw_path})
+    return {
+        "status": "ok",
+        "opened": raw_path,
+        "message": f"Opening {Path(raw_path).name} on your connected Windows computer...",
+        "queued": True,
+        "command_id": cmd_id,
+    }
 
 
 @router.get("/download")

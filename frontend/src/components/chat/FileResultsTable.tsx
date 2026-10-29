@@ -73,20 +73,15 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
 
     try {
       if (api && typeof api.openFile === "function") {
-        const resp = await Promise.race([
-          api.openFile(exactPath),
-          new Promise<{ status: string; message?: string }>((resolve) =>
-            setTimeout(() => resolve({ status: "timeout" }), 5000),
-          ),
-        ]);
+        const resp = await api.openFile(exactPath);
         if (resp && resp.status === "ok") {
-          notify(`✓ Opening ${file.name} on your computer...`, "success");
+          notify(`✓ Opening ${file.name} on your computer via Nanvi Agent...`, "success");
         }
       }
     } catch {
-      // Handled silently since path is already copied to clipboard
+      notify(`Path copied to clipboard! Paste in File Explorer (Win+R) to open.`, "warning");
     } finally {
-      setTimeout(() => setOpeningIdx(null), 1000);
+      setTimeout(() => setOpeningIdx(null), 1200);
     }
   };
 
