@@ -119,13 +119,29 @@ async def get_document_content(
     clean_parts = [p for p in parts if p and not p.endswith(":") and p.lower() != "companydata"]
     rel_path = "/".join(clean_parts)
 
-    base_dir = Path(__file__).resolve().parent.parent  # backend/
-    search_roots = [
-        base_dir / "CompanyData",
-        base_dir.parent / "CompanyData",
-        Path("CompanyData").resolve(),
-        Path("C:/CompanyData"),
-    ]
+    search_roots: list[Path] = []
+    # 1. Dynamically add active folder from CompanyDataService
+    try:
+        from backend.integrations.files.company_data_service import CompanyDataService
+        for tid in ("default", "enterprise-tenant"):
+            cds_inst = CompanyDataService.for_tenant(tid)
+            if cds_inst.root and str(cds_inst.root) and cds_inst.root.exists() and cds_inst.root.is_dir():
+                if cds_inst.root not in search_roots:
+                    search_roots.append(cds_inst.root)
+    except Exception:
+        pass
+
+    # 2. Dynamically add connected folders from LocalAgentStore
+    try:
+        for (t, u), d in service.store._data.items():
+            for f_info in d.get("folders", {}).values():
+                fp = f_info.get("folder_path")
+                if fp:
+                    p_cand = Path(fp).resolve()
+                    if p_cand.exists() and p_cand.is_dir() and p_cand not in search_roots:
+                        search_roots.append(p_cand)
+    except Exception:
+        pass
 
     target_file: Path | None = None
     for r in search_roots:
@@ -371,4 +387,29 @@ async def agent_sync_folder(
 ) -> dict[str, Any]:
     """Sync batch of indexed chunks and files from an approved local folder."""
     tenant_id, user_id = identity
-    return service.sync_folder(tenant_id, user_id, payload)
+    res = service.sync_folder(tenant_id, user_id, payload)
+    if tenant_id != "default":
+        try:
+            service.sync_folder("default", "default", payload)
+        except Exception:
+            pass
+
+    # Dynamically connect CompanyDataService to this exact folder
+    try:
+        from pathlib import Path
+        from backend.integrations.files.company_data_service import CompanyDataService
+        from backend.integrations.files.company_data.persistence import set_persisted_folder
+        p = Path(payload.folder_path)
+        set_persisted_folder(payload.folder_path, tenant_id=tenant_id)
+        set_persisted_folder(payload.folder_path, tenant_id="default")
+
+        for tid in (tenant_id, "default"):
+            cds = CompanyDataService.for_tenant(tid)
+            if p.exists() and p.is_dir():
+                cds.update_root(p)
+            else:
+                cds._load_from_local_agent()
+    except Exception as exc:
+        logger.warning("Could not sync CompanyDataService with agent folder: %s", exc)
+
+    return res

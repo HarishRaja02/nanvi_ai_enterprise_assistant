@@ -41,6 +41,7 @@ BLOCKED_EXTENSIONS = {
 
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".csv", ".json", ".pdf", ".docx", ".xlsx", ".pptx",
+    ".doc", ".xls", ".ppt", ".rtf", ".log", ".html", ".xml",
 }
 
 BLOCKED_SYSTEM_PATHS = [
@@ -67,7 +68,7 @@ class NanviLocalAgent:
     def __init__(self, server_url: str, token: str, config_path: Path | None = None) -> None:
         self.server_url = server_url.rstrip("/")
         self.token = token
-        self.config_path = config_path or CONFIG_FILE
+        self.config_path = config_path or (LOCAL_CONFIG_FILE if LOCAL_CONFIG_FILE.exists() else CONFIG_FILE)
         self.approved_folders: dict[str, dict[str, Any]] = {}
         self.file_hashes: dict[str, str] = {}
         self.running = False
@@ -138,6 +139,21 @@ class NanviLocalAgent:
 
         return p
 
+    def set_single_folder(self, folder_path: str, display_name: str = "") -> Path:
+        """Exclusively set this folder as the single approved company data folder, clearing all others."""
+        p = self.validate_folder_path(folder_path)
+        path_str = str(p)
+        name = display_name or p.name or path_str
+        self.approved_folders.clear()
+        self.file_hashes.clear()
+        self.approved_folders[path_str] = {
+            "path": path_str,
+            "display_name": name,
+        }
+        self._save_config()
+        logger.info("Exclusively set approved folder: %s (%s)", path_str, name)
+        return p
+
     def add_folder(self, folder_path: str, display_name: str = "") -> Path:
         """Approve and connect a local folder."""
         p = self.validate_folder_path(folder_path)
@@ -171,12 +187,21 @@ class NanviLocalAgent:
         """Safely extract plain text from supported document formats."""
         ext = file_path.suffix.casefold()
 
-        # Text, Markdown, CSV, JSON
-        if ext in {".txt", ".md", ".csv", ".json"}:
+        # Text, Markdown, CSV, JSON, Log
+        if ext in {".txt", ".md", ".csv", ".json", ".log"}:
             try:
                 return file_path.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 return file_path.read_text(encoding="latin-1", errors="replace")
+
+        # HTML, XML, RTF
+        if ext in {".html", ".xml", ".rtf"}:
+            try:
+                raw = file_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                raw = file_path.read_text(encoding="latin-1", errors="replace")
+            clean = re.sub(r"<[^>]+>", " ", raw)
+            return re.sub(r"\s+", " ", clean).strip()
 
         # PDF parsing
         if ext == ".pdf":
@@ -370,6 +395,7 @@ class NanviLocalAgent:
             "display_name": display_name,
             "files": files,
             "chunks": chunks,
+            "replace_all": True,
         }
         try:
             req = Request(
@@ -627,6 +653,7 @@ def main() -> None:
     parser.add_argument("--server", help="Nanvi Cloud or local server URL (e.g. https://nanviaienterpriseassistant.vercel.app)")
     parser.add_argument("--token", help="Pairing token generated in Nanvi Web Settings")
     parser.add_argument("--folder", action="append", help="Approved folder path to add immediately")
+    parser.add_argument("--replace-folders", action="store_true", help="Replace existing folders with the specified folder exclusively")
     parser.add_argument("--daemon", action="store_true", help="Run in background daemon mode without interactive CLI")
     args = parser.parse_args()
 
@@ -664,9 +691,19 @@ def main() -> None:
 
     # Add folders from arguments
     if args.folder:
+        if args.replace_folders:
+            agent.approved_folders.clear()
+            agent.file_hashes.clear()
         for f in args.folder:
             try:
-                agent.add_folder(f)
+                if args.replace_folders:
+                    p = agent.set_single_folder(f)
+                    print(f"[✓] Exclusively connected company folder: {p}")
+                    print(f"[*] Scanning and indexing files from {p}...")
+                    agent.index_and_sync_folder(str(p))
+                    print(f"[✓] Synced to Nanvi AI Assistant backend successfully.")
+                else:
+                    agent.add_folder(f)
             except Exception as exc:
                 print(f"Error adding folder {f}: {exc}")
 

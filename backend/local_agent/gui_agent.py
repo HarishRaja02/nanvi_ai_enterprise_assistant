@@ -365,6 +365,7 @@ class NanviLocalAgent:
             "display_name": display_name,
             "files": files,
             "chunks": chunks,
+            "replace_all": True,
         }
         try:
             req = Request(
@@ -474,19 +475,8 @@ class NanviLocalAgent:
                     found = True
                     break
             if not found:
-                # Common fallback locations
-                for fallback_root in [Path(r"C:\CompanyData"), Path.home() / "Downloads"]:
-                    if fallback_root.exists():
-                        cand = (fallback_root / clean).resolve()
-                        if cand.is_file():
-                            p = cand
-                            found = True
-                            break
-                        matches = list(fallback_root.rglob(Path(clean).name))
-                        if matches and matches[0].is_file():
-                            p = matches[0]
-                            found = True
-                            break
+                # Search approved folder subdirectories
+                pass
 
         if p.exists() and p.is_file():
             logger.info("Opening local file requested by Nanvi Cloud: %s", p)

@@ -84,18 +84,77 @@ if "%PYTHON_CMD%"=="" (
     exit /b 1
 )
 
-:: 2. Write pre-configured config.json to both app directory and user profile
-(
-echo {{
-echo   "server_url": "{clean_server}",
-echo   "token": "{pairing_token}",
-echo   "display_name": "{clean_display}"
-echo }}
-) > "%NANVI_DIR%\\config.json"
+:: 2. Interactive Folder Configuration (Single-folder exclusive mode)
+set "CURRENT_FOLDER="
+if exist "%NANVI_DIR%\\config.json" (
+    for /f "usebackq delims=" %%F in (`%PYTHON_CMD% -c "import json, os; print(json.load(open(r'%NANVI_DIR%\\config.json')).get('folders', [{{}}])[0].get('path', '')) if os.path.exists(r'%NANVI_DIR%\\config.json') else ''" 2^>nul`) do (
+        set "CURRENT_FOLDER=%%F"
+    )
+)
 
-copy /y "%NANVI_DIR%\\config.json" "%USERPROFILE%\\.nanvi_local_agent_config.json" >nul 2>&1
+set "TARGET_FOLDER=%~1"
 
-:: 3. Unpack GUI Python script using PowerShell (safe from antivirus false positives)
+:PROMPT_LOOP
+if "!TARGET_FOLDER!"=="" (
+    echo.
+    echo -------------------------------------------------------------------
+    echo  CONFIGURE ACTIVE COMPANY FOLDER
+    echo -------------------------------------------------------------------
+    if not "!CURRENT_FOLDER!"=="" (
+        echo  Currently active folder:
+        echo    !CURRENT_FOLDER!
+        echo.
+        echo  Press [ENTER] to continue with this folder, OR
+        echo  Enter a new folder path to switch to a different folder:
+    ) else (
+        echo  Please enter or paste the full path of the company folder
+        echo  you want Nanvi AI to access (e.g. C:\MyCompanyFiles or D:\Projects):
+    )
+    echo.
+    set /p "USER_INPUT=Folder Path: "
+    if "!USER_INPUT!"=="" (
+        if not "!CURRENT_FOLDER!"=="" (
+            set "TARGET_FOLDER=!CURRENT_FOLDER!"
+        ) else (
+            echo.
+            echo [!] Folder path cannot be empty.
+            echo.
+            goto PROMPT_LOOP
+        )
+    ) else (
+        set "TARGET_FOLDER=!USER_INPUT!"
+    )
+)
+
+:: Clean quotes and whitespace
+set "TARGET_FOLDER=!TARGET_FOLDER:"=!"
+set "TARGET_FOLDER=!TARGET_FOLDER:'=!"
+for /f "tokens=* delims= " %%A in ("!TARGET_FOLDER!") do set "TARGET_FOLDER=%%A"
+
+:: Validate directory exists
+%PYTHON_CMD% -c "import sys, os; sys.exit(0 if os.path.isdir(sys.argv[1]) else 1)" "!TARGET_FOLDER!" 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] The directory "!TARGET_FOLDER!" does not exist or is not a folder.
+    echo Please verify the path and enter a valid existing folder.
+    echo.
+    set "TARGET_FOLDER="
+    goto PROMPT_LOOP
+)
+
+:: 3. Save pre-configured config.json with ONLY this folder
+%PYTHON_CMD% -c "import json, os, sys; p = sys.argv[1]; cfg = {{'server_url': '{clean_server}', 'token': '{pairing_token}', 'display_name': '{clean_display}', 'folders': [{{'path': os.path.abspath(p), 'display_name': os.path.basename(os.path.abspath(p)) or p}}]}}; json.dump(cfg, open(r'%NANVI_DIR%\\config.json', 'w'), indent=2); os.makedirs(os.path.expanduser('~'), exist_ok=True); json.dump(cfg, open(os.path.expanduser('~/.nanvi_local_agent_config.json'), 'w'), indent=2)" "!TARGET_FOLDER!"
+
+echo.
+echo ===================================================================
+echo  FOLDER CONNECTED SUCCESSFULLY!
+echo  Active Folder: !TARGET_FOLDER!
+echo  * Nanvi AI will ONLY access this specific folder.
+echo  * To change the folder later, simply run this BAT file again.
+echo ===================================================================
+echo.
+
+:: 4. Unpack GUI Python script using PowerShell (safe from antivirus false positives)
 set "B64_FILE=%TEMP%\\nanvi_agent_b64.txt"
 (
 echo -----BEGIN CERTIFICATE-----
@@ -110,7 +169,7 @@ if not exist "%NANVI_DIR%\\nanvi_gui_agent.py" (
 )
 del "%B64_FILE%" 2>nul
 
-:: 4. Verify extraction succeeded
+:: 5. Verify extraction succeeded
 if not exist "%NANVI_DIR%\\nanvi_gui_agent.py" (
     echo.
     echo [!] Could not unpack the Nanvi agent helper.
@@ -120,7 +179,7 @@ if not exist "%NANVI_DIR%\\nanvi_gui_agent.py" (
     exit /b 1
 )
 
-:: 5. Launch the clean white GUI window
+:: 6. Launch the clean white GUI window
 echo Launching Nanvi Local File Agent...
 start "" %PYTHON_CMD% "%NANVI_DIR%\\nanvi_gui_agent.py"
 if %ERRORLEVEL% NEQ 0 (

@@ -316,6 +316,14 @@ class LocalAgentStore:
             fid = payload.folder_id or payload.folder_path
             now_iso = datetime.now(timezone.utc).isoformat()
 
+            if payload.replace_all:
+                # Exclusive folder mode: purge all other folders and chunks across all keys in store
+                for other_k in list(self._data.keys()):
+                    self._data[other_k]["folders"] = {}
+                    self._data[other_k]["chunks"] = []
+                val["folders"] = {}
+                val["chunks"] = []
+
             # 1. Update folder registry
             folders = val.setdefault("folders", {})
             folders[fid] = {
@@ -329,7 +337,7 @@ class LocalAgentStore:
             }
 
             # 2. Replace chunks belonging to this folder
-            existing_chunks = val.get("chunks", [])
+            existing_chunks = val.get("chunks", []) if not payload.replace_all else []
             retained_chunks = [c for c in existing_chunks if c.get("folder_id") != fid]
 
             for c in payload.chunks:

@@ -213,7 +213,10 @@ class SourceReferenceService:
         try:
             from backend.integrations.files.company_data_service import CompanyDataService
             active_root = CompanyDataService.for_tenant(user.tenant_id).root
-            candidate_dirs = [active_root / "Uploads", active_root, Path("C:/CompanyData/Uploads"), Path("./CompanyData/Uploads")]
+            candidate_dirs = []
+            if active_root and str(active_root) and active_root.exists() and active_root.is_dir():
+                candidate_dirs.append(active_root / "Uploads")
+                candidate_dirs.append(active_root)
             for upload_dir in candidate_dirs:
                 if upload_dir.exists() and upload_dir.is_dir():
                     for f in upload_dir.iterdir():

@@ -249,17 +249,21 @@ def upload_document_for_rag(
     if len(data) > 15 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File exceeds maximum size of 15MB")
 
-    # Save to active company data folder Uploads or local fallback
+    # Save to active company data folder Uploads or storage fallback
     from backend.integrations.files.company_data_service import CompanyDataService
     active_root = CompanyDataService.for_tenant(user.tenant_id).root
-    upload_dir = active_root / "Uploads"
-    try:
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        dest = upload_dir / clean_filename
-        dest.write_bytes(data)
-    except Exception as exc:
-        logger.warning("Failed to write to %s (%s), falling back to local CompanyData", upload_dir, exc)
-        fallback_dir = Path("./CompanyData/Uploads")
+    dest = None
+    if active_root and str(active_root) and active_root.exists() and active_root.is_dir():
+        upload_dir = active_root / "Uploads"
+        try:
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            dest = upload_dir / clean_filename
+            dest.write_bytes(data)
+        except Exception as exc:
+            logger.warning("Failed to write to %s (%s)", upload_dir, exc)
+
+    if not dest or not dest.exists():
+        fallback_dir = Path(__file__).resolve().parent.parent / "storage" / "uploads"
         fallback_dir.mkdir(parents=True, exist_ok=True)
         dest = fallback_dir / clean_filename
         dest.write_bytes(data)
@@ -397,13 +401,15 @@ def download_local_file(
 
     try:
         from backend.integrations.files.company_data_service import CompanyDataService
-        root = CompanyDataService.for_tenant("default").root.resolve()
-        candidate = (root / raw_path).resolve()
-        if candidate.is_file():
-            return FileResponse(path=str(candidate), filename=candidate.name)
-        matches = [m for m in root.rglob(p.name) if m.is_file()]
-        if matches:
-            return FileResponse(path=str(matches[0]), filename=matches[0].name)
+        root = CompanyDataService.for_tenant("default").root
+        if root and str(root) and root.exists() and root.is_dir():
+            root_res = root.resolve()
+            candidate = (root_res / raw_path).resolve()
+            if candidate.is_file():
+                return FileResponse(path=str(candidate), filename=candidate.name)
+            matches = [m for m in root_res.rglob(p.name) if m.is_file()]
+            if matches:
+                return FileResponse(path=str(matches[0]), filename=matches[0].name)
     except Exception:
         pass
 

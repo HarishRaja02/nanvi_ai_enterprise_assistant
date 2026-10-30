@@ -83,30 +83,42 @@ export function getDemoFallbackResponse<T>(path: string, init?: RequestInit): T 
 
   if (cleanPath === "/settings/company-folder") {
     if (method === "PUT") {
-      let reqPath = "C:\\CompanyData";
+      let reqPath = "";
       try {
         if (init?.body) {
           const body = JSON.parse(init.body as string);
           if (body.path) reqPath = body.path;
         }
       } catch {}
+      try {
+        if (reqPath && typeof window !== "undefined") {
+          window.localStorage.setItem("nanvi_demo_folder_path", reqPath);
+        }
+      } catch {}
       const res: CompanyFolderUpdateResponse = {
         status: "ok",
         path: reqPath,
-        exists: true,
-        folder_count: 5,
-        file_count: 24,
-        indexed_files: 24,
+        exists: Boolean(reqPath),
+        folder_count: reqPath ? 5 : 0,
+        file_count: reqPath ? 24 : 0,
+        indexed_files: reqPath ? 24 : 0,
         message: "Company data directory updated and indexed successfully.",
       };
       return res as unknown as T;
     }
 
+    let savedPath = "";
+    try {
+      if (typeof window !== "undefined") {
+        savedPath = window.localStorage.getItem("nanvi_demo_folder_path") || "";
+      }
+    } catch {}
+
     const folderRes: CompanyFolderResponse = {
-      path: "C:\\CompanyData",
-      exists: true,
-      folder_count: 5,
-      file_count: 24,
+      path: savedPath,
+      exists: Boolean(savedPath),
+      folder_count: savedPath ? 5 : 0,
+      file_count: savedPath ? 24 : 0,
     };
     return folderRes as unknown as T;
   }

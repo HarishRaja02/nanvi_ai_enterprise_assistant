@@ -81,6 +81,7 @@ class FolderSyncPayload(BaseModel):
     display_name: str
     files: list[LocalFileRecord] = Field(default_factory=list)
     chunks: list[LocalChunkRecord] = Field(default_factory=list)
+    replace_all: bool = False
 
 
 class LocalSearchRequest(BaseModel):

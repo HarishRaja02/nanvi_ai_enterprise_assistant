@@ -338,4 +338,66 @@ def test_document_content_retrieval(local_service):
     assert len(resp.content) > 0
 
 
+def test_set_single_folder_exclusive_replacement(tmp_path):
+    folder1 = tmp_path / "folder1"
+    folder1.mkdir()
+    folder2 = tmp_path / "folder2"
+    folder2.mkdir()
+
+    cfg_file = tmp_path / "agent_config.json"
+    agent = NanviLocalAgent("http://127.0.0.1:8000", "test-token", config_path=cfg_file)
+
+    # Add first folder
+    agent.add_folder(str(folder1))
+    assert str(folder1.resolve()) in agent.approved_folders
+    assert len(agent.approved_folders) == 1
+
+    # Switch to second folder with set_single_folder
+    agent.set_single_folder(str(folder2))
+    assert str(folder2.resolve()) in agent.approved_folders
+    assert str(folder1.resolve()) not in agent.approved_folders
+    assert len(agent.approved_folders) == 1
+
+
+def test_folder_sync_replace_all_purges_old_folders(local_service):
+    tenant_id = "tenant-switch"
+    user_id = "usr-switch"
+
+    # Sync Folder A
+    payload_a = FolderSyncPayload(
+        folder_id="C:/FolderA",
+        folder_path="C:/FolderA",
+        display_name="FolderA",
+        files=[LocalFileRecord(relative_path="a.txt", filename="a.txt", folder_name="FolderA", file_type="txt")],
+        chunks=[LocalChunkRecord(chunk_id="chunk-a", relative_path="a.txt", filename="a.txt", folder_name="FolderA", text="Alpha secret text")],
+        replace_all=True,
+    )
+    local_service.sync_folder(tenant_id, user_id, payload_a)
+
+    files_a = local_service.get_all_local_files(tenant_id, user_id)
+    assert len(files_a) == 1
+    assert files_a[0]["name"] == "a.txt"
+
+    # Switch to Folder B with replace_all=True
+    payload_b = FolderSyncPayload(
+        folder_id="C:/FolderB",
+        folder_path="C:/FolderB",
+        display_name="FolderB",
+        files=[LocalFileRecord(relative_path="b.txt", filename="b.txt", folder_name="FolderB", file_type="txt")],
+        chunks=[LocalChunkRecord(chunk_id="chunk-b", relative_path="b.txt", filename="b.txt", folder_name="FolderB", text="Beta new content")],
+        replace_all=True,
+    )
+    local_service.sync_folder(tenant_id, user_id, payload_b)
+
+    files_b = local_service.get_all_local_files(tenant_id, user_id)
+    assert len(files_b) == 1
+    assert files_b[0]["name"] == "b.txt"
+    # Ensure Folder A's files and chunks are completely gone
+    assert not any(f["name"] == "a.txt" for f in files_b)
+    hits_a = local_service.search_local_chunks(tenant_id, user_id, "Alpha")
+    assert len(hits_a) == 0
+    hits_b = local_service.search_local_chunks(tenant_id, user_id, "Beta")
+    assert len(hits_b) == 1
+
+
 

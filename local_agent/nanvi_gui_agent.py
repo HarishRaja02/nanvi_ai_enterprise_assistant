@@ -357,6 +357,7 @@ class NanviLocalAgent:
             "display_name": display_name,
             "files": files,
             "chunks": chunks,
+            "replace_all": True,
         }
         try:
             req = Request(
