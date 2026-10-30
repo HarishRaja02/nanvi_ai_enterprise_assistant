@@ -1,0 +1,61 @@
+task_id,project_id,task,owner,status,priority,due_date
+T-001-000,P-001-000,Documentation,Backend,In Progress,High,2026-12-24
+T-001-001,P-001-001,API development,AI,Todo,Low,2026-10-23
+T-001-002,P-001-002,Security review,QA,In Progress,High,2026-10-23
+T-001-003,P-001-003,Documentation,QA,Blocked,Medium,2026-12-08
+T-001-004,P-001-004,Testing,Backend,Todo,Low,2026-09-22
+T-001-005,P-001-005,Documentation,Frontend,Blocked,Low,2027-01-26
+T-001-006,P-001-006,API development,Backend,Blocked,Low,2027-03-17
+T-001-007,P-001-007,Testing,Frontend,In Progress,Medium,2027-01-24
+T-001-008,P-001-008,Security review,AI,Blocked,Medium,2026-11-20
+T-001-009,P-001-009,Testing,QA,In Progress,Low,2026-09-14
+T-001-010,P-001-010,Documentation,Backend,Done,Medium,2027-02-25
+T-001-011,P-001-011,Security review,Frontend,In Progress,Low,2026-09-01
+T-001-012,P-001-012,Documentation,Frontend,Blocked,Medium,2026-10-04
+T-001-013,P-001-013,Security review,Backend,Todo,Medium,2026-09-13
+T-001-014,P-001-014,Documentation,QA,In Progress,Medium,2027-01-29
+T-001-015,P-001-015,Documentation,QA,Todo,Low,2026-11-02
+T-001-016,P-001-016,Documentation,Backend,In Progress,High,2027-03-20
+T-001-017,P-001-017,UI implementation,AI,Todo,Medium,2026-10-11
+T-001-018,P-001-018,Security review,QA,Todo,Low,2026-10-24
+T-001-019,P-001-019,Security review,AI,Blocked,Medium,2026-08-29
+T-001-020,P-001-020,API development,Frontend,Todo,Medium,2026-09-01
+T-001-021,P-001-021,Testing,Backend,Blocked,Low,2026-11-07
+T-001-022,P-001-022,Testing,Frontend,In Progress,Medium,2026-10-30
+T-001-023,P-001-023,Security review,QA,Blocked,Low,2026-10-12
+T-001-024,P-001-024,Documentation,Frontend,Blocked,High,2026-09-21
+T-001-025,P-001-025,Documentation,Backend,Todo,Low,2026-11-30
+T-001-026,P-001-026,Documentation,AI,Blocked,High,2027-03-07
+T-001-027,P-001-027,Documentation,QA,Todo,Medium,2027-02-21
+T-001-028,P-001-028,API development,Backend,In Progress,Medium,2027-01-16
+T-001-029,P-001-029,Testing,Backend,Done,Medium,2026-10-03
+T-001-030,P-001-030,API development,QA,Todo,High,2027-01-30
+T-001-031,P-001-031,API development,Frontend,Todo,Low,2026-09-22
+T-001-032,P-001-032,Documentation,Backend,Todo,Medium,2027-02-28
+T-001-033,P-001-033,Documentation,Frontend,Done,High,2027-01-14
+T-001-034,P-001-034,UI implementation,AI,Todo,Low,2026-09-09
+T-001-035,P-001-035,UI implementation,QA,Todo,High,2027-02-18
+T-001-036,P-001-036,UI implementation,Frontend,Todo,Medium,2026-12-06
+T-001-037,P-001-037,UI implementation,QA,Done,Low,2026-12-26
+T-001-038,P-001-038,Security review,AI,Done,High,2026-10-20
+T-001-039,P-001-039,Testing,Frontend,Todo,High,2027-02-08
+T-001-040,P-001-040,Security review,AI,Done,Low,2027-01-18
+T-001-041,P-001-041,API development,QA,Done,Low,2026-10-21
+T-001-042,P-001-042,API development,Backend,In Progress,Low,2026-09-30
+T-001-043,P-001-043,API development,Frontend,Done,Low,2026-12-12
+T-001-044,P-001-044,API development,Backend,In Progress,Low,2026-11-06
+T-001-045,P-001-045,Documentation,AI,In Progress,Low,2026-08-29
+T-001-046,P-001-046,Documentation,Frontend,In Progress,Medium,2026-09-22
+T-001-047,P-001-047,UI implementation,QA,Done,Medium,2026-12-01
+T-001-048,P-001-048,Testing,AI,Blocked,Medium,2026-11-16
+T-001-049,P-001-049,UI implementation,Frontend,In Progress,Medium,2026-10-20
+T-001-050,P-001-050,API development,AI,In Progress,Low,2026-09-09
+T-001-051,P-001-051,Security review,QA,In Progress,Medium,2026-12-23
+T-001-052,P-001-052,UI implementation,AI,In Progress,Low,2026-11-15
+T-001-053,P-001-053,API development,AI,Done,High,2027-01-21
+T-001-054,P-001-054,Security review,Backend,Blocked,Low,2027-03-11
+T-001-055,P-001-055,Security review,Frontend,Todo,Low,2026-11-19
+T-001-056,P-001-056,Documentation,Frontend,Todo,Medium,2026-08-23
+T-001-057,P-001-057,Security review,QA,Blocked,Medium,2027-03-14
+T-001-058,P-001-058,API development,Frontend,Done,High,2027-03-09
+T-001-059,P-001-059,API development,AI,Blocked,High,2026-11-10

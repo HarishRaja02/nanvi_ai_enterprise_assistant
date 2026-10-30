@@ -145,6 +145,19 @@
   border: 1px solid var(--border);
   box-shadow: var(--shadow-modal); animation: modal-in var(--dur) var(--ease);
 }
+.modal.modal-lg {
+  width: min(95vw, 56rem);
+  max-height: min(92dvh, 52rem);
+}
+.modal.modal-xl {
+  width: min(96vw, 70rem);
+  max-height: min(94dvh, 58rem);
+}
+.modal.modal-full {
+  width: 98vw;
+  height: 96dvh;
+  max-height: 96dvh;
+}
 .modal-header { display: flex; gap: var(--space-4); align-items: flex-start; justify-content: space-between; padding: var(--space-5) var(--space-6) var(--space-3); border-bottom: 1px solid var(--border-subtle); }
 .modal-title { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: var(--leading-tight); color: var(--text); overflow-wrap: anywhere; }
 .modal-body { padding: var(--space-4) var(--space-6); overflow: auto; display: grid; gap: var(--space-4); }

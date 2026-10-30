@@ -5,13 +5,20 @@ import { IconButton } from "./Button";
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-type ModalProps = { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode };
+type ModalProps = {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  size?: "sm" | "md" | "lg" | "xl" | "full";
+  className?: string;
+};
 
 /**
  * Accessible dialog: labelled, focus moves in and is trapped, Escape and backdrop close it,
  * background scroll is locked, and focus returns to whatever opened it.
  */
-export function Modal({ title, onClose, children, footer }: ModalProps) {
+export function Modal({ title, onClose, children, footer, size, className }: ModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -46,7 +53,15 @@ export function Modal({ title, onClose, children, footer }: ModalProps) {
 
   return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={dialogRef} className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} onKeyDown={onKeyDown}>
+      <div
+        ref={dialogRef}
+        className={`modal ${size ? `modal-${size}` : ""} ${className || ""}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+      >
         <div className="modal-header">
           <h2 id={titleId} className="modal-title">{title}</h2>
           <IconButton icon={X} label="Close dialog" size="sm" onClick={onClose} />

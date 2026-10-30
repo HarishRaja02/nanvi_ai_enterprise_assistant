@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { FileText, Check, Copy, Eye, ExternalLink, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { FileText, Check, Copy, Eye, ExternalLink, Loader2, Download, AlertCircle } from "lucide-react";
 import type { FileResultItem } from "../../types";
 import { useToast } from "../ui/Toast";
 import { NanviApiClient } from "../../api";
@@ -17,7 +17,24 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [copiedModal, setCopiedModal] = useState(false);
   const [openingIdx, setOpeningIdx] = useState<number | null>(null);
+
+  // In-memory ephemeral preview state
   const [previewFile, setPreviewFile] = useState<FileResultItem | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [blobLoading, setBlobLoading] = useState(false);
+  const [blobError, setBlobError] = useState<string | null>(null);
+  const [blobMime, setBlobMime] = useState<string | null>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
+
+  // Free in-memory blob when component unmounts or user leaves the page
+  useEffect(() => {
+    return () => {
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = null;
+      }
+    };
+  }, []);
 
   if (!files || files.length === 0) {
     return null;
@@ -46,6 +63,51 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     }
   };
 
+  const openPreview = async (file: FileResultItem) => {
+    // Revoke any previous URL from memory
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
+    }
+    setBlobUrl(null);
+    setBlobError(null);
+    setPreviewFile(file);
+    setBlobLoading(true);
+
+    const exactPath = getExactPath(file);
+    try {
+      if (api && typeof api.getDocumentBlob === "function") {
+        const result = await api.getDocumentBlob(exactPath);
+        const objUrl = URL.createObjectURL(result.blob);
+        activeBlobUrlRef.current = objUrl;
+        setBlobUrl(objUrl);
+        setBlobMime(result.mimeType);
+      } else {
+        const res = await fetch(`/api/local-agent/document-content?path=${encodeURIComponent(exactPath)}`);
+        if (!res.ok) throw new Error("Could not load document into browser memory");
+        const blob = await res.blob();
+        const objUrl = URL.createObjectURL(blob);
+        activeBlobUrlRef.current = objUrl;
+        setBlobUrl(objUrl);
+        setBlobMime(blob.type);
+      }
+    } catch (err: any) {
+      setBlobError(err.message || "Document content not available on cloud server");
+    } finally {
+      setBlobLoading(false);
+    }
+  };
+
+  const closePreview = () => {
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
+    }
+    setBlobUrl(null);
+    setBlobError(null);
+    setPreviewFile(null);
+  };
+
   const handleOpen = async (file: FileResultItem, idx: number) => {
     const exactPath = getExactPath(file);
 
@@ -69,20 +131,30 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     }
 
     setOpeningIdx(idx);
-    notify(`Requesting open on your computer...`, "success");
 
+    // 1. Dispatch remote open command to local agent in background
     try {
       if (api && typeof api.openFile === "function") {
-        const resp = await api.openFile(exactPath);
-        if (resp && resp.status === "ok") {
-          notify(`✓ Opening ${file.name} on your computer via Nanvi Agent...`, "success");
-        }
+        api.openFile(exactPath).catch(() => {});
       }
     } catch {
-      notify(`Path copied to clipboard! Paste in File Explorer (Win+R) to open.`, "warning");
-    } finally {
-      setTimeout(() => setOpeningIdx(null), 1200);
+      // ignore dispatch error
     }
+
+    // 2. Open interactive ephemeral in-memory document preview in browser
+    notify(`Opening ${file.name} in secure browser memory...`, "success");
+    await openPreview(file);
+    setOpeningIdx(null);
+  };
+
+  const isPdf = (file: FileResultItem, mime?: string | null) => {
+    return (mime && mime.includes("pdf")) || file.name.toLowerCase().endsWith(".pdf") || getExactPath(file).toLowerCase().endsWith(".pdf");
+  };
+
+  const isImage = (file: FileResultItem, mime?: string | null) => {
+    if (mime && mime.startsWith("image/")) return true;
+    const ext = file.name.toLowerCase();
+    return ext.endsWith(".png") || ext.endsWith(".jpg") || ext.endsWith(".jpeg") || ext.endsWith(".gif") || ext.endsWith(".webp") || ext.endsWith(".svg");
   };
 
   return (
@@ -92,7 +164,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
           Showing <strong>{displayedFiles.length}</strong> matching document{displayedFiles.length !== 1 ? "s" : ""}:
         </span>
         <span style={{ fontSize: "12px", color: "#64748b" }}>
-          💡 Click <strong>Copy Path</strong> to open via File Explorer or Run (Win + R)
+          💡 Click <strong>Open</strong> to view immediately in browser memory or <strong>Copy Path</strong> for File Explorer
         </span>
       </div>
       <div className="file-results-table-wrapper">
@@ -116,8 +188,8 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                     <div
                       className="file-name-wrapper"
                       style={{ cursor: "pointer" }}
-                      onClick={() => setPreviewFile(file)}
-                      title="Click to view file content and details"
+                      onClick={() => openPreview(file)}
+                      title="Click to view full document in browser memory"
                     >
                       <FileText className="file-icon" />
                       <span className="file-name-text" title={file.name}>
@@ -151,8 +223,8 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                       <button
                         type="button"
                         className="file-preview-btn"
-                        onClick={() => setPreviewFile(file)}
-                        title={`Preview ${file.name}`}
+                        onClick={() => openPreview(file)}
+                        title={`Preview ${file.name} in browser memory`}
                       >
                         <Eye className="btn-icon" />
                         <span>Preview</span>
@@ -162,7 +234,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                         className="file-open-btn"
                         disabled={isOpening}
                         onClick={() => handleOpen(file, idx)}
-                        title={`Open ${file.name} on your computer`}
+                        title={`Open ${file.name} in browser memory and local desktop`}
                       >
                         {isOpening ? (
                           <>
@@ -185,81 +257,171 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
         </table>
       </div>
 
-      {/* In-app Document Preview Modal */}
+      {/* In-app Ephemeral Document Preview Modal */}
       {previewFile && (
         <Modal
           title={previewFile.name}
-          onClose={() => setPreviewFile(null)}
+          onClose={closePreview}
+          size="xl"
           footer={
-            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => handleCopyPath(getExactPath(previewFile))}
-              >
-                {copiedModal ? <Check className="w-4 h-4 mr-1 text-white" /> : <Copy className="w-4 h-4 mr-1" />}
-                {copiedModal ? "Copied!" : "Copy File Path"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPreviewFile(null)}
-              >
-                Close
-              </Button>
-            </div>
-          }
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
-                Exact File Path on Your Computer
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
-                <code style={{ fontSize: "12.5px", color: "#0284c7", wordBreak: "break-all", fontFamily: "monospace" }}>
-                  {getExactPath(previewFile)}
-                </code>
+            <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handleCopyPath(getExactPath(previewFile))}
-                  title="Copy path"
+                  title="Copy Windows path"
                 >
-                  {copiedModal ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span style={{ fontSize: "12px", marginLeft: "4px" }}>{copiedModal ? "Copied" : "Copy"}</span>
+                  {copiedModal ? <Check className="w-4 h-4 mr-1 text-green-600" /> : <Copy className="w-4 h-4 mr-1" />}
+                  {copiedModal ? "Copied!" : "Copy File Path"}
+                </Button>
+                {blobUrl && (
+                  <a
+                    href={blobUrl}
+                    download={previewFile.name}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <Button variant="outline" size="sm" title="Save a copy to your computer">
+                      <Download className="w-4 h-4 mr-1" />
+                      Download Copy
+                    </Button>
+                  </a>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    const p = getExactPath(previewFile);
+                    if (api && typeof api.openFile === "function") {
+                      notify(`Sending open command to Nanvi Windows Agent...`, "success");
+                      await api.openFile(p);
+                    }
+                  }}
+                  title="Open directly in Windows desktop application (WPS Office / Acrobat / Excel)"
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  Open in Desktop App
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={closePreview}
+                >
+                  Close
                 </Button>
               </div>
             </div>
-
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "12px 16px", fontSize: "13px", color: "#166534", lineHeight: "1.5" }}>
-              <strong>💡 How to open on Windows:</strong> Click <strong>"Copy File Path"</strong>, press <kbd style={{ background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "3px", padding: "1px 5px" }}>Win</kbd> + <kbd style={{ background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "3px", padding: "1px 5px" }}>R</kbd>, paste the path, and hit <kbd style={{ background: "#ffffff", border: "1px solid #cbd5e1", borderRadius: "3px", padding: "1px 5px" }}>Enter</kbd>.
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px", minHeight: "450px" }}>
+            {/* Ephemeral Memory Notice */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "8px 14px", borderRadius: "8px", fontSize: "12.5px", color: "#166534" }}>
+              <span>
+                🔒 <strong>In-Memory Ephemeral Preview:</strong> Loaded securely into browser RAM. Automatically destroyed when closed or navigating away.
+              </span>
+              <code style={{ fontSize: "11px", color: "#0369a1", background: "#ffffff", padding: "2px 6px", borderRadius: "4px", border: "1px solid #cbd5e1" }}>
+                {previewFile.name}
+              </code>
             </div>
 
-            {previewFile.content_snippet ? (
-              <div>
-                <div style={{ fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>
-                  Document Excerpt & Content:
-                </div>
-                <div
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "8px",
-                    padding: "16px",
-                    fontSize: "14px",
-                    lineHeight: "1.6",
-                    color: "#1e293b",
-                    whiteSpace: "pre-wrap",
-                    maxHeight: "340px",
-                    overflowY: "auto",
-                  }}
-                >
-                  {previewFile.content_snippet}
+            {/* Loading State */}
+            {blobLoading && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px 16px", gap: "12px" }}>
+                <Loader2 className="w-9 h-9 animate-spin text-blue-600" />
+                <div style={{ fontSize: "14px", color: "#475569", fontWeight: 500 }}>
+                  Streaming {previewFile.name} into browser memory...
                 </div>
               </div>
-            ) : (
-              <div style={{ color: "#64748b", fontSize: "13.5px", fontStyle: "italic", padding: "8px 0" }}>
-                This file is stored on your local Windows PC. Use the copied path above to open it in its default application.
+            )}
+
+            {/* Render In-Memory PDF Document */}
+            {!blobLoading && blobUrl && isPdf(previewFile, blobMime) && (
+              <div style={{ width: "100%", height: "66vh", minHeight: "480px", borderRadius: "8px", overflow: "hidden", border: "1px solid #cbd5e1", background: "#f8fafc" }}>
+                <iframe
+                  src={blobUrl}
+                  title={previewFile.name}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                />
+              </div>
+            )}
+
+            {/* Render In-Memory Image */}
+            {!blobLoading && blobUrl && isImage(previewFile, blobMime) && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", height: "65vh", background: "#0f172a", borderRadius: "8px", overflow: "hidden" }}>
+                <img
+                  src={blobUrl}
+                  alt={previewFile.name}
+                  style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                />
+              </div>
+            )}
+
+            {/* Render In-Memory Text / CSV / Code / Fallback */}
+            {!blobLoading && blobUrl && !isPdf(previewFile, blobMime) && !isImage(previewFile, blobMime) && (
+              <div style={{ width: "100%", height: "65vh", borderRadius: "8px", overflow: "hidden", border: "1px solid #cbd5e1", background: "#ffffff" }}>
+                <iframe
+                  src={blobUrl}
+                  title={previewFile.name}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                />
+              </div>
+            )}
+
+            {/* Fallback if Blob failed: Render Text Snippet and Windows Guide */}
+            {!blobLoading && (!blobUrl || blobError) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px", padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px", color: "#991b1b", fontSize: "13px" }}>
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <div>
+                    <strong>Direct cloud binary preview unavailable:</strong> {blobError || "File is stored only on your local computer."} You can still open it directly on your desktop or copy the path.
+                  </div>
+                </div>
+
+                <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                  <div style={{ fontSize: "11px", color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>
+                    Exact File Path on Your Computer
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", background: "#ffffff", padding: "8px 12px", borderRadius: "6px", border: "1px solid #cbd5e1" }}>
+                    <code style={{ fontSize: "12.5px", color: "#0284c7", wordBreak: "break-all", fontFamily: "monospace" }}>
+                      {getExactPath(previewFile)}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopyPath(getExactPath(previewFile))}
+                      title="Copy path"
+                    >
+                      {copiedModal ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span style={{ fontSize: "12px", marginLeft: "4px" }}>{copiedModal ? "Copied" : "Copy"}</span>
+                    </Button>
+                  </div>
+                </div>
+
+                {previewFile.content_snippet && (
+                  <div>
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "8px" }}>
+                      Document Excerpt & Indexed Content:
+                    </div>
+                    <div
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "8px",
+                        padding: "16px",
+                        fontSize: "14px",
+                        lineHeight: "1.6",
+                        color: "#1e293b",
+                        whiteSpace: "pre-wrap",
+                        maxHeight: "340px",
+                        overflowY: "auto",
+                      }}
+                    >
+                      {previewFile.content_snippet}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

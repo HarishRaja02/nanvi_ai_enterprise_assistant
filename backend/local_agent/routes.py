@@ -4,7 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
 
@@ -83,6 +84,112 @@ async def local_agent_open_file(
         "queued": True,
         "command_id": cmd_id,
     }
+
+
+@router.get("/document-content")
+async def get_document_content(
+    path: str = Query(..., description="File path or relative path to view"),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> Response:
+    """Serve the raw document binary (PDF, image, text) for ephemeral in-memory browser preview."""
+    from pathlib import Path
+    import mimetypes
+
+    raw = path.strip()
+    if raw.startswith("file:///"):
+        raw = raw[8:]
+
+    clean = raw.replace("\\", "/").strip("/")
+    filename = clean.split("/")[-1] if "/" in clean else clean
+
+    # Strip drive letter and common prefixes like 'CompanyData'
+    parts = clean.split("/")
+    clean_parts = [p for p in parts if p and not p.endswith(":") and p.lower() != "companydata"]
+    rel_path = "/".join(clean_parts)
+
+    base_dir = Path(__file__).resolve().parent.parent  # backend/
+    search_roots = [
+        base_dir / "CompanyData",
+        base_dir.parent / "CompanyData",
+        Path("CompanyData").resolve(),
+        Path("C:/CompanyData"),
+    ]
+
+    target_file: Path | None = None
+    for r in search_roots:
+        if not r.exists() or not r.is_dir():
+            continue
+        c1 = (r / rel_path).resolve()
+        if c1.is_file():
+            target_file = c1
+            break
+        for f in r.rglob(filename):
+            if f.is_file():
+                target_file = f
+                break
+        if target_file:
+            break
+
+    if not target_file:
+        try:
+            direct = Path(raw).resolve()
+            if direct.is_file():
+                target_file = direct
+        except Exception:
+            pass
+
+    if target_file and target_file.is_file():
+        suffix = target_file.suffix.lower()
+        media_type = mimetypes.guess_type(target_file.name)[0]
+        if suffix == ".pdf":
+            media_type = "application/pdf"
+        elif suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+            media_type = media_type or "image/png"
+        elif suffix in (".txt", ".log", ".csv", ".json", ".md", ".py"):
+            media_type = media_type or "text/plain; charset=utf-8"
+        else:
+            media_type = media_type or "application/octet-stream"
+
+        return FileResponse(
+            path=str(target_file),
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'inline; filename="{target_file.name}"',
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
+        )
+
+    # If file is not directly present on disk, check indexed chunks in LocalAgentStore
+    try:
+        t_id = "enterprise-tenant"
+        u_id = "default"
+        val = service.store._load_key(t_id, u_id)
+        chunks = val.get("chunks", [])
+        if not chunks:
+            for k, d in getattr(service.store, "_data", {}).items():
+                if d.get("chunks"):
+                    chunks = d.get("chunks")
+                    break
+        fn_low = filename.lower()
+        matching = [
+            c for c in chunks
+            if c.get("filename", "").lower() == fn_low or fn_low in c.get("relative_path", "").lower()
+        ]
+        if matching:
+            matching.sort(key=lambda c: c.get("chunk_index", 0))
+            joined_text = "\n\n".join(c.get("text", "") for c in matching)
+            return Response(
+                content=joined_text,
+                media_type="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'inline; filename="{filename}.txt"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+    except Exception as exc:
+        logger.debug("Could not read chunks for document-content: %s", exc)
+
+    raise HTTPException(status_code=404, detail=f"Document '{filename}' could not be found.")
 
 
 @router.get("/download")

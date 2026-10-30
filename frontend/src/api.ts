@@ -409,6 +409,29 @@ if (!response.ok) {
     });
   }
 
+  async getDocumentBlob(filePath: string): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+    const token = this.getAccessToken ? await this.getAccessToken() : null;
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    const url = `${this.baseUrl}/local-agent/document-content?path=${encodeURIComponent(filePath)}`;
+    const response = await fetch(url, { headers, credentials: "same-origin" });
+    if (!response.ok) {
+      throw new ApiError(`Failed to load document (${response.status})`, response.status);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") || "";
+    let filename = filePath.split(/[/\\]/).pop() || "document";
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    if (match && match[1]) filename = match[1];
+
+    return {
+      blob,
+      filename,
+      mimeType: blob.type || "application/octet-stream",
+    };
+  }
+
   getContext(conversationId: string) {
     return this.request<ConversationContext>(`/chat/context/${encodeURIComponent(conversationId)}`);
   }

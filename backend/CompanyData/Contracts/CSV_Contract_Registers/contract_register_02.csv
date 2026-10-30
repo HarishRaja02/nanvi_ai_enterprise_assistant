@@ -1,0 +1,61 @@
+contract_id,type,party_a,party_b,start_date,end_date,value_inr,status,renewal_notice_days
+CTR-02-001,Service,Nexa Retail,DataBridge,2025-01-29,2027-01-29,4275998,Expired,90
+CTR-02-002,Service,Asteron Technologies,SecureNet,2025-03-30,2025-09-26,4974444,Under Review,60
+CTR-02-003,Purchase,BluePeak Solutions,CloudNova,2026-08-06,2027-08-06,2698364,Active,30
+CTR-02-004,Vendor,Vertex Logistics,Metro Supplies,2026-01-21,2026-07-20,1493517,Pending Renewal,90
+CTR-02-005,Vendor,BluePeak Solutions,OfficeHub,2026-08-28,2028-08-27,4965538,Pending Renewal,90
+CTR-02-006,Service,Asteron Technologies,OfficeHub,2025-05-11,2025-11-07,3146624,Under Review,60
+CTR-02-007,Vendor,Nexa Retail,OfficeHub,2026-01-15,2027-01-15,1897034,Active,30
+CTR-02-008,NDA,Asteron Technologies,DataBridge,2025-11-02,2026-05-01,3450711,Pending Renewal,60
+CTR-02-009,Service,Asteron Technologies,Metro Supplies,2025-03-01,2026-03-01,790816,Under Review,30
+CTR-02-010,Purchase,BluePeak Solutions,OfficeHub,2024-12-02,2026-12-02,2127286,Expired,90
+CTR-02-011,Service,Vertex Logistics,Metro Supplies,2026-08-17,2027-08-17,960291,Expired,30
+CTR-02-012,Vendor,Asteron Technologies,SecureNet,2024-09-03,2025-09-03,2986476,Active,90
+CTR-02-013,Vendor,Nexa Retail,Metro Supplies,2025-08-13,2026-02-09,1841314,Expired,60
+CTR-02-014,NDA,BluePeak Solutions,Metro Supplies,2026-04-29,2026-10-26,4852622,Expired,90
+CTR-02-015,Vendor,Orion Systems,DataBridge,2025-08-08,2027-08-08,2227051,Pending Renewal,90
+CTR-02-016,Purchase,BluePeak Solutions,DataBridge,2025-04-14,2025-10-11,1677496,Under Review,30
+CTR-02-017,NDA,Orion Systems,SecureNet,2024-12-09,2025-06-07,3397240,Expired,60
+CTR-02-018,Vendor,Nexa Retail,OfficeHub,2026-02-03,2028-02-03,1937311,Under Review,90
+CTR-02-019,Purchase,Orion Systems,SecureNet,2025-01-15,2027-01-15,1160137,Active,60
+CTR-02-020,Vendor,Asteron Technologies,DataBridge,2025-04-22,2026-04-22,3889214,Pending Renewal,90
+CTR-02-021,Vendor,Asteron Technologies,OfficeHub,2024-09-03,2026-09-03,3024645,Expired,60
+CTR-02-022,Service,Asteron Technologies,CloudNova,2026-01-23,2026-07-22,1991599,Active,60
+CTR-02-023,Purchase,Vertex Logistics,OfficeHub,2024-12-17,2025-12-17,2710960,Active,60
+CTR-02-024,Vendor,Vertex Logistics,CloudNova,2025-04-06,2025-10-03,4447888,Active,60
+CTR-02-025,Purchase,Nexa Retail,CloudNova,2025-09-26,2026-03-25,1216024,Under Review,60
+CTR-02-026,Service,Nexa Retail,DataBridge,2025-04-01,2025-09-28,2292579,Expired,60
+CTR-02-027,Vendor,Orion Systems,Metro Supplies,2025-02-12,2027-02-12,377099,Pending Renewal,60
+CTR-02-028,NDA,Asteron Technologies,SecureNet,2025-06-25,2026-06-25,1216345,Pending Renewal,30
+CTR-02-029,Service,Nexa Retail,Metro Supplies,2024-09-02,2026-09-02,1961926,Expired,90
+CTR-02-030,NDA,Asteron Technologies,Metro Supplies,2026-01-25,2028-01-25,4640638,Pending Renewal,30
+CTR-02-031,NDA,Orion Systems,DataBridge,2026-04-21,2027-04-21,4632068,Active,60
+CTR-02-032,Vendor,Orion Systems,DataBridge,2025-11-20,2026-05-19,1012842,Expired,60
+CTR-02-033,Service,Orion Systems,Metro Supplies,2026-04-09,2026-10-06,2519775,Under Review,30
+CTR-02-034,Purchase,Nexa Retail,Metro Supplies,2026-07-28,2028-07-27,391368,Expired,30
+CTR-02-035,Purchase,BluePeak Solutions,Metro Supplies,2026-01-10,2027-01-10,295829,Expired,30
+CTR-02-036,Service,Asteron Technologies,OfficeHub,2025-05-19,2026-05-19,1062382,Expired,30
+CTR-02-037,Vendor,Vertex Logistics,DataBridge,2025-10-22,2026-10-22,3051338,Under Review,90
+CTR-02-038,Vendor,Vertex Logistics,CloudNova,2026-05-24,2026-11-20,91585,Under Review,60
+CTR-02-039,Purchase,Orion Systems,DataBridge,2024-12-29,2025-12-29,3204218,Under Review,60
+CTR-02-040,Service,Orion Systems,Metro Supplies,2025-04-09,2025-10-06,1481814,Active,60
+CTR-02-041,Purchase,Orion Systems,CloudNova,2025-12-31,2027-12-31,185652,Under Review,90
+CTR-02-042,Service,Asteron Technologies,CloudNova,2025-02-24,2025-08-23,1042115,Under Review,30
+CTR-02-043,NDA,Asteron Technologies,CloudNova,2026-01-20,2027-01-20,2243400,Under Review,60
+CTR-02-044,Service,Vertex Logistics,Metro Supplies,2025-11-26,2026-11-26,1712749,Pending Renewal,30
+CTR-02-045,Purchase,Vertex Logistics,OfficeHub,2025-03-15,2025-09-11,225094,Under Review,60
+CTR-02-046,Vendor,Nexa Retail,Metro Supplies,2025-09-28,2026-03-27,2048250,Pending Renewal,90
+CTR-02-047,Purchase,Asteron Technologies,CloudNova,2025-12-11,2026-12-11,1403721,Under Review,60
+CTR-02-048,Vendor,Vertex Logistics,CloudNova,2025-02-12,2025-08-11,1984310,Expired,90
+CTR-02-049,Purchase,Nexa Retail,SecureNet,2025-01-13,2025-07-12,4353052,Expired,90
+CTR-02-050,Vendor,Asteron Technologies,SecureNet,2026-10-16,2027-10-16,69486,Under Review,30
+CTR-02-051,NDA,Vertex Logistics,CloudNova,2025-01-12,2025-07-11,4464205,Expired,90
+CTR-02-052,Purchase,BluePeak Solutions,Metro Supplies,2025-10-21,2026-04-19,1940854,Pending Renewal,90
+CTR-02-053,Service,Vertex Logistics,Metro Supplies,2025-04-15,2026-04-15,2532422,Pending Renewal,90
+CTR-02-054,Service,Nexa Retail,CloudNova,2025-09-12,2026-09-12,568154,Active,30
+CTR-02-055,Service,Orion Systems,OfficeHub,2026-08-17,2027-02-13,1241089,Expired,60
+CTR-02-056,Vendor,BluePeak Solutions,Metro Supplies,2025-09-24,2027-09-24,164325,Expired,90
+CTR-02-057,Vendor,Asteron Technologies,SecureNet,2024-12-29,2025-06-27,1145758,Expired,60
+CTR-02-058,NDA,Vertex Logistics,OfficeHub,2025-11-02,2027-11-02,3296696,Expired,60
+CTR-02-059,Vendor,Vertex Logistics,DataBridge,2025-11-25,2026-05-24,4247347,Pending Renewal,30
+CTR-02-060,Vendor,BluePeak Solutions,OfficeHub,2026-06-24,2027-06-24,3667990,Expired,30

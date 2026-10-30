@@ -47,6 +47,14 @@ class CompanyDataService:
         if repo_data.exists() and repo_data.is_dir():
             return repo_data
 
+        backend_data = Path(__file__).resolve().parents[3] / "CompanyData"
+        if backend_data.exists() and backend_data.is_dir():
+            return backend_data
+
+        backend_local = Path("CompanyData").resolve()
+        if backend_local.exists() and backend_local.is_dir():
+            return backend_local
+
         win_fallback = Path("C:/CompanyData")
         if win_fallback.exists() and win_fallback.is_dir():
             return win_fallback

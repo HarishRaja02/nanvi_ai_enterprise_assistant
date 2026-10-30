@@ -321,3 +321,21 @@ def test_command_queue_and_heartbeat_dispatch(local_service, mock_user):
     assert len(hb_resp_2["commands"]) == 0
 
 
+def test_document_content_retrieval(local_service):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from backend.local_agent.routes import router
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+
+    # Test retrieving invoice_022.pdf
+    resp = client.get("/local-agent/document-content", params={"path": r"C:\CompanyData\Finance\01_Invoices_PDF\invoice_022.pdf"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert "inline" in resp.headers["content-disposition"]
+    assert len(resp.content) > 0
+
+
+
