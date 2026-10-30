@@ -99,51 +99,96 @@ class ChatService:
 
         request_id = get_request_id() if get_request_id() != "-" else uuid4().hex
 
-        # Check if user is responding to a source selection prompt
         prior_asst_msgs = [m.content for m in prior_history if m.role == "assistant"]
         prior_user_msgs = [m.content for m in prior_history if m.role == "user"]
-        is_answering_source = (
-            bool(prior_asst_msgs)
-            and "Which source would you like me to search?" in prior_asst_msgs[-1]
-            and bool(self._extract_source_from_query(query) or query.strip().casefold() in ("local", "database", "email", "google drive", "drive", "cloud", "local storage", "1", "2", "3", "4", "5"))
-        )
-        if is_answering_source and prior_user_msgs:
-            selected_source = self._extract_source_from_query(query) or query.strip().casefold()
-            # Retrieve the user question that prompted source selection
-            original_query = ""
-            for m in reversed(prior_user_msgs):
-                m_clean = m.strip().casefold()
-                if not self._extract_source_from_query(m) and m_clean not in ("local", "database", "email", "google drive", "drive", "cloud", "local storage", "1", "2", "3", "4", "5"):
-                    original_query = m
-                    break
-            if not original_query and prior_user_msgs:
-                original_query = prior_user_msgs[-1]
 
-            if selected_source == "email" and (self._is_direct_email_query(original_query) or any(w in original_query.casefold() for w in ("email", "emails", "gmail", "inbox", "mail"))):
-                answer, files, sources = self._handle_direct_email_query(user, original_query)
+        # 1. Check if user is asking to open, preview, or show the document from context
+        is_open_action = bool(re.search(
+            r"(?i)\b(?:give\s+(?:the\s+)?open\s+option|open\s+(?:the\s+)?file|open\s+it|show\s+it|preview\s+it|download\s+(?:the\s+)?(?:full\s+)?pdf|i\s+cant\s+able\s+to\s+download|can\s+you\s+show\s+it)\b",
+            query,
+        ))
+        if is_open_action and (prior_user_msgs or prior_asst_msgs):
+            target_doc = ""
+            for prev_m in reversed(prior_user_msgs):
+                t = self._extract_file_search_target(prev_m)
+                if t:
+                    target_doc = t
+                    break
+            if not target_doc:
+                for prev_a in reversed(prior_asst_msgs):
+                    id_match = re.search(r"\b(?:INV|EMP|NDA|PUR|PO|PRJ)[-_]\d+[-_]?\d*\b", prev_a, re.IGNORECASE)
+                    if id_match:
+                        target_doc = id_match.group(0)
+                        break
+
+            if target_doc:
+                from backend.chat.file_search import execute_file_search
+                answer, files, sources = execute_file_search(user, target_doc, "local", max_results=10)
+                if not files:
+                    db_ans, db_files, db_sources = execute_file_search(user, target_doc, "database", max_results=10)
+                    if db_files:
+                        answer, files, sources = db_ans, db_files, db_sources
+                if files:
+                    self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                    return ChatResponse(
+                        conversation_id=conversation_id,
+                        answer=answer,
+                        sources=tuple(sources),
+                        capability="document_search",
+                        trace=("Open option provided for previous document",),
+                        history=self._store.get(conversation_id),
+                        file_results=tuple(files),
+                    )
+
+        # 2. Check if user is selecting a source (e.g. 'Search in Local Storage', 'in local database', 'internal repository')
+        selected_source = self._extract_source_from_query(query)
+        clean_after_source = re.sub(
+            r"(?i)\b(?:search\s+(?:in\s+)?|find\s+(?:in\s+)?|look\s+(?:for\s+)?in\s+|from\s+)?(?:local\s+storage|local\s+files?|local\s+folder|internal\s+repository|internal\s+storage|repository|database|local\s+database|db|emails?|gmail|inbox|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
+            "",
+            query,
+        ).strip(" :,-'\"?.")
+
+        is_pure_source_choice = selected_source is not None and (
+            clean_after_source == ""
+            or clean_after_source.casefold() in ("search", "find", "open", "show", "get", "in local", "local", "database", "it", "this", "file")
+        )
+
+        if is_pure_source_choice and prior_user_msgs:
+            prior_target = ""
+            for prev_m in reversed(prior_user_msgs):
+                t = self._extract_file_search_target(prev_m)
+                if t:
+                    prior_target = t
+                    break
+            if not prior_target and prior_asst_msgs:
+                id_m = re.search(r"\b(?:INV|EMP|NDA|PUR|PO|PRJ)[-_]\d+[-_]?\d*\b", prior_asst_msgs[-1], re.IGNORECASE)
+                if id_m:
+                    prior_target = id_m.group(0)
+
+            if prior_target:
+                from backend.chat.file_search import execute_file_search
+                answer, files, sources = execute_file_search(user, prior_target, selected_source, max_results=10)
                 self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
                 return ChatResponse(
                     conversation_id=conversation_id,
                     answer=answer,
                     sources=tuple(sources),
                     capability="document_search",
-                    trace=("Direct email query executed for selected source email",),
+                    trace=(f"File search executed on {selected_source} for {prior_target}",),
                     history=self._store.get(conversation_id),
                     file_results=tuple(files),
                 )
-
-            from backend.chat.file_search import execute_file_search
-            answer, files, sources = execute_file_search(user, original_query, selected_source, max_results=10)
-            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
-            return ChatResponse(
-                conversation_id=conversation_id,
-                answer=answer,
-                sources=tuple(sources),
-                capability="document_search",
-                trace=(f"File search executed on {selected_source}",),
-                history=self._store.get(conversation_id),
-                file_results=tuple(files),
-            )
+            else:
+                answer = f"Sure! What is the name, document number (such as an invoice or contract ID), or keyword of the file you'd like me to look for in {selected_source.replace('_', ' ').title()}?"
+                self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                return ChatResponse(
+                    conversation_id=conversation_id,
+                    answer=answer,
+                    sources=(),
+                    capability="conversation",
+                    trace=("Prompted user for specific document target in selected source",),
+                    history=self._store.get(conversation_id),
+                )
 
         # Check if user is refining an email search with date or sender/keyword
         is_email_refinement = False
@@ -271,18 +316,17 @@ class ChatService:
         caps = self._capabilities_for_query(effective_query)
         is_pure_report = (Capability.REPORT in caps and any(w in effective_query.casefold() for w in ("export", "download as", "generate report", "create report")))
 
-        # Check if query already specifies a source (e.g. 'Search in Local Storage for Trichy Hospital')
         direct_source = self._extract_source_from_query(effective_query)
+        clean_search_q = re.sub(
+            r"(?i)\b(?:search\s+(?:in\s+)?|find\s+(?:in\s+)?|look\s+(?:for\s+)?in\s+|from\s+)?(?:local\s+storage|local\s+files?|local\s+folder|internal\s+repository|internal\s+storage|repository|database|local\s+database|db|emails?|gmail|inbox|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
+            "",
+            effective_query,
+        ).strip(" :,-'\"?.")
+
         if direct_source and not is_pure_report:
-            clean_search_q = re.sub(
-                r"(?i)\b(?:search\s+(?:in\s+)?|find\s+(?:in\s+)?|look\s+(?:for\s+)?in\s+|from\s+)?(?:local\s+storage|local\s+files?|local\s+folder|database|db|emails?|gmail|inbox|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
-                "",
-                effective_query,
-            ).strip(" :,-")
-            if not clean_search_q:
-                clean_search_q = effective_query
+            clean_q = clean_search_q or effective_query
             from backend.chat.file_search import execute_file_search
-            answer, files, sources = execute_file_search(user, clean_search_q, direct_source, max_results=10)
+            answer, files, sources = execute_file_search(user, clean_q, direct_source, max_results=10)
             self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
             return ChatResponse(
                 conversation_id=conversation_id,
@@ -294,20 +338,39 @@ class ChatService:
                 file_results=tuple(files),
             )
 
-        if not is_pure_report:
-            # Whenever user asks a specific file/data search question without specifying source, prompt user to select source.
-            answer = "Which source would you like me to search?\n\n- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"
-            self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
-            return ChatResponse(
-                conversation_id=conversation_id,
-                answer=answer,
-                sources=(),
-                capability="document_search",
-                trace=("Prompting user for source selection",),
-                history=self._store.get(conversation_id),
-                source_selection_required=True,
-                pending_search_query=effective_query,
-            )
+        if not is_pure_report and self._is_file_search_query(effective_query):
+            search_target = self._extract_file_search_target(effective_query)
+            if not search_target:
+                # User expressed intent ("i need to find the file" / "i need one file") without specifying target yet
+                answer = "Sure! What is the name, document number (such as an invoice or contract ID), or keyword of the file you're looking for?"
+                self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                return ChatResponse(
+                    conversation_id=conversation_id,
+                    answer=answer,
+                    sources=(),
+                    capability="conversation",
+                    trace=("Prompting user for document target details",),
+                    history=self._store.get(conversation_id),
+                )
+            else:
+                # User provided a document target (e.g. INV-2026-0042, invoice 22, contract with Acme)
+                # Search directly across primary storage without asking repetitive questions!
+                from backend.chat.file_search import execute_file_search
+                answer, files, sources = execute_file_search(user, search_target, "local", max_results=10)
+                if not files:
+                    db_ans, db_files, db_sources = execute_file_search(user, search_target, "database", max_results=10)
+                    if db_files:
+                        answer, files, sources = db_ans, db_files, db_sources
+                self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                return ChatResponse(
+                    conversation_id=conversation_id,
+                    answer=answer,
+                    sources=tuple(sources),
+                    capability="document_search",
+                    trace=("Direct file search executed automatically across local storage and database",),
+                    history=self._store.get(conversation_id),
+                    file_results=tuple(files),
+                )
 
         # 3. Route capabilities using effective query
         capabilities = self._capabilities_for_query(effective_query)
@@ -723,7 +786,8 @@ class ChatService:
             f"3. When users ask questions about {company_name}, its background, leadership, mission, products, services, or internal policies, use your Enterprise Context & Memory above to answer authoritatively, proudly, and accurately.\n"
             f"4. For general chat, brainstorming, drafting emails, writing summaries, technical or workplace advice, deliver insightful, well-structured, ChatGPT-quality responses.\n"
             f"5. If the user explicitly asks to search or retrieve specific files, spreadsheets, invoices, contracts, or database records, warmly inform them that you can search across company sources (Local Storage, Database, Email, Google Drive) and ask what document they need.\n"
-            f"6. Use clean Markdown formatting (bold text, lists, sections) when helpful for readability."
+            f"6. Use clean Markdown formatting (bold text, lists, sections) when helpful for readability.\n"
+            f"7. CRITICAL ANTI-HALLUCINATION RULE: NEVER fabricate or make up fake URLs, links, or internal paths (such as https://nanvi-enterprise.internal/... or similar). Do NOT generate fake download URLs. If the user wants to download, view, or open a file, tell them to use the Open or Preview button in the document results table, or offer to locate it in Local Storage or Database."
         )
 
         messages_history: list[dict[str, str]] = []
@@ -987,9 +1051,48 @@ class ChatService:
         return answer, files, sources
 
     @staticmethod
+    def _extract_file_search_target(query: str) -> str:
+        """Extract a meaningful file name, document code, or search term from user query.
+        Returns empty string if query is just a generic request like 'i need to find the file' or 'find one file'.
+        """
+        if not query:
+            return ""
+        q = query.strip()
+
+        # 1. Document code pattern (e.g. INV-2026-0042, EMP-0001, NDA-0002, PUR-0003, invoice_022)
+        code_match = re.search(r"\b(?:inv|emp|nda|pur|po|prj|cust|cnt|doc|bill)[-_ ]?\d{1,8}\b", q, re.IGNORECASE)
+        if code_match:
+            return code_match.group(0).strip()
+        code_match_num = re.search(r"\b(?:invoice|contract|customer|employee|project|nda|order)[-_ ]?\d+\b", q, re.IGNORECASE)
+        if code_match_num:
+            return code_match_num.group(0).strip()
+
+        # 2. File extension match (e.g. customer_profile_001.pdf)
+        ext_match = re.search(r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json)\b", q, re.IGNORECASE)
+        if ext_match:
+            return ext_match.group(0).strip()
+
+        # 3. Strip out common filler / conversational prefixes
+        cleaned = re.sub(
+            r"(?i)^(?:can\s+you\s+)?(?:please\s+)?(?:i\s+need\s+to\s+|i\s+want\s+to\s+|help\s+me\s+)?(?:find|search|look\s+for|locate|show|get|open|check|fetch)\s+(?:the\s+|a\s+|an\s+|one\s+|some\s+)?(?:file|files|document|documents|pdf|sheet|spreadsheet|record|records)?(?:\s+(?:named|called|about|for|with|contain|containing))?\s*",
+            "",
+            q,
+        )
+        cleaned = re.sub(r"(?i)\s+(?:this\s+i|please|now|immediately|thanks|thank\s+you)\b.*$", "", cleaned)
+        cleaned = cleaned.strip(" :,-'\"?.")
+
+        if cleaned.casefold() in ("", "file", "files", "document", "documents", "one file", "the file", "a file", "something", "data", "it", "this"):
+            return ""
+
+        return cleaned
+
+    @staticmethod
     def _extract_source_from_query(query: str) -> str | None:
         q = query.casefold().strip()
-        if any(w in q for w in ("local storage", "local folder", "local file", "local files", "on disk", "local disk", "c:\\")) or q in ("local", "1", "local storage"):
+        if any(w in q for w in (
+            "local storage", "local folder", "local file", "local files", "on disk", "local disk", "c:\\",
+            "internal repository", "internal storage", "local database", "internal"
+        )) or q in ("local", "1", "local storage", "in local"):
             return "local"
         if any(w in q for w in ("database", "data base", "db record", "db records", "from db", "in db", "from database", "in database")) or q in ("database", "db", "2"):
             return "database"

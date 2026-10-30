@@ -132,19 +132,20 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
 
     setOpeningIdx(idx);
 
-    // 1. Dispatch remote open command to local agent in background
     try {
+      // 1. Dispatch remote open command to local agent in background
       if (api && typeof api.openFile === "function") {
         api.openFile(exactPath).catch(() => {});
       }
-    } catch {
-      // ignore dispatch error
-    }
 
-    // 2. Open interactive ephemeral in-memory document preview in browser
-    notify(`Opening ${file.name} in secure browser memory...`, "success");
-    await openPreview(file);
-    setOpeningIdx(null);
+      // 2. Open interactive ephemeral in-memory document preview in browser
+      notify(`Opening ${file.name} in secure browser memory...`, "success");
+      await openPreview(file);
+    } catch {
+      // openPreview catches internally, but guard against any unexpected exception
+    } finally {
+      setOpeningIdx(null);
+    }
   };
 
   const isPdf = (file: FileResultItem, mime?: string | null) => {

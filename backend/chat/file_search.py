@@ -71,9 +71,9 @@ def _classify_query(query: str) -> tuple[bool, str, list[str], list[str], str]:
 
     # Category classification
     category = "general"
-    if any(w in q_low for w in ("invoice", "invoices", "bill", "bills", "billing")):
+    if any(w in q_low for w in ("invoice", "invoices", "bill", "bills", "billing")) or re.search(r"\binv[-_ ]?\d+", q_low) or q_low.startswith("inv-"):
         category = "invoice"
-    elif any(w in q_low for w in ("contract", "contracts", "agreement", "agreements", "nda", "ndas", "renewal")):
+    elif any(w in q_low for w in ("contract", "contracts", "agreement", "agreements", "nda", "ndas", "renewal")) or re.search(r"\b(?:cnt|ctr|emp|nda|pur)[-_ ]?\d+", q_low):
         category = "contract"
     elif any(w in q_low for w in ("receipt", "receipts", "ticket", "tickets")):
         category = "receipt"
@@ -83,8 +83,8 @@ def _classify_query(query: str) -> tuple[bool, str, list[str], list[str], str]:
         category = "resume"
 
     category_terms = {
-        "invoice", "invoices", "bill", "bills", "billing", "contract", "contracts",
-        "agreement", "agreements", "nda", "ndas", "document", "documents", "file",
+        "invoice", "invoices", "inv", "bill", "bills", "billing", "contract", "contracts",
+        "agreement", "agreements", "nda", "ndas", "emp", "pur", "document", "documents", "file",
         "files", "receipt", "receipts", "policy", "policies", "handbook", "resume", "resumes"
     }
 
@@ -458,6 +458,29 @@ def execute_file_search(
                     files.append(f)
                     seen_names.add(fn_lower)
 
+            # If no files matched the specific ID/query but category was identified, fall back to category documents
+            if not files and category in ("invoice", "contract"):
+                fallback_matched = []
+                for p in all_disk_files:
+                    fn_low = p.name.casefold()
+                    path_low = str(p).casefold()
+                    if category == "invoice" and (any(k in fn_low for k in ("invoice", "bill")) or "finance" in path_low):
+                        fallback_matched.append(p)
+                    elif category == "contract" and any(k in fn_low for k in ("contract", "agreement", "nda", "emp", "pur")):
+                        fallback_matched.append(p)
+                fallback_matched.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+                for p in fallback_matched[:max_results]:
+                    disp_path = _to_clean_display_path(p, repo_root)
+                    files.append({
+                        "name": p.name,
+                        "path": disp_path,
+                        "type": p.suffix.lstrip("."),
+                        "modified_at": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                        "open_url": disp_path,
+                        "source": "local",
+                        "is_category_fallback": True,
+                    })
+
             for idx, f in enumerate(files, start=1):
                 sources.append(
                     SourceReference(
@@ -823,7 +846,9 @@ def execute_file_search(
     files = files[:max_results]
 
     q_low = clean_q.casefold()
-    if date_label is not None and summary:
+    if any(f.get("is_category_fallback") for f in files):
+        summary = f"We couldn't find an exact match for **\"{clean_q}\"**, but here are the available {category} documents in **{friendly_source}**:"
+    elif date_label is not None and summary:
         pass  # summary already formatted above
     elif is_generic:
         cat_desc = f"{category} " if category != "general" else ""

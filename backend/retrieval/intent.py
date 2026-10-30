@@ -30,7 +30,13 @@ def classify_retrieval_intent(query: str) -> QueryIntent:
     if re.search(r"\b[\w-]+\.(pdf|docx|xlsx|csv|txt|md|pptx)\b", q_lower):
         return QueryIntent.FILE_SEARCH
 
-    # 3. Explicit file search / discovery patterns
+    # 3. Document / invoice / record code check (e.g. INV-2026-0042, INV-00022, EMP-0001, invoice_022)
+    if re.search(r"\b(?:inv|emp|nda|pur|po|prj|cust|cnt|doc|bill)[-_ ]?\d{1,8}\b", q_lower):
+        return QueryIntent.FILE_SEARCH
+    if re.search(r"\binv[-_ ]?\d{4}[-_ ]?\d+\b", q_lower) or re.search(r"\binvoice[-_ ]?\d+\b", q_lower):
+        return QueryIntent.FILE_SEARCH
+
+    # 4. Explicit file search / discovery patterns
     file_discovery_prefixes = (
         "find the file", "find file", "find files", "find the report", "find report",
         "find the document", "find document", "find documents", "find the spreadsheet",

@@ -70,10 +70,16 @@ class IntentRouter:
     _EXPLICIT_FILE_PATTERNS = (
         # File extensions
         r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json|xml)\b",
+        # Document and invoice identification codes (e.g. INV-2026-0042, INV-00022, invoice_022, EMP-0001, NDA-0001)
+        r"\b(?:inv|emp|nda|pur|po|prj|cust|cnt|doc|bill)[-_ ]?\d{1,8}\b",
+        r"\binv[-_ ]?\d{4}[-_ ]?\d+\b",
+        r"\binvoice[-_ ]?\d+\b",
+        # Direct document action prompts (e.g. "just give the open option for that file", "show it", "download the full pdf")
+        r"\b(?:open\s+option|give\s+the\s+open|show\s+(?:the\s+)?file|open\s+(?:the\s+)?file|download\s+(?:the\s+)?(?:full\s+)?pdf|open\s+it|show\s+it)\b",
         # Explicit sources
-        r"\b(?:in|from|on)\s+(?:local\s+storage|local\s+files?|local\s+folder|database|db|emails?|inbox|gmail|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
+        r"\b(?:in|from|on)\s+(?:local\s+storage|local\s+files?|local\s+folder|internal\s+repository|internal\s+storage|repository|database|local\s+database|db|emails?|inbox|gmail|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
         # Storage keywords
-        r"\b(?:local\s+storage|google\s+drive|gdrive|database\s+record|db\s+records?|c:\\)\b",
+        r"\b(?:local\s+storage|internal\s+repository|internal\s+storage|google\s+drive|gdrive|database\s+record|db\s+records?|c:\\)\b",
         # Explicit file actions
         r"\b(?:check|find|search|locate|look\s+for|where\s+is|fetch)\s+(?:the\s+)?(?:file|files|document|documents|pdf|sheet|spreadsheet|invoice|invoices|contract|contracts|resume|resumes|emails?|records)\b",
         r"\b(?:list|show|browse)\s+(?:all\s+)?(?:files|documents|folders?|invoices|contracts|records|emails?)\b",
@@ -154,7 +160,7 @@ class IntentRouter:
             )
 
         # 7. Check if query is conversational general Q&A (e.g. "what is artificial intelligence", "can you tell me a story")
-        if not re.search(r"\b(invoice|contract|customer|employee|database|record|ledger|file|document|balance|salary|email|emails|gmail|inbox|mail|message|messages)\b", q_lower):
+        if not re.search(r"\b(invoice|invoices|inv|contract|contracts|customer|customers|employee|employees|database|record|records|ledger|file|files|document|documents|balance|salary|email|emails|gmail|inbox|mail|message|messages|nda|pur|emp|po|prj)\b", q_lower):
             # No enterprise data keywords present
             return IntentDecision(
                 ChatIntent.CONVERSATION,
