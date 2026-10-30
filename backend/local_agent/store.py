@@ -214,10 +214,16 @@ class LocalAgentStore:
 
     def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> None:
         """Update last seen timestamp, agent version, and folder list from local agent."""
+        self.record_heartbeat_and_pop_commands(tenant_id, user_id, heartbeat)
+
+    def record_heartbeat_and_pop_commands(
+        self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """Atomically record heartbeat and pop pending commands in a single fast query."""
         k = self._key(tenant_id, user_id)
+        now_iso = datetime.now(timezone.utc).isoformat()
         with self._lock:
             val = self._load_key(tenant_id, user_id)
-            now_iso = datetime.now(timezone.utc).isoformat()
             val["agent"] = {
                 "last_heartbeat": now_iso,
                 "last_heartbeat_ts": time.time(),
@@ -239,7 +245,14 @@ class LocalAgentStore:
                         "status": f.status or "connected",
                         "last_synced_at": existing.get("last_synced_at") or now_iso,
                     }
+
+            # Pop pending commands for this user/agent
+            cmds = list(val.get("pending_commands", []))
+            val["pending_commands"] = []
+
             self._save_key(tenant_id, user_id, val)
+            requested_folders = list(val.get("requested_folders", []))
+            return requested_folders, cmds
 
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> None:
         """User from Web UI requested a folder to be indexed by their local agent."""

@@ -125,9 +125,7 @@ class LocalAgentService:
 
     def record_heartbeat(self, tenant_id: str, user_id: str, heartbeat: LocalAgentHeartbeat) -> dict[str, Any]:
         """Record heartbeat and return requested folder paths and pending commands."""
-        self.store.record_heartbeat(tenant_id, user_id, heartbeat)
-        requested_folders = self.store.get_requested_folders(tenant_id, user_id)
-        commands = self.store.pop_commands(tenant_id, user_id)
+        requested_folders, commands = self.store.record_heartbeat_and_pop_commands(tenant_id, user_id, heartbeat)
         return {
             "status": "ok",
             "message": "Heartbeat recorded",
