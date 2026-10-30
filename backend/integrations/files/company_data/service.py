@@ -164,11 +164,6 @@ class CompanyDataService:
             u_id = "default"
             data = store._load_key(t_id, u_id)
             raw_chunks = data.get("chunks", [])
-            if not raw_chunks:
-                for k, d in getattr(store, "_data", {}).items():
-                    if d.get("chunks"):
-                        raw_chunks = d.get("chunks")
-                        break
 
             chunks: list[CompanyChunk] = []
             file_summary: dict[str, dict[str, Any]] = {}

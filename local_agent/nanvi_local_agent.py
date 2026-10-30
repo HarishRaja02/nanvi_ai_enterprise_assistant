@@ -21,6 +21,13 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -409,7 +416,7 @@ class NanviLocalAgent:
             )
             with urlopen(req, timeout=30) as resp:
                 if resp.status == 200:
-                    logger.info("✓ Successfully synced '%s' to Nanvi Cloud.", display_name)
+                    logger.info("[OK] Successfully synced '%s' to Nanvi Cloud.", display_name)
                     return True
         except HTTPError as err:
             logger.error("Cloud sync failed (HTTP %s): %s", err.code, err.read().decode("utf-8", errors="replace"))
@@ -509,7 +516,7 @@ class NanviLocalAgent:
             ok = self.send_heartbeat()
             if ok:
                 if consecutive_fails > 0:
-                    logger.info("✓ Reconnected to Nanvi Cloud API.")
+                    logger.info("[OK] Reconnected to Nanvi Cloud API.")
                 consecutive_fails = 0
             else:
                 consecutive_fails += 1
@@ -610,9 +617,9 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                     continue
                 try:
                     p = agent.add_folder(arg)
-                    print(f"✓ Approved and indexing folder: {p}")
+                    print(f"[OK] Approved and indexing folder: {p}")
                 except Exception as exc:
-                    print(f"✗ Failed to add folder: {exc}")
+                    print(f"[FAIL] Failed to add folder: {exc}")
 
             elif cmd == "remove":
                 if not arg:
@@ -620,9 +627,9 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                     continue
                 removed = agent.remove_folder(arg)
                 if removed:
-                    print(f"✓ Removed folder: {arg}")
+                    print(f"[OK] Removed folder: {arg}")
                 else:
-                    print(f"✗ Folder not found in approved list: {arg}")
+                    print(f"[FAIL] Folder not found in approved list: {arg}")
 
             elif cmd == "list":
                 if not agent.approved_folders:
@@ -630,7 +637,7 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                 else:
                     print(f"Connected Folders ({len(agent.approved_folders)}):")
                     for p, info in agent.approved_folders.items():
-                        print(f"  • {p} [{info.get('display_name')}]")
+                        print(f"  * {p} [{info.get('display_name')}]")
 
             elif cmd == "sync":
                 print("Re-indexing all approved folders...")
@@ -640,7 +647,7 @@ def run_interactive(agent: NanviLocalAgent) -> None:
             elif cmd == "status":
                 hb_ok = agent.send_heartbeat()
                 print("Server URL:        ", agent.server_url)
-                print("Cloud Connection:  ", "ONLINE ✓" if hb_ok else "OFFLINE ✗")
+                print("Cloud Connection:  ", "ONLINE [OK]" if hb_ok else "OFFLINE [FAIL]")
                 print("Approved Folders:  ", len(agent.approved_folders))
 
             elif cmd == "browse" or cmd == "b":
@@ -708,10 +715,10 @@ def main() -> None:
             try:
                 if args.replace_folders:
                     p = agent.set_single_folder(f)
-                    print(f"[✓] Exclusively connected company folder: {p}")
+                    print(f"[OK] Exclusively connected company folder: {p}")
                     print(f"[*] Scanning and indexing files from {p}...")
                     agent.index_and_sync_folder(str(p))
-                    print(f"[✓] Synced to Nanvi AI Assistant backend successfully.")
+                    print(f"[OK] Synced to Nanvi AI Assistant backend successfully.")
                 else:
                     agent.add_folder(f)
             except Exception as exc:

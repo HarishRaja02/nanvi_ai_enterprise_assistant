@@ -21,6 +21,13 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
@@ -409,7 +416,7 @@ class NanviLocalAgent:
             )
             with urlopen(req, timeout=30) as resp:
                 if resp.status == 200:
-                    logger.info("✓ Successfully synced '%s' to Nanvi Cloud.", display_name)
+                    logger.info("[OK] Successfully synced '%s' to Nanvi Cloud.", display_name)
                     return True
         except HTTPError as err:
             logger.error("Cloud sync failed (HTTP %s): %s", err.code, err.read().decode("utf-8", errors="replace"))
@@ -466,6 +473,30 @@ class NanviLocalAgent:
                                     print("nanvi-agent> ", end="", flush=True)
                                 except Exception as err:
                                     logger.warning("Could not add folder '%s': %s", clean_rf, err)
+                        commands = data.get("commands", [])
+                        for cmd in commands:
+                            if cmd.get("command") == "open_file":
+                                payload_data = cmd.get("payload", {})
+                                raw_p = payload_data.get("file_path") or cmd.get("path") or ""
+                                if raw_p:
+                                    try:
+                                        target_path = Path(raw_p)
+                                        if not target_path.exists():
+                                            for af in self.approved_folders.keys():
+                                                cand = Path(af) / target_path.name
+                                                if cand.exists():
+                                                    target_path = cand
+                                                    break
+                                                matches = list(Path(af).rglob(target_path.name))
+                                                if matches:
+                                                    target_path = matches[0]
+                                                    break
+                                        if target_path.exists():
+                                            os.startfile(str(target_path.resolve()))
+                                            print(f"\n[Nanvi Web] Opened file on your PC: {target_path.name}")
+                                            print("nanvi-agent> ", end="", flush=True)
+                                    except Exception as exc:
+                                        logger.warning("Could not open file: %s", exc)
                     except Exception as parse_err:
                         logger.debug("Heartbeat response parse error: %s", parse_err)
                     return True
@@ -485,7 +516,7 @@ class NanviLocalAgent:
             ok = self.send_heartbeat()
             if ok:
                 if consecutive_fails > 0:
-                    logger.info("✓ Reconnected to Nanvi Cloud API.")
+                    logger.info("[OK] Reconnected to Nanvi Cloud API.")
                 consecutive_fails = 0
             else:
                 consecutive_fails += 1
@@ -586,9 +617,9 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                     continue
                 try:
                     p = agent.add_folder(arg)
-                    print(f"✓ Approved and indexing folder: {p}")
+                    print(f"[OK] Approved and indexing folder: {p}")
                 except Exception as exc:
-                    print(f"✗ Failed to add folder: {exc}")
+                    print(f"[FAIL] Failed to add folder: {exc}")
 
             elif cmd == "remove":
                 if not arg:
@@ -596,9 +627,9 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                     continue
                 removed = agent.remove_folder(arg)
                 if removed:
-                    print(f"✓ Removed folder: {arg}")
+                    print(f"[OK] Removed folder: {arg}")
                 else:
-                    print(f"✗ Folder not found in approved list: {arg}")
+                    print(f"[FAIL] Folder not found in approved list: {arg}")
 
             elif cmd == "list":
                 if not agent.approved_folders:
@@ -606,7 +637,7 @@ def run_interactive(agent: NanviLocalAgent) -> None:
                 else:
                     print(f"Connected Folders ({len(agent.approved_folders)}):")
                     for p, info in agent.approved_folders.items():
-                        print(f"  • {p} [{info.get('display_name')}]")
+                        print(f"  * {p} [{info.get('display_name')}]")
 
             elif cmd == "sync":
                 print("Re-indexing all approved folders...")
@@ -616,7 +647,7 @@ def run_interactive(agent: NanviLocalAgent) -> None:
             elif cmd == "status":
                 hb_ok = agent.send_heartbeat()
                 print("Server URL:        ", agent.server_url)
-                print("Cloud Connection:  ", "ONLINE ✓" if hb_ok else "OFFLINE ✗")
+                print("Cloud Connection:  ", "ONLINE [OK]" if hb_ok else "OFFLINE [FAIL]")
                 print("Approved Folders:  ", len(agent.approved_folders))
 
             elif cmd == "browse" or cmd == "b":
@@ -670,22 +701,8 @@ def main() -> None:
         except Exception:
             pass
 
-    server_url = args.server or os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or ""
-    token = args.token or os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or ""
-
-    if not server_url:
-        print("\n--- Nanvi Local Agent Setup ---")
-        server_url = input("Enter Nanvi Server URL [http://127.0.0.1:8000]: ").strip()
-        if not server_url:
-            server_url = "http://127.0.0.1:8000"
-
-    if not token:
-        print("\nPlease generate a Pairing Token from Nanvi Web (Settings -> Company Folder -> Local Agent).")
-        token = input("Enter Pairing Token: ").strip()
-
-    if not token:
-        print("Error: A pairing token is required to authenticate with the cloud assistant.")
-        sys.exit(1)
+    server_url = args.server or os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or "http://127.0.0.1:8000"
+    token = args.token or os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or "nanvi-local-token"
 
     agent = NanviLocalAgent(server_url=server_url, token=token)
 
@@ -698,10 +715,10 @@ def main() -> None:
             try:
                 if args.replace_folders:
                     p = agent.set_single_folder(f)
-                    print(f"[✓] Exclusively connected company folder: {p}")
+                    print(f"[OK] Exclusively connected company folder: {p}")
                     print(f"[*] Scanning and indexing files from {p}...")
                     agent.index_and_sync_folder(str(p))
-                    print(f"[✓] Synced to Nanvi AI Assistant backend successfully.")
+                    print(f"[OK] Synced to Nanvi AI Assistant backend successfully.")
                 else:
                     agent.add_folder(f)
             except Exception as exc:

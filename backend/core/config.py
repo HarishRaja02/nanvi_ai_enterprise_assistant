@@ -204,7 +204,7 @@ class Settings:
             oidc_jwks_url=os.getenv("OIDC_JWKS_URL", ""),
             oidc_audience=os.getenv("OIDC_AUDIENCE", ""),
             oidc_algorithms=tuple(x.strip() for x in os.getenv("OIDC_ALGORITHMS", "RS256").split(",") if x.strip()),
-            company_file_roots=_parse_company_roots(os.getenv("COMPANY_FILE_ROOTS", "")),
+            company_file_roots=_parse_company_roots(os.getenv("COMPANY_FILE_ROOTS", ""), is_production=(mode == "production")),
             company_file_max_size_bytes=integer("COMPANY_FILE_MAX_SIZE_BYTES", 10 * 1024 * 1024),
             database_url=_sanitize_database_url(os.getenv("DATABASE_URL", "")),
             database_pool_min_size=integer("DATABASE_POOL_MIN_SIZE", 2),
@@ -276,7 +276,7 @@ def _sanitize_database_url(url: str) -> str:
     return url
 
 
-def _parse_company_roots(value: str) -> tuple[tuple[str, str], ...]:
+def _parse_company_roots(value: str, is_production: bool = False) -> tuple[tuple[str, str], ...]:
     if not value.strip():
         return tuple()
     entries = []
@@ -287,6 +287,13 @@ def _parse_company_roots(value: str) -> tuple[tuple[str, str], ...]:
         if not name or not path:
             raise ValueError("COMPANY_FILE_ROOTS entries must include a name and path")
         entries.append((name, path))
+    if is_production and entries:
+        required_names = {"Customers", "Finance", "HR", "Projects", "Contracts"}
+        actual_names = {name for name, _ in entries}
+        if actual_names != required_names:
+            raise ValueError(
+                f"Production COMPANY_FILE_ROOTS must include exactly {required_names}, got {actual_names}"
+            )
     return tuple(entries)
 
 

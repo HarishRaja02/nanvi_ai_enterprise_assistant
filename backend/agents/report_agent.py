@@ -124,9 +124,7 @@ class ReportAgent(Agent):
         is_synthetic = False
 
         company_data = self._company_data
-        if hasattr(company_data, "for_tenant") and request.user.tenant_id:
-            company_data = company_data.for_tenant(request.user.tenant_id)
-        elif company_data is not None and getattr(company_data, "tenant_id", None) != request.user.tenant_id and request.user.tenant_id:
+        if company_data is None and request.user.tenant_id:
             from backend.integrations.files.company_data_service import CompanyDataService
 
             company_data = CompanyDataService.for_tenant(request.user.tenant_id)
@@ -150,12 +148,12 @@ class ReportAgent(Agent):
         if not prior_table_found:
             # ── A. Invoices & Accounts Payable / Receivable ──
             if any(w in query_lower for w in ("invoice", "invoices", "billing", "billings", "revenue", "financial", "account", "accounts", "payable", "payment", "overdue", "pending")):
-                if any(w in query_lower for w in ("pending", "unpaid", "due", "review", "scheduled", "approval")):
-                    status_f = "pending"
-                    title = "Enterprise Pending Invoices Report"
-                elif any(w in query_lower for w in ("overdue", "late", "past due")):
+                if any(w in query_lower for w in ("overdue", "late", "past due")):
                     status_f = "overdue"
                     title = "Enterprise Overdue Invoices Report"
+                elif any(w in query_lower for w in ("pending", "unpaid", "due", "review", "scheduled", "approval")):
+                    status_f = "pending"
+                    title = "Enterprise Pending Invoices Report"
                 elif any(w in query_lower for w in ("paid", "settled", "cleared")):
                     status_f = "paid"
                     title = "Enterprise Settled Invoices Report"

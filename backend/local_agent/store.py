@@ -461,11 +461,6 @@ class LocalAgentStore:
         with self._lock:
             val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
-            if not chunks:
-                for (t, u), d in self._data.items():
-                    if d.get("chunks"):
-                        chunks = d.get("chunks")
-                        break
 
             seen = set()
             files: list[dict[str, Any]] = []
@@ -515,11 +510,6 @@ class LocalAgentStore:
         with self._lock:
             val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
-            if not chunks:
-                for (t, u), d in self._data.items():
-                    if d.get("chunks"):
-                        chunks = d.get("chunks")
-                        break
             if not chunks:
                 return []
 
