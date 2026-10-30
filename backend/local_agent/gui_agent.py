@@ -490,17 +490,30 @@ class NanviLocalAgent:
         if p.exists() and p.is_file():
             logger.info("Opening local file requested by Nanvi Cloud: %s", p)
             self._last_opened_time = time.time()
+            opened = False
             try:
                 import os
                 if hasattr(os, "startfile"):
-                    os.startfile(str(p))
-                else:
+                    try:
+                        os.startfile(str(p))
+                        opened = True
+                    except Exception as sf_err:
+                        logger.warning("os.startfile failed (%s), trying cmd start...", sf_err)
+
+                if not opened:
                     import subprocess
-                    subprocess.Popen(["cmd", "/c", "start", "", str(p)], shell=True)
+                    subprocess.Popen(["cmd", "/c", "start", '""', str(p)], shell=True)
+                    opened = True
+
                 if self.status_callback:
                     self.status_callback(f"✓ Opened: {p.name}")
             except Exception as exc:
                 logger.warning("Failed to open file %s: %s", p, exc)
+                try:
+                    import subprocess
+                    subprocess.Popen(["explorer.exe", f"/select,{str(p)}"])
+                except Exception:
+                    pass
         else:
             logger.warning("Requested file not found on computer: %s", clean)
             self._last_opened_time = time.time()

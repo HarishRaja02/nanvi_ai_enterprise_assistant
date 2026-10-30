@@ -250,6 +250,18 @@ class LocalAgentStore:
             cmds = list(val.get("pending_commands", []))
             val["pending_commands"] = []
 
+            # If polling as a specific user, also grab any pending commands queued to 'default'
+            if user_id != "default":
+                try:
+                    def_val = self._load_key(tenant_id, "default")
+                    def_cmds = list(def_val.get("pending_commands", []))
+                    if def_cmds:
+                        cmds.extend(def_cmds)
+                        def_val["pending_commands"] = []
+                        self._save_key(tenant_id, "default", def_val)
+                except Exception as exc:
+                    logger.debug("Could not pop default commands: %s", exc)
+
             self._save_key(tenant_id, user_id, val)
             requested_folders = list(val.get("requested_folders", []))
             return requested_folders, cmds

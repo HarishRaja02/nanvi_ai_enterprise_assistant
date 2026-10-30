@@ -71,6 +71,11 @@ async def local_agent_open_file(
 
     from pathlib import Path
     cmd_id = service.queue_command(t_id, u_id, "open_file", {"file_path": raw_path})
+    if u_id != "default":
+        try:
+            service.queue_command(t_id, "default", "open_file", {"file_path": raw_path})
+        except Exception:
+            pass
     return {
         "status": "ok",
         "opened": raw_path,
