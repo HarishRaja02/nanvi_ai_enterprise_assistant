@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
-import { GoogleIcon } from "./GoogleIcon";
+import { api } from "../../api";
 import { UserSession } from "../types";
 
 interface RegisterFormProps {
@@ -13,6 +13,7 @@ export function RegisterForm({
   onNavigateToSignIn,
 }: RegisterFormProps) {
   const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -22,7 +23,7 @@ export function RegisterForm({
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage("");
     setSuccessMessage("");
@@ -31,9 +32,14 @@ export function RegisterForm({
       setErrorMessage("Please enter your full name.");
       return;
     }
+    const cleanUsername = username.trim().toLowerCase();
+    if (!cleanUsername) {
+      setErrorMessage("Please enter an enterprise username / user ID.");
+      return;
+    }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      setErrorMessage("Please enter a valid email address.");
+      setErrorMessage("Please enter a valid corporate email address.");
       return;
     }
     if (password.length < 6) {
@@ -51,21 +57,28 @@ export function RegisterForm({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      setSuccessMessage("Account created successfully! Preparing dashboard...");
+    try {
+      const created = await api.registerAccount({
+        username: cleanUsername,
+        email: email.trim().toLowerCase(),
+        password,
+        display_name: fullName.trim(),
+        department: "Operations",
+      });
+
+      setSuccessMessage("Account created successfully! Preparing your workspace...");
 
       const session: UserSession = {
-        id: "usr_" + Math.random().toString(36).substring(2, 9),
-        name: fullName.trim(),
-        username: email.split("@")[0].toLowerCase(),
-        email: email.trim().toLowerCase(),
+        id: created.id,
+        name: created.display_name,
+        username: created.username,
+        email: created.email || email.trim().toLowerCase(),
         avatarUrl: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
-        roleId: "employee",
-        roleTitle: "Enterprise Member",
-        department: "Operations",
-        accessLevel: "Tier 2: Standard Access",
-        sessionToken: "jwt_sec_" + Math.random().toString(36).substring(2, 16),
+        roleId: created.role.toLowerCase().replace(/\s+/g, "_"),
+        roleTitle: created.role,
+        department: created.department || "Operations",
+        accessLevel: "Standard Access",
+        sessionToken: "session_" + Math.random().toString(36).substring(2, 16),
         lastLogin: "Just now",
         permissions: ["Workplace Copilot", "Document Synthesis", "Personal Queue"],
       };
@@ -74,8 +87,12 @@ export function RegisterForm({
 
       setTimeout(() => {
         onSuccess(session);
-      }, 700);
-    }, 900);
+      }, 800);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Failed to create account. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -85,10 +102,10 @@ export function RegisterForm({
           id="register-heading"
           className="font-serif text-2xl sm:text-3xl font-normal text-neutral-900 tracking-tight leading-tight"
         >
-          Create Account
+          Create Enterprise Account
         </h1>
         <p className="mt-1 text-xs text-neutral-500 font-normal">
-          Start your journey and manage your plans seamlessly
+          Register with your enterprise username and corporate email
         </p>
       </div>
 
@@ -113,20 +130,38 @@ export function RegisterForm({
       )}
 
       <form onSubmit={handleSubmit} className="space-y-2.5">
+        <div>
+          <label
+            htmlFor="register-name-input"
+            className="block text-xs font-medium text-neutral-800 mb-1"
+          >
+            Full Name
+          </label>
+          <input
+            id="register-name-input"
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="e.g. John Doe"
+            required
+            className="w-full px-3 py-2 bg-[#f8f9fa] border border-neutral-200/90 rounded-lg text-neutral-900 text-xs sm:text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
+          />
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div>
             <label
-              htmlFor="register-name-input"
+              htmlFor="register-username-input"
               className="block text-xs font-medium text-neutral-800 mb-1"
             >
-              Full Name
+              Enterprise User ID / Username
             </label>
             <input
-              id="register-name-input"
+              id="register-username-input"
               type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="John Doe"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. john.doe"
               required
               className="w-full px-3 py-2 bg-[#f8f9fa] border border-neutral-200/90 rounded-lg text-neutral-900 text-xs sm:text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
             />
@@ -137,14 +172,19 @@ export function RegisterForm({
               htmlFor="register-email-input"
               className="block text-xs font-medium text-neutral-800 mb-1"
             >
-              Email
+              Corporate Email Address
             </label>
             <input
               id="register-email-input"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (!username && e.target.value.includes("@")) {
+                  setUsername(e.target.value.split("@")[0].toLowerCase());
+                }
+              }}
+              placeholder="e.g. john@company.com"
               required
               className="w-full px-3 py-2 bg-[#f8f9fa] border border-neutral-200/90 rounded-lg text-neutral-900 text-xs sm:text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
             />
@@ -165,14 +205,15 @@ export function RegisterForm({
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a password"
+                placeholder="Create password (min. 6 chars)"
                 required
+                minLength={6}
                 className="w-full pl-3 pr-10 py-2 bg-[#f8f9fa] border border-neutral-200/90 rounded-lg text-neutral-900 text-xs sm:text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1 cursor-pointer"
               >
                 {showPassword ? (
                   <EyeOff className="w-3.5 h-3.5" />
@@ -197,6 +238,7 @@ export function RegisterForm({
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter password"
               required
+              minLength={6}
               className="w-full px-3 py-2 bg-[#f8f9fa] border border-neutral-200/90 rounded-lg text-neutral-900 text-xs sm:text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900 focus:bg-white transition-all"
             />
           </div>
@@ -247,7 +289,7 @@ export function RegisterForm({
           id="switch-to-signin-link"
           type="button"
           onClick={onNavigateToSignIn}
-          className="font-semibold text-neutral-900 hover:underline focus:outline-none"
+          className="font-semibold text-neutral-900 hover:underline focus:outline-none cursor-pointer"
         >
           Sign In
         </button>

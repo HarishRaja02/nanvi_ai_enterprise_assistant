@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
 import secrets
 import sqlite3
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -173,6 +175,23 @@ class LocalAccountStore:
                         connection.execute("ALTER TABLE public.nanvi_local_accounts ADD CONSTRAINT nanvi_local_accounts_role_check CHECK (role = ANY (ARRAY['Admin'::text, 'Superior'::text, 'Supervisor'::text, 'Project Engineer'::text, 'Employee'::text]));")
                     except Exception:
                         pass
+                    connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS public.nanvi_password_reset_tokens (
+                            token_hash TEXT PRIMARY KEY,
+                            account_id TEXT NOT NULL,
+                            tenant_id TEXT NOT NULL,
+                            expires_at BIGINT NOT NULL,
+                            used BOOLEAN NOT NULL DEFAULT FALSE,
+                            created_at BIGINT NOT NULL
+                        )
+                        """
+                    )
+                    try:
+                        connection.execute("CREATE INDEX IF NOT EXISTS idx_nanvi_reset_tokens_acc ON public.nanvi_password_reset_tokens(tenant_id, account_id);")
+                        connection.execute("CREATE INDEX IF NOT EXISTS idx_nanvi_accounts_email ON public.nanvi_local_accounts(tenant_id, LOWER(email));")
+                    except Exception:
+                        pass
                     connection.commit()
                 else:
                     connection.execute(
@@ -193,6 +212,23 @@ class LocalAccountStore:
                         )
                         """
                     )
+                    connection.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                            token_hash TEXT PRIMARY KEY,
+                            account_id TEXT NOT NULL,
+                            tenant_id TEXT NOT NULL,
+                            expires_at INTEGER NOT NULL,
+                            used INTEGER NOT NULL DEFAULT 0,
+                            created_at INTEGER NOT NULL
+                        )
+                        """
+                    )
+                    try:
+                        connection.execute("CREATE INDEX IF NOT EXISTS idx_reset_tokens_acc ON password_reset_tokens(tenant_id, account_id);")
+                        connection.execute("CREATE INDEX IF NOT EXISTS idx_accounts_email ON local_accounts(tenant_id, LOWER(email));")
+                    except Exception:
+                        pass
                     connection.commit()
                 count = connection.execute(f"SELECT COUNT(*) AS total FROM {self._table}").fetchone()["total"]
             self._initialized = True
@@ -276,6 +312,7 @@ class LocalAccountStore:
         email: str | None = None,
         department: str | None = None,
         allow_short_password: bool = False,
+        require_email: bool = False,
     ) -> dict[str, Any]:
         self.initialize()
         normalized_username = username.strip().casefold()
@@ -283,6 +320,25 @@ class LocalAccountStore:
             raise ValueError("User ID must contain 1 to 50 characters.")
         if role not in {Role.SUPERIOR.value, Role.SUPERVISOR.value, Role.PROJECT_ENGINEER.value, Role.EMPLOYEE.value, "Admin", "CEO", "Finance"}:
             raise ValueError("Choose one of the supported user roles.")
+
+        email_clean = (email or "").strip().casefold()
+        if email_clean:
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email_clean):
+                raise ValueError("Please provide a valid corporate email address.")
+        elif require_email:
+            raise ValueError("A valid corporate email address is compulsory.")
+        else:
+            email_clean = f"{normalized_username}@{tenant_id}.local"
+
+        placeholder = "%s" if self._dsn else "?"
+        with self._connect() as connection:
+            dup_email = connection.execute(
+                f"SELECT id FROM {self._table} WHERE tenant_id = {placeholder} AND LOWER(COALESCE(email, '')) = {placeholder}",
+                (tenant_id, email_clean),
+            ).fetchone()
+            if dup_email:
+                raise ValueError("An account with that email address already exists.")
+
         if allow_short_password:
             salt = secrets.token_bytes(16)
             digest = hashlib.scrypt(
@@ -295,7 +351,6 @@ class LocalAccountStore:
             salt_hex, digest_hex = hash_password(password)
 
         account_id = str(uuid.uuid4())
-        placeholder = "%s" if self._dsn else "?"
         sql = (
             f"INSERT INTO {self._table} "
             "(id, tenant_id, username, password_salt, password_hash, role, display_name, email, department, active) "
@@ -305,7 +360,7 @@ class LocalAccountStore:
             with self._connect() as connection:
                 connection.execute(sql, (
                     account_id, tenant_id, normalized_username, salt_hex, digest_hex,
-                    role, display_name.strip(), email, department, True,
+                    role, display_name.strip(), email_clean, department, True,
                 ))
                 connection.commit()
         except Exception as exc:
@@ -466,6 +521,109 @@ class LocalAccountStore:
                 (tenant_id, role),
             ).fetchone()
         return int(row["total"])
+
+    def find_account_by_username_and_email(
+        self, username: str, email: str, tenant_id: str = "enterprise-tenant"
+    ) -> dict[str, Any] | None:
+        self.initialize()
+        norm_user = username.strip().casefold()
+        norm_email = email.strip().casefold()
+        if not norm_user or not norm_email:
+            return None
+        placeholder = "%s" if self._dsn else "?"
+        with self._connect() as connection:
+            account = connection.execute(
+                f"SELECT * FROM {self._table} WHERE tenant_id = {placeholder} "
+                f"AND LOWER(username) = {placeholder} "
+                f"AND LOWER(COALESCE(email, '')) = {placeholder} "
+                f"AND active = {('TRUE' if self._dsn else '1')}",
+                (tenant_id, norm_user, norm_email),
+            ).fetchone()
+        if not account:
+            return None
+        return dict(account)
+
+    def create_password_reset_token(
+        self, account_id: str, tenant_id: str = "enterprise-tenant", expires_minutes: int = 15
+    ) -> str:
+        self.initialize()
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+        now_ts = int(time.time())
+        expires_at = now_ts + (expires_minutes * 60)
+        reset_table = "public.nanvi_password_reset_tokens" if self._dsn else "password_reset_tokens"
+        placeholder = "%s" if self._dsn else "?"
+
+        with self._connect() as connection:
+            used_true = True if self._dsn else 1
+            used_false = False if self._dsn else 0
+            connection.execute(
+                f"UPDATE {reset_table} SET used = {used_true} "
+                f"WHERE tenant_id = {placeholder} AND account_id = {placeholder} AND used = {used_false}",
+                (tenant_id, account_id),
+            )
+            connection.execute(
+                f"INSERT INTO {reset_table} (token_hash, account_id, tenant_id, expires_at, used, created_at) "
+                f"VALUES ({', '.join([placeholder] * 6)})",
+                (token_hash, account_id, tenant_id, expires_at, used_false, now_ts),
+            )
+            connection.commit()
+        return raw_token
+
+    def verify_reset_token(self, raw_token: str) -> dict[str, Any] | None:
+        self.initialize()
+        cleaned_token = raw_token.strip()
+        if not cleaned_token:
+            return None
+        token_hash = hashlib.sha256(cleaned_token.encode("utf-8")).hexdigest()
+        reset_table = "public.nanvi_password_reset_tokens" if self._dsn else "password_reset_tokens"
+        placeholder = "%s" if self._dsn else "?"
+        now_ts = int(time.time())
+
+        with self._connect() as connection:
+            row = connection.execute(
+                f"SELECT token_hash, account_id, tenant_id, expires_at, used FROM {reset_table} WHERE token_hash = {placeholder}",
+                (token_hash,),
+            ).fetchone()
+        if not row:
+            return None
+
+        row_dict = dict(row)
+        if bool(row_dict["used"]) or int(row_dict["expires_at"]) <= now_ts:
+            return None
+
+        try:
+            account = self.get_account(row_dict["account_id"], row_dict["tenant_id"])
+        except ValueError:
+            return None
+
+        return {
+            "token_hash": row_dict["token_hash"],
+            "account_id": row_dict["account_id"],
+            "tenant_id": row_dict["tenant_id"],
+            "account": account,
+        }
+
+    def reset_password_with_token(self, raw_token: str, new_password: str) -> dict[str, Any]:
+        valid = self.verify_reset_token(raw_token)
+        if not valid:
+            raise ValueError("The password reset link is invalid or has expired. Please request a new one.")
+
+        account_id = valid["account_id"]
+        tenant_id = valid["tenant_id"]
+        token_hash = valid["token_hash"]
+        reset_table = "public.nanvi_password_reset_tokens" if self._dsn else "password_reset_tokens"
+        placeholder = "%s" if self._dsn else "?"
+        used_true = True if self._dsn else 1
+
+        with self._connect() as connection:
+            connection.execute(
+                f"UPDATE {reset_table} SET used = {used_true} WHERE token_hash = {placeholder}",
+                (token_hash,),
+            )
+            connection.commit()
+
+        return self.reset_password(account_id, new_password, tenant_id)
 
 
 _account_store: LocalAccountStore | None = None

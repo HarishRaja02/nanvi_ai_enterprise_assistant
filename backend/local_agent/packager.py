@@ -21,8 +21,8 @@ def generate_agent_bat(server_url: str, pairing_token: str, display_name: str = 
     gui_code = script_path.read_text(encoding="utf-8")
     b64_code = base64.b64encode(gui_code.encode("utf-8")).decode("ascii")
 
-    # Format base64 in 64-character lines for standard PEM format accepted by certutil
-    b64_lines = "\n".join(b64_code[i : i + 64] for i in range(0, len(b64_code), 64))
+    # Format base64 in 64-character lines with echo for standard PEM format accepted by certutil
+    b64_lines = "\n".join(f"echo {b64_code[i : i + 64]}" for i in range(0, len(b64_code), 64))
 
     clean_server = server_url.rstrip("/")
     clean_display = display_name.replace('"', '\\"')

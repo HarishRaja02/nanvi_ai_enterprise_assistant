@@ -43,9 +43,11 @@ type Props = {
   onLogin: (username: string, password: string, role: LocalAccountRole | string) => Promise<void> | void;
   loading: boolean;
   error: string;
+  onNavigateToForgot?: () => void;
+  onNavigateToRegister?: () => void;
 };
 
-export function RoleLoginForm({ onLogin, loading, error }: Props) {
+export function RoleLoginForm({ onLogin, loading, error, onNavigateToForgot, onNavigateToRegister }: Props) {
   const [role, setRole] = useState<LocalAccountRole>("Superior");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -137,6 +139,28 @@ export function RoleLoginForm({ onLogin, loading, error }: Props) {
           </button>
         </span>
       </label>
+
+      {onNavigateToForgot && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "-8px", marginBottom: "4px" }}>
+          <button
+            id="forgot-password-link"
+            type="button"
+            onClick={onNavigateToForgot}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: "13px",
+              fontWeight: 500,
+              color: "#4f46e5",
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            Forgot Password?
+          </button>
+        </div>
+      )}
 
       {/* Role Selection Group placed below password */}
       <div className="role-login-field">
@@ -233,6 +257,29 @@ export function RoleLoginForm({ onLogin, loading, error }: Props) {
           <span>{role === "Admin" ? "Sign in to Admin Console" : "Sign in"}</span>
         )}
       </button>
+
+      {onNavigateToRegister && (
+        <div style={{ textAlign: "center", marginTop: "12px", fontSize: "13px", color: "#64748b" }}>
+          Need an account?{" "}
+          <button
+            id="register-link"
+            type="button"
+            onClick={onNavigateToRegister}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#0f172a",
+              cursor: "pointer",
+              textDecoration: "underline",
+            }}
+          >
+            Create Account
+          </button>
+        </div>
+      )}
     </form>
   );
 }

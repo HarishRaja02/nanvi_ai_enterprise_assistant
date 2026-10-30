@@ -13,6 +13,7 @@ from backend.security.authorization.permissions import Permission
 from backend.security.authorization.rbac import Role, has_permission
 from backend.security.dependencies import get_current_user
 from backend.security.local_accounts import LocalAccountStore, get_local_account_store
+from backend.security.mailer import send_password_reset_email
 from backend.security.models import UserIdentity
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -35,6 +36,24 @@ class AccountCreateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=200)
     email: str | None = Field(default=None, max_length=255)
     department: str | None = Field(default=None, max_length=100)
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=50, description="Enterprise Username")
+    email: str = Field(min_length=3, max_length=255, description="Compulsory corporate email address")
+    password: str = Field(min_length=6, max_length=200)
+    display_name: str = Field(min_length=1, max_length=200)
+    department: str | None = Field(default="Operations", max_length=100)
+
+
+class ForgotPasswordRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100, description="Enterprise User ID or Username")
+    email: str = Field(min_length=3, max_length=255, description="Corporate email address")
+
+
+class ResetPasswordWithTokenRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=256)
+    new_password: str = Field(min_length=6, max_length=200)
 
 
 class PasswordResetRequest(BaseModel):
@@ -132,19 +151,110 @@ def create_local_account(
     if not is_superior and body.role not in SUPERVISOR_MANAGED_ROLES:
         raise HTTPException(status_code=403, detail="Supervisors can create Project Engineer and Employee accounts only.")
     try:
+        tenant_id = user.tenant_id or "enterprise-tenant"
+        email_addr = body.email or f"{body.username.strip().lower()}@{tenant_id}.local"
         account = store.create_account(
-            tenant_id=user.tenant_id or "enterprise-tenant",
+            tenant_id=tenant_id,
             username=body.username,
             password=body.password,
             role=body.role,
             display_name=body.display_name,
-            email=body.email,
+            email=email_addr,
             department=body.department,
             allow_short_password=True,
+            require_email=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return LocalAccountResponse(**account)
+
+
+@router.post("/register", response_model=LocalAccountResponse, status_code=status.HTTP_201_CREATED)
+def register_account(
+    body: RegisterRequest,
+    store: LocalAccountStore = Depends(get_local_account_store),
+) -> LocalAccountResponse:
+    _ensure_local_auth_enabled()
+    tenant_id = settings.local_auth_tenant_id or "enterprise-tenant"
+    try:
+        account = store.create_account(
+            tenant_id=tenant_id,
+            username=body.username,
+            password=body.password,
+            role="Employee",
+            display_name=body.display_name,
+            email=body.email,
+            department=body.department or "Operations",
+            allow_short_password=True,
+            require_email=True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return LocalAccountResponse(**account)
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    body: ForgotPasswordRequest,
+    store: LocalAccountStore = Depends(get_local_account_store),
+) -> dict[str, object]:
+    _ensure_local_auth_enabled()
+    tenant_id = settings.local_auth_tenant_id or "enterprise-tenant"
+    account = store.find_account_by_username_and_email(body.username, body.email, tenant_id=tenant_id)
+
+    dev_reset_link = None
+    if account:
+        raw_token = store.create_password_reset_token(account["id"], tenant_id=tenant_id, expires_minutes=15)
+        frontend_base = settings.frontend_url.rstrip("/")
+        reset_link = f"{frontend_base}/?token={raw_token}"
+        send_password_reset_email(account["email"], account["display_name"], reset_link)
+        if settings.is_development or settings.is_demo:
+            dev_reset_link = reset_link
+
+    resp: dict[str, object] = {
+        "status": "ok",
+        "message": "If the username and email match our directory, a secure recovery link has been dispatched to your email address.",
+    }
+    if dev_reset_link:
+        resp["dev_reset_link"] = dev_reset_link
+    return resp
+
+
+@router.get("/verify-reset-token")
+def verify_reset_token(
+    token: str,
+    store: LocalAccountStore = Depends(get_local_account_store),
+) -> dict[str, object]:
+    _ensure_local_auth_enabled()
+    valid = store.verify_reset_token(token)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset link is invalid or has expired. Please request a new recovery link.",
+        )
+    account = valid["account"]
+    return {
+        "valid": True,
+        "username": account["username"],
+        "email": account["email"],
+        "display_name": account["display_name"],
+    }
+
+
+@router.post("/reset-password")
+def reset_password_with_token(
+    body: ResetPasswordWithTokenRequest,
+    store: LocalAccountStore = Depends(get_local_account_store),
+) -> dict[str, object]:
+    _ensure_local_auth_enabled()
+    try:
+        store.reset_password_with_token(body.token, body.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {
+        "status": "ok",
+        "message": "Your password has been reset successfully. You can now sign in.",
+    }
 
 
 @router.patch("/accounts/{account_id}", response_model=LocalAccountResponse)

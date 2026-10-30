@@ -78,6 +78,13 @@ class Settings:
     openai_api_key: str = ""
     realtime_voice_enabled: bool = False
     realtime_voice_model: str = "gpt-live-1"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "security@nanvi.ai"
+    smtp_use_tls: bool = True
+    frontend_url: str = "http://localhost:5173"
 
     @property
     def is_production(self) -> bool:
@@ -244,6 +251,13 @@ class Settings:
             openai_api_key=openai_api_key,
             realtime_voice_enabled=boolean("REALTIME_VOICE_ENABLED", bool(openai_api_key)),
             realtime_voice_model=os.getenv("REALTIME_VOICE_MODEL", "gpt-live-1").strip(),
+            smtp_host=os.getenv("SMTP_HOST", "").strip(),
+            smtp_port=integer("SMTP_PORT", 587),
+            smtp_username=os.getenv("SMTP_USERNAME", "").strip(),
+            smtp_password=os.getenv("SMTP_PASSWORD", "").strip(),
+            smtp_from=os.getenv("SMTP_FROM", "security@nanvi.ai").strip(),
+            smtp_use_tls=boolean("SMTP_USE_TLS", True),
+            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173").strip().rstrip("/"),
         )
 
 
