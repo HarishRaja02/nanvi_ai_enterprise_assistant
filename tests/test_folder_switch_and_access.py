@@ -10,8 +10,7 @@ from backend.chat.models import ChatRequest
 @pytest.fixture(autouse=True)
 def restore_company_data():
     yield
-    if Path("C:/CompanyData").exists():
-        CompanyDataService.get_instance("C:/CompanyData")
+    CompanyDataService.clear_registry()
 
 
 def test_folder_switch_and_persistence(tmp_path):

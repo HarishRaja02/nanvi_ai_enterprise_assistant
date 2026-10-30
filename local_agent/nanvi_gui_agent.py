@@ -180,7 +180,8 @@ class NanviLocalAgent:
         if self.folder_callback:
             self.folder_callback()
 
-        # Trigger indexing in background thread
+        # Immediately notify cloud via heartbeat and start indexing
+        threading.Thread(target=self.send_heartbeat, daemon=True).start()
         threading.Thread(target=self.index_and_sync_folder, args=(path_str,), daemon=True).start()
         return p
 
@@ -798,8 +799,8 @@ def main() -> None:
         except Exception:
             pass
 
-    server_url = os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or "https://nanviaienterpriseassistant.vercel.app"
-    token = os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or ""
+    server_url = os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or "http://127.0.0.1:8000"
+    token = os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or "nanvi-local-token"
 
     agent = NanviLocalAgent(server_url=server_url, token=token)
     app = NanviAgentWindow(agent)

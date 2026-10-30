@@ -570,8 +570,8 @@ class ChatService:
                 "generate contract renewal schedule", "invoice report", "overdue report", "billing report",
             )),
             (Capability.KNOWLEDGE, (
-                "document", "documents", "file", "files", "pdf", "word", "docx", "excel", "xlsx", "csv",
-                "policy", "handbook", "contract", "summary", "agreement", "customer", "finance", "hr", "project",
+                "document", "documents", "file", "files", "pdf", "word", "docx", "excel", "xlsx", "csv", "md", "markdown", "txt",
+                "policy", "handbook", "contract", "summary", "summarize", "notes", "agreement", "customer", "finance", "hr", "project",
                 "rag", "retrieval", "retrieval-augmented", "vault", "vaults", "knowledge base", "company data",
                 "upload", "uploaded", "attachment", "harish", "companydata",
                 "invoice", "invoices", "vendor", "vendors", "receipt", "receipts", "bill", "bills",
@@ -1068,7 +1068,7 @@ class ChatService:
             return code_match_num.group(0).strip()
 
         # 2. File extension match (e.g. customer_profile_001.pdf)
-        ext_match = re.search(r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json)\b", q, re.IGNORECASE)
+        ext_match = re.search(r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json|md)\b", q, re.IGNORECASE)
         if ext_match:
             return ext_match.group(0).strip()
 
@@ -1113,6 +1113,11 @@ class ChatService:
 
         # Exclude conversational greetings
         if cls._is_conversational_query(q):
+            return False
+
+        # Exclude summarization, explanation, reading, and deep comprehension questions
+        # (These should route to KnowledgeAgent to retrieve and comprehend the content)
+        if any(w in q for w in ("summarize", "summary of", "explain", "describe", "what is inside", "what is in", "contents of", "what does", "read")):
             return False
 
         # [LEGACY] has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch)\b", q))

@@ -16,16 +16,32 @@ logger = logging.getLogger(__name__)
 
 
 def resolve_root(current_root: Path, tenant_id: str) -> Path | None:
-    """Resolve the active root directory for company documents."""
-    if current_root.exists() and current_root.is_dir():
-        return current_root
+    """Resolve the active root directory for company documents.
+    Strictly rejects /var/task/CompanyData, repository root, or server-side bundled fallback.
+    """
+    repo_root = Path(__file__).resolve().parents[4]
+    if current_root and str(current_root).strip():
+        try:
+            res = current_root.resolve()
+            if res != repo_root and res.exists() and res.is_dir():
+                norm = str(res).replace("\\", "/").lower()
+                if "/var/task" not in norm and "var/task" not in norm:
+                    return res
+        except Exception:
+            pass
+
     persisted = get_persisted_folder(tenant_id)
-    if persisted and persisted.exists() and persisted.is_dir():
-        return persisted
-    project_root = Path(__file__).resolve().parents[4]
-    fallback = project_root / "CompanyData"
-    if fallback.exists() and fallback.is_dir():
-        return fallback
+    if persisted and str(persisted).strip():
+        try:
+            res = persisted.resolve()
+            if res != repo_root and res.exists() and res.is_dir():
+                norm = str(res).replace("\\", "/").lower()
+                if "/var/task" not in norm and "var/task" not in norm:
+                    return res
+        except Exception:
+            pass
+
+    # /var/task/CompanyData and repository root are disabled.
     return None
 
 

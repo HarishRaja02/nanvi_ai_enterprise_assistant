@@ -69,7 +69,7 @@ class IntentRouter:
 
     _EXPLICIT_FILE_PATTERNS = (
         # File extensions
-        r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json|xml)\b",
+        r"\b[\w-]+\.(?:pdf|docx|xlsx|csv|pptx|txt|json|xml|md|markdown|log|html|htm)\b",
         # Document and invoice identification codes (e.g. INV-2026-0042, INV-00022, invoice_022, EMP-0001, NDA-0001)
         r"\b(?:inv|emp|nda|pur|po|prj|cust|cnt|doc|bill)[-_ ]?\d{1,8}\b",
         r"\binv[-_ ]?\d{4}[-_ ]?\d+\b",

@@ -71,82 +71,103 @@ class CompanyFolderUpdateResponse(BaseModel):
 
 def _is_admin(user: UserIdentity) -> bool:
     """Check if the user has permission to manage or select company folders."""
-    if not settings.is_production:
-        return True
     roles_normalized = {
-        r.lower().replace(" ", "").replace("_", "").replace("-", "")
+        (r.value if hasattr(r, "value") else str(r)).lower().replace(" ", "").replace("_", "").replace("-", "")
         for r in user.roles
     }
     return bool(roles_normalized.intersection({"superior", "supervisor", "ceo", "finance", "itadmin", "admin", "administrator"}))
 
 
 def _get_filesystem_root_entries() -> list[dict[str, str | bool]]:
-    """Return starting locations for browsing the backend machine's filesystem."""
+    """Return approved root entries for browsing. Strictly excludes /, C:\\, and /var/task."""
     entries: list[dict[str, str | bool]] = []
+    known_paths: set[str] = set()
 
-    # 1. Bundled CompanyData in repo (works seamlessly in Vercel and local)
-    project_root = Path(__file__).resolve().parents[2]
-    repo_data = project_root / "CompanyData"
-    if repo_data.is_dir():
-        entries.append({"name": "Bundled Company Data (Repository)", "path": str(repo_data), "is_dir": True})
-
-    # 2. Common User folders (Downloads, Desktop, Documents)
-    home = Path.home()
-    for name, sub in [("Downloads", "Downloads"), ("Desktop", "Desktop"), ("Documents", "Documents")]:
-        folder = home / sub
-        if folder.is_dir():
-            entries.append({"name": f"{name} ({folder.name})", "path": str(folder), "is_dir": True})
-
-    # 2. Filesystem roots
-    if os.name == "nt":
-        for drive in string.ascii_uppercase:
-            root = Path(f"{drive}:\\")
-            try:
-                if root.is_dir():
-                    entries.append({"name": f"{drive}:\\", "path": str(root), "is_dir": True})
-            except OSError:
-                continue
-    else:
-        root = Path("/")
-        entries.append({"name": "Filesystem root ( / )", "path": str(root), "is_dir": True})
-
-    known_paths = {str(entry["path"]).casefold() for entry in entries}
-    for name, configured_path in settings.company_file_roots:
+    for name, configured_path in getattr(settings, "company_file_roots", ()):
         try:
             configured_root = Path(configured_path).expanduser().resolve()
+            norm = str(configured_root).replace("\\", "/").lower()
+            if "/var/task" in norm or "var/task" in norm:
+                continue
             normalized_path = str(configured_root).casefold()
             if configured_root.is_dir() and normalized_path not in known_paths:
                 entries.append({"name": name, "path": str(configured_root), "is_dir": True})
                 known_paths.add(normalized_path)
         except (OSError, RuntimeError, ValueError):
             continue
+
+    # Also include folders connected via the Local Agent BAT file
+    try:
+        from backend.local_agent.service import get_local_agent_service
+        status_data = get_local_agent_service().get_status("enterprise-tenant", "default")
+        for f in status_data.connected_folders:
+            norm = f.folder_path.casefold()
+            if norm not in known_paths:
+                entries.append({"name": f.display_name or f.folder_path, "path": f.folder_path, "is_dir": True})
+                known_paths.add(norm)
+    except Exception:
+        pass
+
     return entries
 
 
 def _resolve_requested_path(path: str) -> Path:
-    """Resolve a user-selected path without restricting it to configured roots."""
+    """Resolve a path and enforce storage root confinement.
+    Strictly forbids /var/task/CompanyData and path traversal outside roots.
+    """
+    clean = os.path.expandvars(path.strip())
+    norm_clean = clean.replace("\\", "/").lower()
+
+    if "/var/task" in norm_clean or "var/task" in norm_clean:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Server path /var/task/CompanyData is disabled. Folders can only be accessed through the Nanvi Local Agent BAT file.",
+        )
+
+    # Check against system directories
+    system_blacklists = ["/etc", "/sys", "/usr", "/bin", "/sbin"]
+    if os.name == "nt":
+        system_blacklists.extend(["c:\\windows", "c:\\program files", "c:\\program files (x86)"])
+    for blk in system_blacklists:
+        if norm_clean.startswith(blk.replace("\\", "/").lower()):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requested path is outside approved storage roots.",
+            )
+
     try:
-        clean = os.path.expandvars(path.strip())
-        # Aliases for repository bundled CompanyData
-        if clean.lower() in {"default", "reset", "companydata", "./companydata", "repo"}:
-            repo_data = Path(__file__).resolve().parents[2] / "CompanyData"
-            if repo_data.is_dir():
-                return repo_data
-        p = Path(clean).expanduser()
-        if not p.is_absolute():
-            candidate = Path(__file__).resolve().parents[2] / clean
-            if candidate.exists() and candidate.is_dir():
-                return candidate.resolve()
-        return p.resolve()
+        p = Path(clean).expanduser().resolve()
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid folder path.",
         ) from exc
 
+    # Enforce confinement to configured roots if configured
+    configured_roots = getattr(settings, "company_file_roots", ())
+    if configured_roots:
+        is_inside = False
+        for _, cr in configured_roots:
+            try:
+                cr_resolved = Path(cr).expanduser().resolve()
+                if p == cr_resolved or p.is_relative_to(cr_resolved):
+                    is_inside = True
+                    break
+            except Exception:
+                continue
+        if not is_inside:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Requested path is outside approved storage roots.",
+            )
+
+    return p
+
 
 def _folder_stats(folder_path: str) -> dict:
     """Return basic stats about a folder."""
+    if not folder_path or "/var/task" in folder_path.replace("\\", "/").lower():
+        return {"exists": False, "folder_count": 0, "file_count": 0}
     p = Path(folder_path)
     if not p.exists() or not p.is_dir():
         return {"exists": False, "folder_count": 0, "file_count": 0}
@@ -170,18 +191,43 @@ def _folder_stats(folder_path: str) -> dict:
 async def get_company_folder(
     user: UserIdentity = Depends(get_current_user),
 ) -> CompanyFolderResponse:
-    """Return the current company data folder path."""
-    from backend.integrations.files.company_data_service import CompanyDataService
+    """Return the current company data folder path from the connected BAT file local agent.
+    Never returns /var/task/CompanyData.
+    """
+    from backend.local_agent.service import get_local_agent_service
 
-    service = CompanyDataService.for_tenant(user.tenant_id)
-    current_path = str(service.root)
-    stats = _folder_stats(current_path)
-    file_cnt = len(service.files) if service.files else stats["file_count"]
+    service = get_local_agent_service()
+    tenant_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
+    user_id = str(getattr(user, "subject", None) or getattr(user, "user_id", "default"))
+    status_data = service.get_status(tenant_id, user_id)
+
+    if status_data.connected_folders:
+        primary = status_data.connected_folders[0]
+        return CompanyFolderResponse(
+            path=primary.folder_path,
+            exists=True,
+            folder_count=len(status_data.connected_folders),
+            file_count=status_data.total_files,
+        )
+
+    # Check if a custom valid directory was set (e.g. in test suite)
+    from backend.integrations.files.company_data_service import CompanyDataService
+    cds = CompanyDataService.for_tenant(user.tenant_id)
+    root_str = str(cds.root).replace("\\", "/")
+    if root_str and "/var/task" not in root_str.lower() and cds.root.exists() and cds.root.is_dir() and len(cds.files) > 0:
+        stats = _folder_stats(str(cds.root))
+        return CompanyFolderResponse(
+            path=str(cds.root),
+            exists=stats["exists"],
+            folder_count=stats["folder_count"],
+            file_count=len(cds.files),
+        )
+
     return CompanyFolderResponse(
-        path=current_path,
-        exists=stats["exists"],
-        folder_count=stats["folder_count"],
-        file_count=file_cnt,
+        path="",
+        exists=False,
+        folder_count=0,
+        file_count=0,
     )
 
 
@@ -190,7 +236,9 @@ async def update_company_folder(
     body: CompanyFolderUpdateRequest,
     user: UserIdentity = Depends(get_current_user),
 ) -> CompanyFolderUpdateResponse:
-    """Update the company data folder to a new path and re-index. Restricted to admin roles."""
+    """Update or register a company data folder. Restricted to admin roles.
+    Blocks /var/task/CompanyData and registers local paths with the BAT file agent.
+    """
     if not _is_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -209,18 +257,8 @@ async def update_company_folder(
             message="Folder path cannot be empty.",
         )
 
-    p = _resolve_requested_path(new_path)
-    if not p.exists():
-        is_windows_path = bool(re.match(r"^[a-zA-Z]:[\\/]", new_path))
-        is_cloud = settings.is_production or bool(os.getenv("VERCEL")) or sys.platform != "win32"
-        if is_windows_path and is_cloud:
-            err_msg = (
-                f"Folder does not exist on Vercel: {new_path}. "
-                "Local drive paths (like 'C:\\...') only exist on your personal computer and cannot be accessed by Vercel cloud servers. "
-                "Type 'CompanyData' or click 'Use Bundled Data' to use the repository's company documents."
-            )
-        else:
-            err_msg = f"Folder does not exist: {new_path}"
+    norm_new = new_path.replace("\\", "/").lower()
+    if "/var/task" in norm_new or "var/task" in norm_new or norm_new == "companydata":
         return CompanyFolderUpdateResponse(
             status="error",
             path=new_path,
@@ -228,38 +266,38 @@ async def update_company_folder(
             folder_count=0,
             file_count=0,
             indexed_files=0,
-            message=err_msg,
+            message="Server path /var/task/CompanyData is disabled. Folders can only be accessed through the Nanvi Local Agent BAT file on your Windows computer.",
         )
 
-    if not p.is_dir():
-        return CompanyFolderUpdateResponse(
-            status="error",
-            path=new_path,
-            exists=True,
-            folder_count=0,
-            file_count=0,
-            indexed_files=0,
-            message=f"Path is not a directory: {new_path}",
-        )
+    p = _resolve_requested_path(new_path)
 
+    # Forward to Local Agent Service so the Windows BAT file picks it up
+    from backend.local_agent.service import get_local_agent_service
+    local_svc = get_local_agent_service()
+    tenant_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
+    user_id = str(getattr(user, "subject", None) or getattr(user, "user_id", "default"))
+    local_svc.request_folder(tenant_id, user_id, str(p))
+
+    # Also update CompanyDataService if it's a locally existing directory (e.g. tests)
     from backend.integrations.files.company_data_service import CompanyDataService
     service = CompanyDataService.for_tenant(user.tenant_id)
-    service.update_root(str(p))
+    if p.exists() and p.is_dir():
+        service.update_root(str(p))
 
     stats = _folder_stats(str(p))
-    indexed = len(service.files)
-    file_count = indexed if indexed > 0 else stats["file_count"]
+    agent_status = local_svc.get_status(tenant_id, user_id)
+    file_count = agent_status.total_files or len(service.files) or stats["file_count"]
 
-    logger.info("Company data folder updated to %s by user %s (indexed %d files)", p, user.subject, indexed)
+    logger.info("Company data folder registered as %s by user %s", p, user.subject)
 
     return CompanyFolderUpdateResponse(
         status="ok",
         path=str(p),
-        exists=stats["exists"],
-        folder_count=stats["folder_count"],
+        exists=True,
+        folder_count=len(agent_status.connected_folders) or 1,
         file_count=file_count,
-        indexed_files=indexed,
-        message=f"Company data folder updated to {p}. {indexed} files indexed.",
+        indexed_files=file_count,
+        message=f"Company data folder registered for Nanvi Local Agent BAT file. Path: {p}",
     )
 
 
@@ -268,7 +306,9 @@ async def browse_directory(
     body: CompanyFolderUpdateRequest,
     user: UserIdentity = Depends(get_current_user),
 ) -> dict:
-    """List subdirectories anywhere on the backend filesystem for admin folder selection."""
+    """Browse approved directories for admin folder selection.
+    Strictly forbids browsing /var/task or raw system roots.
+    """
     if not _is_admin(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -290,6 +330,9 @@ async def browse_directory(
         for entry in p.iterdir():
             try:
                 resolved_entry = entry.resolve()
+                norm = str(resolved_entry).replace("\\", "/").lower()
+                if "/var/task" in norm or "var/task" in norm:
+                    continue
                 if resolved_entry.is_dir():
                     entries.append({
                         "name": entry.name,

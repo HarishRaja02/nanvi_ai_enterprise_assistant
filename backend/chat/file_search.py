@@ -293,24 +293,27 @@ def execute_file_search(
             except Exception as agent_exc:
                 logger.debug("Local agent search error: %s", agent_exc)
 
-            # 1B. Discover server disk files (CompanyData folder)
+            # 1B. Discover server disk files (CompanyData folder) - strictly disabled for /var/task
             server_disk_files: list[dict[str, Any]] = []
             cds = CompanyDataService.for_tenant(user.tenant_id)
-            repo_root = Path(cds.root)
+            repo_root = Path(cds.root) if str(cds.root) else None
 
             all_disk_files: list[Path] = []
-            if repo_root.exists() and repo_root.is_dir():
-                for p in repo_root.rglob("*"):
-                    if not p.is_file():
-                        continue
-                    p_name = p.name.casefold()
-                    if p_name.startswith(".") or p_name.startswith("~$") or p_name.startswith(".~"):
-                        continue
-                    if p_name.endswith("_index.json") or p_name in ("companydata_index.json", "desktop.ini", "thumbs.db"):
-                        continue
-                    if p.suffix.casefold() in (".tmp", ".temp", ".log", ".bak", ".swp", ".pyc"):
-                        continue
-                    all_disk_files.append(p)
+            if repo_root and repo_root.exists() and repo_root.is_dir():
+                norm_root = str(repo_root).replace("\\", "/").lower()
+                # Strictly reject /var/task/CompanyData
+                if "/var/task" not in norm_root and "var/task" not in norm_root:
+                    for p in repo_root.rglob("*"):
+                        if not p.is_file():
+                            continue
+                        p_name = p.name.casefold()
+                        if p_name.startswith(".") or p_name.startswith("~$") or p_name.startswith(".~"):
+                            continue
+                        if p_name.endswith("_index.json") or p_name in ("companydata_index.json", "desktop.ini", "thumbs.db"):
+                            continue
+                        if p.suffix.casefold() in (".tmp", ".temp", ".log", ".bak", ".swp", ".pyc"):
+                            continue
+                        all_disk_files.append(p)
 
             if is_generic:
                 # Category filter if requested, e.g. "list invoice file"

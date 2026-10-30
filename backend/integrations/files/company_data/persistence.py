@@ -22,25 +22,25 @@ def get_persisted_folder(tenant_id: str = "default") -> Path | None:
             tenant_data = data.get(t_id)
             if tenant_data:
                 saved = tenant_data.get("path")
-                if saved and Path(saved).exists() and Path(saved).is_dir():
+                if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
                     return Path(saved).resolve()
             if t_id != "default":
                 default_data = data.get("default")
                 if default_data:
                     saved = default_data.get("path")
-                    if saved and Path(saved).exists() and Path(saved).is_dir():
+                    if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
                         return Path(saved).resolve()
 
             # Fallback to the latest saved folder from any tenant
             for _, tinfo in sorted(data.items(), key=lambda item: item[1].get("updated_at", ""), reverse=True):
                 saved = tinfo.get("path")
-                if saved and Path(saved).exists() and Path(saved).is_dir():
+                if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
                     return Path(saved).resolve()
 
         if ACTIVE_FOLDER_FILE.exists():
             data = json.loads(ACTIVE_FOLDER_FILE.read_text(encoding="utf-8"))
             saved = data.get("path")
-            if saved and Path(saved).exists() and Path(saved).is_dir():
+            if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
                 return Path(saved).resolve()
     except Exception as exc:
         logger.warning("Could not read persisted folder path for tenant '%s': %s", t_id, exc)

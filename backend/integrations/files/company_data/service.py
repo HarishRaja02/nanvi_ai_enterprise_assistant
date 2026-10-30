@@ -37,40 +37,34 @@ class CompanyDataService:
 
     @classmethod
     def resolve_default_root(cls, tenant_id: str = "default") -> Path:
-        """Resolve the best default company data root directory."""
+        """Resolve the company data root directory.
+        Strictly disables /var/task/CompanyData or server-side fallback.
+        Folders must come from the Windows BAT file agent.
+        """
         persisted = get_persisted_folder(tenant_id)
-        if persisted is not None and persisted.exists() and persisted.is_dir():
-            return persisted
+        if persisted is not None:
+            norm = str(persisted).replace("\\", "/").lower()
+            if "/var/task" not in norm and "var/task" not in norm and persisted.exists() and persisted.is_dir():
+                return persisted
 
-        project_root = Path(__file__).resolve().parents[4]
-        repo_data = project_root / "CompanyData"
-        if repo_data.exists() and repo_data.is_dir():
-            return repo_data
-
-        backend_data = Path(__file__).resolve().parents[3] / "CompanyData"
-        if backend_data.exists() and backend_data.is_dir():
-            return backend_data
-
-        backend_local = Path("CompanyData").resolve()
-        if backend_local.exists() and backend_local.is_dir():
-            return backend_local
-
-        win_fallback = Path("C:/CompanyData")
-        if win_fallback.exists() and win_fallback.is_dir():
-            return win_fallback
-
-        return repo_data
+        # Server-side /var/task/CompanyData is disabled.
+        return Path("")
 
     def __init__(self, root_dir: str | Path | None = None, tenant_id: str = "default") -> None:
         self.tenant_id = str(tenant_id or "default").strip()
-        if root_dir is not None:
-            candidate = Path(root_dir).resolve()
-            if candidate.exists() and candidate.is_dir():
-                self.root = candidate
-            else:
-                self.root = self.resolve_default_root(self.tenant_id)
+        repo_root = Path(__file__).resolve().parents[4]
+        if root_dir is not None and str(root_dir).strip():
+            try:
+                candidate = Path(root_dir).resolve()
+                norm = str(candidate).replace("\\", "/").lower()
+                if candidate != repo_root and "/var/task" not in norm and "var/task" not in norm and candidate.exists() and candidate.is_dir():
+                    self.root = candidate
+                else:
+                    self.root = Path("")
+            except Exception:
+                self.root = Path("")
         else:
-            self.root = self.resolve_default_root(self.tenant_id)
+            self.root = Path("")
 
         self._doc_service = create_default_document_service()
         self._chunks: list[CompanyChunk] = []
@@ -86,7 +80,13 @@ class CompanyDataService:
         with cls._registry_lock:
             instance = cls._instances.get(t_id)
             if instance is None:
-                target_path = root_dir if root_dir is not None else cls.resolve_default_root(t_id)
+                target_path = root_dir
+                if target_path is None:
+                    default_inst = cls._instances.get("default")
+                    if default_inst and default_inst.root and str(default_inst.root) and default_inst.root.exists():
+                        target_path = default_inst.root
+                    else:
+                        target_path = cls.resolve_default_root(t_id)
                 instance = cls(target_path, tenant_id=t_id)
                 try:
                     instance.ensure_indexed()
@@ -153,12 +153,95 @@ class CompanyDataService:
     def _discover_files(self, base_root: Path) -> list[tuple[str, str, str, Path]]:
         return discover_files(base_root)
 
+    def _load_from_local_agent(self) -> None:
+        """Load files and chunks strictly from the Windows BAT file Local Agent store.
+        Prevents any access to /var/task/CompanyData.
+        """
+        try:
+            from backend.local_agent.service import get_local_agent_store
+            store = get_local_agent_store()
+            t_id = self.tenant_id or "enterprise-tenant"
+            u_id = "default"
+            data = store._load_key(t_id, u_id)
+            raw_chunks = data.get("chunks", [])
+            if not raw_chunks:
+                for k, d in getattr(store, "_data", {}).items():
+                    if d.get("chunks"):
+                        raw_chunks = d.get("chunks")
+                        break
+
+            chunks: list[CompanyChunk] = []
+            file_summary: dict[str, dict[str, Any]] = {}
+
+            for c in raw_chunks:
+                fn = c.get("filename", "")
+                rel = c.get("relative_path", fn)
+                ext = Path(fn).suffix.casefold().lstrip(".")
+                folder = c.get("folder_name", "Local Files")
+                fp = c.get("folder_path", "")
+                full = f"{fp}\\{rel}".replace("/", "\\") if fp else rel
+                content_text = c.get("text", "")
+
+                cc = CompanyChunk(
+                    chunk_id=c.get("chunk_id") or f"{rel}#{c.get('chunk_index', 0)}",
+                    folder=folder,
+                    filename=fn,
+                    relative_path=rel,
+                    full_path=full,
+                    file_type=ext,
+                    location=c.get("citation") or fn,
+                    content=content_text,
+                    sheet=c.get("sheet"),
+                    page=c.get("page"),
+                    folder_path=fp,
+                    document_id=rel,
+                    source="local_agent",
+                )
+                chunks.append(cc)
+
+                if rel not in file_summary:
+                    file_summary[rel] = {
+                        "file_id": rel,
+                        "filename": fn,
+                        "file_path": full,
+                        "full_path": full,
+                        "department": folder,
+                        "folder": folder,
+                        "folder_path": fp,
+                        "file_type": ext,
+                        "size_bytes": c.get("char_count", len(content_text)),
+                        "text_length": len(content_text),
+                        "preview": content_text[:250].replace("\n", " ").strip(),
+                        "content": content_text,
+                        "chunks": [cc],
+                        "created_at": c.get("modified_at") or "",
+                        "modified_at": c.get("modified_at") or "",
+                    }
+                else:
+                    file_summary[rel]["chunks"].append(cc)
+                    file_summary[rel]["content"] += f"\n\n{content_text}"
+                    file_summary[rel]["text_length"] += len(content_text)
+
+            self._chunks = chunks
+            self._indexed_files = file_summary
+            self._last_indexed = datetime.now().timestamp()
+            logger.info("Loaded %d chunks across %d files from BAT file agent. /var/task/CompanyData is disabled.", len(chunks), len(file_summary))
+        except Exception as exc:
+            logger.warning("Could not load chunks from local agent store: %s", exc)
+            self._chunks = []
+            self._indexed_files = {}
+
     def ensure_indexed(self, force: bool = False) -> None:
-        """Scan, extract content, and index all supported files incrementally."""
+        """Scan, extract content, and index files.
+        Only indexes files from the BAT file agent or an explicit custom folder (e.g. tests).
+        /var/task/CompanyData is completely blocked.
+        """
         with self._index_lock:
             active_root = self._resolve_root()
-            if not active_root:
-                logger.warning("CompanyData root %s does not exist", self.root)
+            norm_root = str(active_root).replace("\\", "/").lower() if active_root else ""
+
+            if not active_root or "/var/task" in norm_root or "var/task" in norm_root or not active_root.exists():
+                self._load_from_local_agent()
                 return
 
             now = datetime.now().timestamp()

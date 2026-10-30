@@ -667,22 +667,8 @@ def main() -> None:
         except Exception:
             pass
 
-    server_url = args.server or os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or ""
-    token = args.token or os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or ""
-
-    if not server_url:
-        print("\n--- Nanvi Local Agent Setup ---")
-        server_url = input("Enter Nanvi Server URL [http://127.0.0.1:8000]: ").strip()
-        if not server_url:
-            server_url = "http://127.0.0.1:8000"
-
-    if not token:
-        print("\nPlease generate a Pairing Token from Nanvi Web (Settings -> Company Folder -> Local Agent).")
-        token = input("Enter Pairing Token: ").strip()
-
-    if not token:
-        print("Error: A pairing token is required to authenticate with the cloud assistant.")
-        sys.exit(1)
+    server_url = args.server or os.environ.get("NANVI_SERVER_URL") or config_data.get("server_url") or "http://127.0.0.1:8000"
+    token = args.token or os.environ.get("NANVI_AGENT_TOKEN") or config_data.get("token") or "nanvi-local-token"
 
     agent = NanviLocalAgent(server_url=server_url, token=token)
 
