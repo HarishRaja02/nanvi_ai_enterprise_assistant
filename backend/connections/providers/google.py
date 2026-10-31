@@ -52,7 +52,7 @@ class GoogleProvider(BaseProvider):
         return ProviderMetadata(
             id="google",
             name="Google Workspace",
-            categories=("Communication", "Storage / Documents"),
+            categories=("Email", "Cloud Storage", "Office Documents", "Communication"),
             icon="google",
             description="Connect your Gmail and Google Drive accounts for automated workflows and search.",
             auth_type=AuthType.OAUTH2,

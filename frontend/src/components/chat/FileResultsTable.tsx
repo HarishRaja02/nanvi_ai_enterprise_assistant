@@ -268,7 +268,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
             <div style={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => handleCopyPath(getExactPath(previewFile))}
                   title="Copy Windows path"
@@ -282,7 +282,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                     download={previewFile.name}
                     style={{ textDecoration: "none" }}
                   >
-                    <Button variant="outline" size="sm" title="Save a copy to your computer">
+                    <Button variant="secondary" size="sm" title="Save a copy to your computer">
                       <Download className="w-4 h-4 mr-1" />
                       Download Copy
                     </Button>
@@ -306,7 +306,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                   Open in Desktop App
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={closePreview}
                 >
@@ -389,7 +389,7 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                       {getExactPath(previewFile)}
                     </code>
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       onClick={() => handleCopyPath(getExactPath(previewFile))}
                       title="Copy path"

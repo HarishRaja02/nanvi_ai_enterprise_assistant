@@ -54,9 +54,16 @@ from backend.connections.registry import ProviderRegistry, get_provider_registry
 from backend.connections.schemas import (
     ConnectionPublic,
     CreateConnectionRequest,
+    SyncConnectionResponse,
     TestConnectionResponse,
     UpdateConnectionRequest,
+    UpdateServiceRequest,
+    UpdateSyncConfigRequest,
     ValidateConnectionRequest,
+)
+from backend.connections.services_catalog import (
+    is_service_enabled_for_connection,
+    resolve_services_for_connection,
 )
 from backend.connections.client_resolver import resolve_client_for_agent
 from backend.connections.oauth_handler import (
@@ -88,13 +95,13 @@ class ConnectionManager:
             self._database_url = ""
         else:
             self._database_url = database_url if database_url is not None else (settings.supabase_database_url or settings.database_url)
-        self._audit = audit_writer or ConnectionAuditWriter(self._database_url)
         self._use_postgres = False
         self._sqlite_path = sqlite_path
         self._sqlite_lock = threading.Lock()
         self._sqlite_conn: sqlite3.Connection | None = None
 
         self._init_storage()
+        self._audit = audit_writer or ConnectionAuditWriter(self._database_url, execute_fn=self._execute)
 
     def _init_storage(self) -> None:
         """Initialize database backend (PostgreSQL if available, else SQLite)."""
@@ -161,6 +168,67 @@ class ConnectionManager:
 
     # ── CRUD Operations ───────────────────────────────────────────
 
+    def _row_to_public(self, row: dict[str, Any]) -> ConnectionPublic:
+        """Convert a database row into a rich ConnectionPublic object with services."""
+        meta = row.get("metadata_safe") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json.loads(meta)
+            except Exception:
+                meta = {}
+
+        scopes = row.get("granted_scopes") or []
+        if isinstance(scopes, str):
+            try:
+                scopes = json.loads(scopes)
+            except Exception:
+                scopes = [s.strip() for s in scopes.split(",") if s.strip()]
+
+        sync_cfg = row.get("sync_config") or {}
+        if isinstance(sync_cfg, str):
+            try:
+                sync_cfg = json.loads(sync_cfg)
+            except Exception:
+                sync_cfg = {"auto_sync": True, "frequency": "1h"}
+
+        services_config_raw = row.get("services_config")
+        services = resolve_services_for_connection(
+            provider_id=row["provider"],
+            services_config_raw=services_config_raw,
+            granted_scopes_raw=scopes,
+            connection_status=row.get("status", "CONNECTED"),
+        )
+        enabled_count = sum(1 for s in services if s.enabled)
+        scope_lvl = row.get("scope_level", "user")
+        account_type = "Organization" if scope_lvl == "organization" else "Personal"
+
+        return ConnectionPublic(
+            id=str(row["id"]),
+            provider=row["provider"],
+            display_name=row["display_name"],
+            account_identifier=row.get("account_identifier"),
+            scope_level=scope_lvl,
+            account_type=account_type,
+            status=row["status"],
+            status_reason=row.get("status_reason"),
+            granted_scopes=scopes,
+            metadata_safe=meta,
+            credential_type=row.get("credential_type"),
+            last_tested_at=str(row["last_tested_at"]) if row.get("last_tested_at") else None,
+            last_used_at=str(row["last_used_at"]) if row.get("last_used_at") else None,
+            last_synced_at=str(row["last_synced_at"]) if row.get("last_synced_at") else None,
+            created_at=str(row["created_at"]) if row.get("created_at") else None,
+            updated_at=str(row["updated_at"]) if row.get("updated_at") else None,
+            created_by=row.get("created_by"),
+            owner_user_id=row.get("owner_user_id"),
+            services=services,
+            enabled_services_count=enabled_count,
+            total_services_count=len(services),
+            auto_sync=bool(sync_cfg.get("auto_sync", True)),
+            sync_frequency=sync_cfg.get("frequency", "1h"),
+            sync_config=sync_cfg,
+        )
+
     def list_connections(
         self,
         user: UserIdentity,
@@ -177,7 +245,7 @@ class ConnectionManager:
             SELECT id, tenant_id, owner_user_id, scope_level, provider, display_name,
                    account_identifier, credential_type, granted_scopes, metadata_safe,
                    status, status_reason, last_tested_at, last_used_at, last_synced_at,
-                   created_by, created_at, updated_at
+                   services_config, sync_config, created_by, created_at, updated_at
             FROM public.connections
             WHERE tenant_id = %s AND deleted_at IS NULL
             ORDER BY created_at DESC;
@@ -186,7 +254,7 @@ class ConnectionManager:
             SELECT id, tenant_id, owner_user_id, scope_level, provider, display_name,
                    account_identifier, credential_type, granted_scopes, metadata_safe,
                    status, status_reason, last_tested_at, last_used_at, last_synced_at,
-                   created_by, created_at, updated_at
+                   services_config, sync_config, created_by, created_at, updated_at
             FROM connections
             WHERE tenant_id = ? AND deleted_at IS NULL
             ORDER BY created_at DESC;
@@ -219,78 +287,14 @@ class ConnectionManager:
                 if q not in name and q not in acc and q not in prov:
                     continue
 
-            # Parse metadata_safe and scopes
-            meta = row.get("metadata_safe") or {}
-            if isinstance(meta, str):
-                try:
-                    meta = json.loads(meta)
-                except Exception:
-                    meta = {}
-
-            scopes = row.get("granted_scopes") or []
-            if isinstance(scopes, str):
-                try:
-                    scopes = json.loads(scopes)
-                except Exception:
-                    scopes = [s.strip() for s in scopes.split(",") if s.strip()]
-
-            results.append(ConnectionPublic(
-                id=str(row["id"]),
-                provider=row["provider"],
-                display_name=row["display_name"],
-                account_identifier=row.get("account_identifier"),
-                scope_level=row["scope_level"],
-                status=row["status"],
-                status_reason=row.get("status_reason"),
-                granted_scopes=scopes,
-                metadata_safe=meta,
-                credential_type=row.get("credential_type"),
-                last_tested_at=str(row["last_tested_at"]) if row.get("last_tested_at") else None,
-                last_used_at=str(row["last_used_at"]) if row.get("last_used_at") else None,
-                last_synced_at=str(row["last_synced_at"]) if row.get("last_synced_at") else None,
-                created_at=str(row["created_at"]) if row.get("created_at") else None,
-                updated_at=str(row["updated_at"]) if row.get("updated_at") else None,
-                created_by=row.get("created_by"),
-                owner_user_id=row.get("owner_user_id"),
-            ))
+            results.append(self._row_to_public(row))
 
         return results
 
     def get_connection(self, connection_id: str, user: UserIdentity) -> ConnectionPublic:
         """Get a single connection safely. Returns 404/ConnectionError if not authorized."""
         row = self._get_raw_connection(connection_id, user)
-        meta = row.get("metadata_safe") or {}
-        if isinstance(meta, str):
-            try:
-                meta = json.loads(meta)
-            except Exception:
-                meta = {}
-        scopes = row.get("granted_scopes") or []
-        if isinstance(scopes, str):
-            try:
-                scopes = json.loads(scopes)
-            except Exception:
-                scopes = [s.strip() for s in scopes.split(",") if s.strip()]
-
-        return ConnectionPublic(
-            id=str(row["id"]),
-            provider=row["provider"],
-            display_name=row["display_name"],
-            account_identifier=row.get("account_identifier"),
-            scope_level=row["scope_level"],
-            status=row["status"],
-            status_reason=row.get("status_reason"),
-            granted_scopes=scopes,
-            metadata_safe=meta,
-            credential_type=row.get("credential_type"),
-            last_tested_at=str(row["last_tested_at"]) if row.get("last_tested_at") else None,
-            last_used_at=str(row["last_used_at"]) if row.get("last_used_at") else None,
-            last_synced_at=str(row["last_synced_at"]) if row.get("last_synced_at") else None,
-            created_at=str(row["created_at"]) if row.get("created_at") else None,
-            updated_at=str(row["updated_at"]) if row.get("updated_at") else None,
-            created_by=row.get("created_by"),
-            owner_user_id=row.get("owner_user_id"),
-        )
+        return self._row_to_public(row)
 
     def _get_raw_connection(self, connection_id: str, user: UserIdentity) -> dict[str, Any]:
         """Fetch raw connection record and check view permissions. Throws ConnectionError if denied."""
@@ -591,6 +595,255 @@ class ConnectionManager:
         except Exception as exc:
             err_msg = getattr(exc, "friendly_message", str(exc))
             return TestConnectionResponse(ok=False, message=err_msg)
+
+    def update_service(
+        self, connection_id: str, service_id: str, user: UserIdentity, req: UpdateServiceRequest
+    ) -> ConnectionPublic:
+        """Update an individual service's enabled status, permissions, or sync frequency."""
+        row = self._get_raw_connection(connection_id, user)
+        if not can_manage_connection(
+            user,
+            owner_user_id=row.get("owner_user_id"),
+            scope_level=row.get("scope_level", "user"),
+            connection_tenant_id=row.get("tenant_id", user.tenant_id or "enterprise-tenant"),
+        ):
+            raise ConnectionError("Permission denied: cannot manage this connection's services.")
+
+        services_cfg = row.get("services_config") or {}
+        if isinstance(services_cfg, str):
+            try:
+                services_cfg = json.loads(services_cfg)
+            except Exception:
+                services_cfg = {}
+
+        current_svc = services_cfg.get(service_id, {})
+
+        if req.enabled is True:
+            # Verify required scopes are granted before permitting service activation
+            resolved = resolve_services_for_connection(
+                row.get("provider", ""),
+                services_config_raw=services_cfg,
+                granted_scopes_raw=row.get("granted_scopes"),
+                connection_status=row.get("status", "CONNECTED"),
+            )
+            target = next((s for s in resolved if s.id == service_id), None)
+            if target and target.status == "UNAUTHORIZED":
+                raise ConnectionError(
+                    f"Cannot enable service '{target.name}': missing required scopes ({', '.join(target.required_scopes)})."
+                )
+            current_svc["enabled"] = True
+        elif req.enabled is False:
+            current_svc["enabled"] = False
+
+        if req.permissions is not None:
+            current_svc["permissions"] = req.permissions
+        if req.sync_frequency is not None:
+            current_svc["sync_frequency"] = req.sync_frequency
+
+        services_cfg[service_id] = current_svc
+
+        pg_sql = """
+            UPDATE public.connections
+            SET services_config = %s::jsonb, updated_at = NOW()
+            WHERE id = %s;
+        """
+        sqlite_sql = """
+            UPDATE connections
+            SET services_config = ?, updated_at = datetime('now')
+            WHERE id = ?;
+        """
+        self._execute(pg_sql, sqlite_sql, (json.dumps(services_cfg), connection_id))
+
+        event = ConnectionEventType.SERVICE_ENABLED if req.enabled else ConnectionEventType.SERVICE_DISABLED
+        if req.enabled is None and req.permissions is not None:
+            event = ConnectionEventType.SERVICE_PERMISSIONS_CHANGED
+
+        self._audit.record(
+            event,
+            tenant_id=row["tenant_id"],
+            actor_user_id=user.subject,
+            connection_id=connection_id,
+            provider=row["provider"],
+            safe_metadata={
+                "service_id": service_id,
+                "enabled": current_svc.get("enabled"),
+                "permissions": current_svc.get("permissions"),
+            },
+        )
+
+        return self.get_connection(connection_id, user)
+
+    def update_sync_config(
+        self, connection_id: str, user: UserIdentity, req: UpdateSyncConfigRequest
+    ) -> ConnectionPublic:
+        """Update auto-sync and sync frequency settings."""
+        row = self._get_raw_connection(connection_id, user)
+        if not can_manage_connection(
+            user,
+            owner_user_id=row.get("owner_user_id"),
+            scope_level=row.get("scope_level", "user"),
+            connection_tenant_id=row.get("tenant_id", user.tenant_id or "enterprise-tenant"),
+        ):
+            raise ConnectionError("Permission denied: cannot modify sync settings.")
+
+        sync_cfg = row.get("sync_config") or {}
+        if isinstance(sync_cfg, str):
+            try:
+                sync_cfg = json.loads(sync_cfg)
+            except Exception:
+                sync_cfg = {"auto_sync": True, "frequency": "1h"}
+
+        if req.auto_sync is not None:
+            sync_cfg["auto_sync"] = bool(req.auto_sync)
+        freq = req.sync_frequency or getattr(req, "frequency", None)
+        if freq is not None:
+            sync_cfg["frequency"] = freq
+
+        pg_sql = """
+            UPDATE public.connections
+            SET sync_config = %s::jsonb, updated_at = NOW()
+            WHERE id = %s;
+        """
+        sqlite_sql = """
+            UPDATE connections
+            SET sync_config = ?, updated_at = datetime('now')
+            WHERE id = ?;
+        """
+        self._execute(pg_sql, sqlite_sql, (json.dumps(sync_cfg), connection_id))
+
+        self._audit.record(
+            ConnectionEventType.UPDATED,
+            tenant_id=row["tenant_id"],
+            actor_user_id=user.subject,
+            connection_id=connection_id,
+            provider=row["provider"],
+            safe_metadata={"sync_config": sync_cfg},
+        )
+
+        return self.get_connection(connection_id, user)
+
+    def sync_connection(self, connection_id: str, user: UserIdentity) -> SyncConnectionResponse:
+        """Trigger an on-demand synchronization for all enabled services."""
+        row = self._get_raw_connection(connection_id, user)
+        if not can_manage_connection(
+            user,
+            owner_user_id=row.get("owner_user_id"),
+            scope_level=row.get("scope_level", "user"),
+            connection_tenant_id=row.get("tenant_id", user.tenant_id or "enterprise-tenant"),
+        ):
+            raise ConnectionError("Permission denied: cannot trigger sync.")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Update last_synced_at in services_config
+        services_cfg = row.get("services_config") or {}
+        if isinstance(services_cfg, str):
+            try:
+                services_cfg = json.loads(services_cfg)
+            except Exception:
+                services_cfg = {}
+
+        conn_public = self._row_to_public(row)
+        enabled_svcs = [s.id for s in conn_public.services if s.enabled]
+        for sid in enabled_svcs:
+            if sid not in services_cfg:
+                services_cfg[sid] = {}
+            services_cfg[sid]["last_synced_at"] = now_iso
+
+        pg_sql = """
+            UPDATE public.connections
+            SET last_synced_at = NOW(), services_config = %s::jsonb, updated_at = NOW()
+            WHERE id = %s;
+        """
+        sqlite_sql = """
+            UPDATE connections
+            SET last_synced_at = datetime('now'), services_config = ?, updated_at = datetime('now')
+            WHERE id = ?;
+        """
+        self._execute(pg_sql, sqlite_sql, (json.dumps(services_cfg), connection_id))
+
+        self._audit.record(
+            ConnectionEventType.SYNC_TRIGGERED,
+            tenant_id=row["tenant_id"],
+            actor_user_id=user.subject,
+            connection_id=connection_id,
+            provider=row["provider"],
+            safe_metadata={"synced_services": enabled_svcs},
+        )
+
+        return SyncConnectionResponse(
+            ok=True,
+            message=f"Synchronized {len(enabled_svcs)} service(s) successfully.",
+            synced_services=enabled_svcs,
+            synced_at=now_iso,
+        )
+
+    def revoke_connection(self, connection_id: str, user: UserIdentity) -> ConnectionPublic:
+        """Revoke authorization at provider and mark disconnected."""
+        row = self._get_raw_connection(connection_id, user)
+        if not can_manage_connection(
+            user,
+            owner_user_id=row.get("owner_user_id"),
+            scope_level=row.get("scope_level", "user"),
+            connection_tenant_id=row.get("tenant_id", user.tenant_id or "enterprise-tenant"),
+        ):
+            raise ConnectionError("Permission denied: cannot revoke this connection.")
+
+        provider = self._registry.get_provider(row["provider"])
+        if provider and row.get("encrypted_credentials"):
+            try:
+                creds = self._encryption.decrypt_credentials(row["encrypted_credentials"])
+                provider.disconnect(decrypted_credentials=creds)
+            except Exception as exc:
+                logger.warning("Provider revocation warning for %s: %s", connection_id, exc)
+
+        pg_sql = """
+            UPDATE public.connections
+            SET status = 'DISCONNECTED', status_reason = 'Authorization revoked by user',
+                encrypted_credentials = NULL, encryption_key_id = NULL,
+                updated_at = NOW()
+            WHERE id = %s;
+        """
+        sqlite_sql = """
+            UPDATE connections
+            SET status = 'DISCONNECTED', status_reason = 'Authorization revoked by user',
+                encrypted_credentials = NULL, encryption_key_id = NULL,
+                updated_at = datetime('now')
+            WHERE id = ?;
+        """
+        self._execute(pg_sql, sqlite_sql, (connection_id,))
+
+        self._audit.record(
+            ConnectionEventType.AUTHORIZATION_REVOKED,
+            tenant_id=row["tenant_id"],
+            actor_user_id=user.subject,
+            connection_id=connection_id,
+            provider=row["provider"],
+        )
+
+        return self.get_connection(connection_id, user)
+
+    def list_connection_audit(self, connection_id: str, user: UserIdentity) -> list[dict[str, Any]]:
+        """List audit events specifically for this connection."""
+        row = self._get_raw_connection(connection_id, user)
+        tenant_id = user.tenant_id or "enterprise-tenant"
+        pg_sql = """
+            SELECT id, tenant_id, actor_user_id, connection_id, provider, event, safe_metadata, ip, created_at
+            FROM public.connection_audit_events
+            WHERE connection_id = %s AND tenant_id = %s
+            ORDER BY created_at DESC LIMIT 50;
+        """
+        sqlite_sql = """
+            SELECT id, tenant_id, actor_user_id, connection_id, provider, event, safe_metadata, ip, created_at
+            FROM connection_audit_events
+            WHERE connection_id = ? AND tenant_id = ?
+            ORDER BY created_at DESC LIMIT 50;
+        """
+        raw_events = self._query(pg_sql, sqlite_sql, (connection_id, tenant_id))
+        for evt in raw_events:
+            if "event" in evt and "event_type" not in evt:
+                evt["event_type"] = evt["event"]
+        return raw_events
 
     # ── OAuth Lifecycle ───────────────────────────────────────────
 

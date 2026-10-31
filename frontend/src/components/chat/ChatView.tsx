@@ -126,6 +126,7 @@ export function ChatView({
                 key={m.id}
                 message={m}
                 api={api}
+                identity={identity}
                 onOpenSource={onOpenSource}
                 onDownload={onDownload}
                 onRetry={onRetry}

@@ -33,7 +33,7 @@ class SupabaseProvider(BaseProvider):
         return ProviderMetadata(
             id="supabase",
             name="Supabase",
-            categories=("SQL Databases", "NoSQL / Data Stores", "Cloud"),
+            categories=("Databases", "Cloud Storage"),
             icon="supabase",
             description="Connect your Supabase project (REST API and direct PostgreSQL database).",
             auth_type=AuthType.API_KEY,

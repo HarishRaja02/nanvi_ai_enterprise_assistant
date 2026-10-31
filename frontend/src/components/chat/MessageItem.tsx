@@ -12,21 +12,40 @@ import { SourceSelector } from "./SourceSelector";
 import { FileResultsTable } from "./FileResultsTable";
 import { useCountdown } from "../../hooks/useCountdown";
 import { copyText } from "../../lib/clipboard";
-import { formatTime, humanize } from "../../lib/format";
+import { formatTime, humanize, initials } from "../../lib/format";
 import type { ContextMetric } from "../../lib/contextIntelligence";
 import type { SourceView } from "../../lib/sources";
 import type { Message } from "../../types";
-import type { NanviApiClient } from "../../api";
+import type { NanviApiClient, UserIdentity } from "../../api";
 
 type Props = {
   message: Message;
   api?: NanviApiClient;
+  identity?: UserIdentity | null;
   onOpenSource: (source: SourceView) => void;
   onDownload: (reportId: string) => void;
   onRetry: (messageId: string) => void;
   onFollowup?: (prompt: string) => void;
   onSelectSource?: (query: string, source: string) => void;
 };
+
+function UserHead({ time, identity }: { time: number; identity?: UserIdentity | null }) {
+  const rawName = identity?.name || identity?.subject;
+  const name = rawName && rawName.toLowerCase() !== "user" ? rawName : "You";
+  const userInitials = initials(name === "You" ? "User" : name) || "U";
+
+  return (
+    <div className="msg-head msg-head-user">
+      <time className="msg-time" dateTime={new Date(time).toISOString()}>
+        {formatTime(time)}
+      </time>
+      <span className="msg-author">{name}</span>
+      <span className="avatar avatar-user" aria-hidden="true">
+        {userInitials}
+      </span>
+    </div>
+  );
+}
 
 function AssistantHead({ time, capability, dataSource }: { time: number; capability?: string; dataSource?: string }) {
   const isDocSearch = capability && (capability.includes("document_search") || capability.includes("file_search"));
@@ -38,7 +57,7 @@ function AssistantHead({ time, capability, dataSource }: { time: number; capabil
   const isSynthetic = dataSource === "synthetic";
 
   return (
-    <div className="msg-head">
+    <div className="msg-head msg-head-assistant">
       <span className="avatar avatar-bot" aria-hidden="true">N</span>
       <span className="msg-author">Nanvi Assistant</span>
       {capability && (
@@ -128,7 +147,7 @@ function extractKeyMetrics(text: string): ContextMetric[] {
   return metrics;
 }
 
-function MessageItemBase({ message, api, onOpenSource, onDownload, onRetry, onFollowup, onSelectSource }: Props) {
+function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onRetry, onFollowup, onSelectSource }: Props) {
   const notify = useToast();
   const [copied, setCopied] = useState(false);
 
@@ -147,12 +166,10 @@ function MessageItemBase({ message, api, onOpenSource, onDownload, onRetry, onFo
 
     return (
       <div className="msg msg-user">
-        <div className="user-bubble" title="Click to copy prompt" onClick={copyUser}>
+        <UserHead time={message.createdAt} identity={identity} />
+        <div className="user-bubble" title="Click to copy question" onClick={copyUser}>
           {message.text}
         </div>
-        <time className="msg-time" dateTime={new Date(message.createdAt).toISOString()}>
-          {formatTime(message.createdAt)}
-        </time>
       </div>
     );
   }

@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { SearchIcon, RefreshCwIcon, PlugIcon, AlertCircleIcon } from "../../icons";
+import React, { useState, useEffect, useMemo } from "react";
+import { SearchIcon, RefreshCwIcon, PlugIcon, AlertCircleIcon, ShieldCheckIcon } from "../../icons";
 import { Button } from "../../components/ui/Button";
 import { Alert } from "../../components/ui/Alert";
 import { ActiveConnectionCard, ProviderCatalogCard } from "./ConnectionCard";
 import { ConnectModal } from "./ConnectModal";
-import { ManageConnectionModal } from "./ManageConnectionModal";
+import { AccountManagementDrawer } from "./AccountManagementDrawer";
+import { DisconnectConfirmModal } from "./DisconnectConfirmModal";
 import type { NanviApiClient, ProviderPublic, ConnectionPublic } from "../../api";
 import { useToast } from "../../components/ui/Toast";
 
@@ -24,9 +25,10 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
   const [selectedScope, setSelectedScope] = useState<string>("all");
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  // Modals
+  // Modals & Drawer State
   const [connectProvider, setConnectProvider] = useState<ProviderPublic | null>(null);
-  const [manageConnection, setManageConnection] = useState<ConnectionPublic | null>(null);
+  const [drawerConnection, setDrawerConnection] = useState<ConnectionPublic | null>(null);
+  const [disconnectConnection, setDisconnectConnection] = useState<ConnectionPublic | null>(null);
 
   const loadData = async () => {
     try {
@@ -39,6 +41,12 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       setProviders(provRes.providers || []);
       setCategories(catsRes || []);
       setConnections(connRes.connections || []);
+
+      // If drawer is currently open for a connection, refresh its object reference
+      if (drawerConnection) {
+        const updated = (connRes.connections || []).find((c) => c.id === drawerConnection.id);
+        if (updated) setDrawerConnection(updated);
+      }
     } catch (err: any) {
       notify(err.message || "Failed to load connections data.", "error");
     } finally {
@@ -55,9 +63,9 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       setTestingId(conn.id);
       const res = await api.testConnection(conn.id);
       if (res.ok) {
-        notify(`${conn.display_name} test succeeded!`, "success");
+        notify(`${conn.display_name} connectivity verified successfully!`, "success");
       } else {
-        notify(res.message || "Test failed.", "error");
+        notify(res.message || "Connection test failed.", "error");
       }
       await loadData();
     } catch (err: any) {
@@ -67,7 +75,7 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
     }
   };
 
-  // Connected provider IDs set
+  // Set of connected provider IDs
   const connectedProviderIds = useMemo(() => {
     return new Set((connections || []).map((c) => c?.provider || ""));
   }, [connections]);
@@ -92,7 +100,9 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
   const filteredProviders = useMemo(() => {
     return (providers || []).filter((p) => {
       if (!p) return false;
-      const isComingSoon = p.available_reason === "coming_soon" || (!p.available && p.available_reason !== "not_configured");
+      const isComingSoon =
+        p.available_reason === "coming_soon" ||
+        (!p.available && p.available_reason !== "not_configured");
       if (isComingSoon) return false;
       const cats = Array.isArray(p.categories) ? p.categories : [];
       if (selectedCategory !== "All" && !cats.includes(selectedCategory)) {
@@ -110,37 +120,59 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
   }, [providers, selectedCategory, search]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "2rem", width: "100%", minWidth: 0 }}>
-      {/* Search and Filters Bar */}
-      <div style={{
+    <div
+      style={{
         display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "space-between",
-        alignItems: "center",
-        gap: "1rem",
-        background: "var(--bg-surface)",
-        padding: "1rem",
-        borderRadius: "0.5rem",
-        border: "1px solid var(--border)",
-      }}>
+        flexDirection: "column",
+        gap: "2rem",
+        width: "100%",
+        minWidth: 0,
+        fontFamily: "var(--font-sans, 'IBM Plex Sans', -apple-system, sans-serif)",
+      }}
+    >
+      {/* Search, Scope Filter, and Refresh Bar */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "1rem",
+          background: "var(--bg-surface, #ffffff)",
+          padding: "1rem",
+          borderRadius: "0.5rem",
+          border: "1px solid var(--border, #e2e8f0)",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.03)",
+        }}
+      >
         {/* Search Input */}
-        <div style={{ position: "relative", minWidth: "260px", flex: "1 1 auto" }}>
-          <div style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }}>
+        <div style={{ position: "relative", minWidth: "280px", flex: "1 1 auto" }}>
+          <div
+            style={{
+              position: "absolute",
+              left: "0.75rem",
+              top: "50%",
+              transform: "translateY(-50%)",
+              color: "var(--text-muted, #64748b)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
             <SearchIcon size={16} />
           </div>
           <input
             type="text"
-            placeholder="Search connections and providers..."
+            placeholder="Search connections, services, or providers..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
               width: "100%",
               padding: "0.5rem 0.75rem 0.5rem 2.25rem",
               borderRadius: "0.375rem",
-              border: "1px solid var(--border)",
-              background: "var(--bg-sunken)",
-              color: "var(--text)",
-              fontSize: "var(--text-sm)",
+              border: "1px solid var(--border, #e2e8f0)",
+              background: "var(--bg-sunken, #f8fafc)",
+              color: "var(--text, #0f172a)",
+              fontSize: "0.875rem",
             }}
           />
         </div>
@@ -153,15 +185,16 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
             style={{
               padding: "0.5rem 0.75rem",
               borderRadius: "0.375rem",
-              border: "1px solid var(--border)",
-              background: "var(--bg-sunken)",
-              color: "var(--text)",
-              fontSize: "var(--text-sm)",
+              border: "1px solid var(--border, #e2e8f0)",
+              background: "var(--bg-sunken, #f8fafc)",
+              color: "var(--text, #0f172a)",
+              fontSize: "0.875rem",
+              fontWeight: 500,
             }}
           >
             <option value="all">All Scopes</option>
-            <option value="user">Personal Connections</option>
-            <option value="organization">Organization Connections</option>
+            <option value="user">Personal Accounts</option>
+            <option value="organization">Organization Accounts</option>
           </select>
 
           <Button
@@ -178,21 +211,30 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
         </div>
       </div>
 
-      {/* Category Pills */}
-      <div style={{ display: "flex", gap: "0.5rem", overflowX: "auto", paddingBottom: "0.25rem" }}>
+      {/* Category Pills Navigation */}
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          overflowX: "auto",
+          paddingBottom: "0.375rem",
+          scrollbarWidth: "thin",
+        }}
+      >
         <button
           type="button"
           onClick={() => setSelectedCategory("All")}
           style={{
             padding: "0.375rem 0.875rem",
             borderRadius: "2rem",
-            fontSize: "var(--text-xs)",
-            fontWeight: "var(--weight-medium)",
-            border: "1px solid var(--border)",
-            background: selectedCategory === "All" ? "var(--primary-600)" : "var(--bg-surface)",
-            color: selectedCategory === "All" ? "#ffffff" : "var(--text)",
+            fontSize: "0.75rem",
+            fontWeight: selectedCategory === "All" ? 600 : 500,
+            border: `1px solid ${selectedCategory === "All" ? "var(--primary-600, #0f766e)" : "var(--border, #e2e8f0)"}`,
+            background: selectedCategory === "All" ? "var(--primary-600, #0f766e)" : "var(--bg-surface, #ffffff)",
+            color: selectedCategory === "All" ? "#ffffff" : "var(--text-secondary, #475569)",
             cursor: "pointer",
             whiteSpace: "nowrap",
+            transition: "all 0.15s ease",
           }}
         >
           All Categories
@@ -205,13 +247,14 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
             style={{
               padding: "0.375rem 0.875rem",
               borderRadius: "2rem",
-              fontSize: "var(--text-xs)",
-              fontWeight: "var(--weight-medium)",
-              border: "1px solid var(--border)",
-              background: selectedCategory === cat ? "var(--primary-600)" : "var(--bg-surface)",
-              color: selectedCategory === cat ? "#ffffff" : "var(--text)",
+              fontSize: "0.75rem",
+              fontWeight: selectedCategory === cat ? 600 : 500,
+              border: `1px solid ${selectedCategory === cat ? "var(--primary-600, #0f766e)" : "var(--border, #e2e8f0)"}`,
+              background: selectedCategory === cat ? "var(--primary-600, #0f766e)" : "var(--bg-surface, #ffffff)",
+              color: selectedCategory === cat ? "#ffffff" : "var(--text-secondary, #475569)",
               cursor: "pointer",
               whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
             }}
           >
             {cat}
@@ -219,49 +262,54 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
         ))}
       </div>
 
-      {/* SECTION 1: Active Connections */}
+      {/* SECTION 1: Connected Accounts */}
       <div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-semibold)" }}>
+            <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600, color: "var(--text, #0f172a)" }}>
               Active Connections ({filteredConnections.length})
             </h2>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-              Configured tools and services authenticated for assistant agents.
+            <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--text-muted, #64748b)" }}>
+              Authenticated provider accounts with service-level access controls and synchronization.
             </p>
           </div>
         </div>
 
         {filteredConnections.length === 0 ? (
-          <div style={{
-            padding: "2rem",
-            textAlign: "center",
-            background: "var(--bg-surface)",
-            borderRadius: "0.5rem",
-            border: "1px dashed var(--border)",
-            color: "var(--text-muted)",
-          }}>
-            <PlugIcon size={32} style={{ margin: "0 auto 0.75rem", opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: "var(--text-sm)", fontWeight: "var(--weight-medium)" }}>
+          <div
+            style={{
+              padding: "2.5rem 1.5rem",
+              textAlign: "center",
+              background: "var(--bg-surface, #ffffff)",
+              borderRadius: "0.5rem",
+              border: "1px dashed var(--border, #e2e8f0)",
+              color: "var(--text-muted, #64748b)",
+            }}
+          >
+            <PlugIcon size={32} style={{ margin: "0 auto 0.75rem", opacity: 0.4 }} />
+            <p style={{ margin: 0, fontSize: "0.875rem", fontWeight: 600, color: "var(--text, #0f172a)" }}>
               No active connections found
             </p>
-            <p style={{ margin: "0.25rem 0 0", fontSize: "var(--text-xs)" }}>
-              Choose a provider from the catalog below to connect your first integration.
+            <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem" }}>
+              Choose a provider from the catalog below to connect your first enterprise integration.
             </p>
           </div>
         ) : (
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
-            gap: "1rem",
-            minWidth: 0,
-          }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+              gap: "1.25rem",
+              minWidth: 0,
+            }}
+          >
             {filteredConnections.map((conn) => (
               <ActiveConnectionCard
                 key={conn.id}
                 connection={conn}
-                onManage={(c) => setManageConnection(c)}
+                onManage={(c) => setDrawerConnection(c)}
                 onTest={handleTestConnection}
+                onDisconnect={(c) => setDisconnectConnection(c)}
                 testing={testingId === conn.id}
               />
             ))}
@@ -272,20 +320,22 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       {/* SECTION 2: Integrations Catalog */}
       <div>
         <div style={{ marginBottom: "1rem" }}>
-          <h2 style={{ margin: 0, fontSize: "var(--text-lg)", fontWeight: "var(--weight-semibold)" }}>
+          <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600, color: "var(--text, #0f172a)" }}>
             Integrations Catalog ({filteredProviders.length})
           </h2>
-          <p style={{ margin: "0.25rem 0 0", fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
-            Connect cloud services, relational databases, repositories, and local storage.
+          <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: "var(--text-muted, #64748b)" }}>
+            Connect cloud services, enterprise storage, mailboxes, and databases for assistant retrieval.
           </p>
         </div>
 
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-          gap: "1rem",
-          minWidth: 0,
-        }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
+            gap: "1.25rem",
+            minWidth: 0,
+          }}
+        >
           {filteredProviders.map((provider, idx) => (
             <ProviderCatalogCard
               key={provider.id || provider.name || idx}
@@ -297,7 +347,7 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
         </div>
       </div>
 
-      {/* Connect Modal */}
+      {/* Provider Connection Wizard Modal */}
       <ConnectModal
         open={Boolean(connectProvider)}
         provider={connectProvider}
@@ -307,12 +357,25 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
         canManageOrg={canManageOrg}
       />
 
-      {/* Manage Connection Modal */}
-      <ManageConnectionModal
-        open={Boolean(manageConnection)}
-        connection={manageConnection}
-        onClose={() => setManageConnection(null)}
+      {/* Enterprise Account Management Drawer */}
+      <AccountManagementDrawer
+        open={Boolean(drawerConnection)}
+        connection={drawerConnection}
+        onClose={() => setDrawerConnection(null)}
         onUpdated={() => loadData()}
+        onRequestDisconnect={(conn) => {
+          setDrawerConnection(null);
+          setDisconnectConnection(conn);
+        }}
+        api={api}
+      />
+
+      {/* Safe Disconnect & Revocation Modal */}
+      <DisconnectConfirmModal
+        open={Boolean(disconnectConnection)}
+        connection={disconnectConnection}
+        onClose={() => setDisconnectConnection(null)}
+        onSuccess={() => loadData()}
         api={api}
       />
     </div>

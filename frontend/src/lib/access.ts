@@ -84,7 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: "governance", label: "Governance",
     items: [
       { id: "Audit", label: "Audit", permission: "AUDIT_READ" },
-      { id: "Settings", label: "Settings" },
+      { id: "Settings", label: "Settings", permission: "USER_MANAGE" },
     ],
   },
 ];

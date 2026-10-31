@@ -27,7 +27,7 @@ class SQLiteProvider(BaseProvider):
         return ProviderMetadata(
             id="sqlite",
             name="SQLite",
-            categories=("SQL Databases",),
+            categories=("Databases", "SQL Databases"),
             icon="sqlite",
             description="Connect a SQLite embedded database file for querying and reporting.",
             auth_type=AuthType.FILESYSTEM,

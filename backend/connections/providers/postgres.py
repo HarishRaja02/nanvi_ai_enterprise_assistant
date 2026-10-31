@@ -25,7 +25,7 @@ class PostgreSQLProvider(BaseProvider):
         return ProviderMetadata(
             id="postgresql",
             name="PostgreSQL",
-            categories=("SQL Databases",),
+            categories=("Databases", "SQL Databases"),
             icon="postgresql",
             description="Connect a PostgreSQL relational database for read-only querying and reporting.",
             auth_type=AuthType.DB_PASSWORD,

@@ -685,6 +685,30 @@ def execute_file_search(
     # 3. Email
     elif clean_src in ("email", "mail", "gmail", "inbox"):
         try:
+            from backend.connections.manager import get_connection_manager
+            from backend.connections.services_catalog import is_service_enabled_for_connection
+
+            # Authorization Gate: Verify service is enabled in Connections Hub
+            cm = get_connection_manager()
+            tenant_id = user.tenant_id or "enterprise-tenant"
+            google_conns = cm._query(
+                "SELECT * FROM public.connections WHERE tenant_id = %s AND provider = 'google' AND deleted_at IS NULL AND status = 'CONNECTED';",
+                "SELECT * FROM connections WHERE tenant_id = ? AND provider = 'google' AND deleted_at IS NULL AND status = 'CONNECTED';",
+                (tenant_id,),
+            )
+            if google_conns:
+                active_google = None
+                for gc in google_conns:
+                    if gc.get("scope_level") == "user" and gc.get("owner_user_id") == user.user_id:
+                        active_google = gc
+                        break
+                    if gc.get("scope_level") == "organization":
+                        active_google = gc
+                if active_google and not is_service_enabled_for_connection(active_google, "gmail", "search"):
+                    logger.info("Gmail search skipped because Gmail service is disabled in Connections Hub.")
+                    answer = "Gmail integration is currently disabled in your Connections Hub settings. You can enable it in Settings → Connections Hub."
+                    return answer, [], []
+
             from backend.integrations.email.gmail import GmailEmailProvider
             from backend.integrations.email.models import EmailProviderContext, EmailSearchRequest
 
@@ -747,6 +771,30 @@ def execute_file_search(
     # 4. Google Drive
     elif clean_src in ("google_drive", "drive", "gdrive"):
         try:
+            from backend.connections.manager import get_connection_manager
+            from backend.connections.services_catalog import is_service_enabled_for_connection
+
+            # Authorization Gate: Verify Google Drive is enabled in Connections Hub
+            cm = get_connection_manager()
+            tenant_id = user.tenant_id or "enterprise-tenant"
+            google_conns = cm._query(
+                "SELECT * FROM public.connections WHERE tenant_id = %s AND provider = 'google' AND deleted_at IS NULL AND status = 'CONNECTED';",
+                "SELECT * FROM connections WHERE tenant_id = ? AND provider = 'google' AND deleted_at IS NULL AND status = 'CONNECTED';",
+                (tenant_id,),
+            )
+            if google_conns:
+                active_google = None
+                for gc in google_conns:
+                    if gc.get("scope_level") == "user" and gc.get("owner_user_id") == user.user_id:
+                        active_google = gc
+                        break
+                    if gc.get("scope_level") == "organization":
+                        active_google = gc
+                if active_google and not is_service_enabled_for_connection(active_google, "drive", "search"):
+                    logger.info("Google Drive search skipped because Google Drive service is disabled in Connections Hub.")
+                    answer = "Google Drive access is currently disabled in your Connections Hub settings. You can enable it in Settings → Connections Hub."
+                    return answer, [], []
+
             from backend.integrations.email.gmail import GmailEmailProvider
             from backend.integrations.email.models import EmailProviderContext
 

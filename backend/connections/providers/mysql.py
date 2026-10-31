@@ -32,7 +32,7 @@ class MySQLProvider(BaseProvider):
         return ProviderMetadata(
             id=self._provider_id,
             name=self._name,
-            categories=("SQL Databases",),
+            categories=("Databases", "SQL Databases"),
             icon=self._icon,
             description=f"Connect a {self._name} relational database for read-only querying and reporting.",
             auth_type=AuthType.DB_PASSWORD,

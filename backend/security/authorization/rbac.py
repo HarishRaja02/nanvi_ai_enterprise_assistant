@@ -102,6 +102,7 @@ ROLE_PERMISSIONS: dict[Role, frozenset[str]] = {
     }),
     Role.EMPLOYEE: frozenset({
         "FILE_READ", "DATABASE_READ", "REPORT_CREATE", "REPORT_DOWNLOAD",
+        "CONNECTION_READ", "CONNECTION_WRITE", "CONNECTION_USE", "CONNECTION_OWN_MANAGE", "CONNECTION_ORG_VIEW",
     }),
 
     Role.IT_ADMIN: frozenset({

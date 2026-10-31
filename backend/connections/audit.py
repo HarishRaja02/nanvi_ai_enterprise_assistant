@@ -26,13 +26,19 @@ class ConnectionEventType:
     CREDENTIAL_ROTATED = "CREDENTIAL_ROTATED"
     ACCESS_DENIED = "CONNECTION_ACCESS_DENIED"
     USED_BY_AGENT = "CONNECTION_USED_BY_AGENT"
+    SERVICE_ENABLED = "SERVICE_ENABLED"
+    SERVICE_DISABLED = "SERVICE_DISABLED"
+    SERVICE_PERMISSIONS_CHANGED = "SERVICE_PERMISSIONS_CHANGED"
+    SYNC_TRIGGERED = "SYNC_TRIGGERED"
+    AUTHORIZATION_REVOKED = "AUTHORIZATION_REVOKED"
 
 
 class ConnectionAuditWriter:
     """Writes connection audit events to the database and logs."""
 
-    def __init__(self, database_url: str = "") -> None:
+    def __init__(self, database_url: str = "", execute_fn: Any = None) -> None:
         self._database_url = database_url
+        self._execute_fn = execute_fn
 
     def record(
         self,
@@ -46,6 +52,8 @@ class ConnectionAuditWriter:
         ip: str | None = None,
     ) -> None:
         """Write an audit event.  Metadata is redacted automatically."""
+        import json
+        import uuid
         cleaned = redact_dict(safe_metadata or {})
 
         # Log through structured observability
@@ -60,8 +68,31 @@ class ConnectionAuditWriter:
             audit_metadata=cleaned,
         )
 
-        # Persist to database if available
-        if self._database_url:
+        # Persist via manager execute_fn if available
+        if self._execute_fn:
+            try:
+                event_id = str(uuid.uuid4())
+                pg_sql = """
+                    INSERT INTO public.connection_audit_events
+                        (id, tenant_id, actor_user_id, connection_id, provider, event, safe_metadata, ip)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                """
+                sqlite_sql = """
+                    INSERT INTO connection_audit_events
+                        (id, tenant_id, actor_user_id, connection_id, provider, event, safe_metadata, ip)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """
+                self._execute_fn(
+                    pg_sql,
+                    sqlite_sql,
+                    (event_id, tenant_id, actor_user_id, connection_id, provider, event, json.dumps(cleaned), ip),
+                )
+                return
+            except Exception as exc:
+                logger.warning("Could not write connection audit event via execute_fn: %s", type(exc).__name__)
+
+        # Persist to direct PostgreSQL connection if available
+        elif self._database_url:
             try:
                 self._write_to_db(
                     event=event,

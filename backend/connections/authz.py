@@ -32,7 +32,7 @@ def can_create_user_connection(user: UserIdentity) -> bool:
 
 def can_create_org_connection(user: UserIdentity) -> bool:
     """Only IT Admin, CEO, or users with CONNECTION_ORG_MANAGE can create org connections."""
-    admin_roles = {Role.SUPERIOR, Role.SUPERVISOR, Role.IT_ADMIN, Role.CEO, Role.FINANCE}
+    admin_roles = {Role.SUPERIOR, Role.SUPERVISOR, Role.IT_ADMIN, Role.CEO, Role.FINANCE, Role.ADMIN}
     return bool(user.roles & admin_roles)
 
 

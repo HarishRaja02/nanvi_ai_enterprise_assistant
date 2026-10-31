@@ -14,6 +14,7 @@ from typing import Any
 
 from backend.connections.base import BaseProvider, ProviderMetadata
 from backend.connections.schemas import ProviderPublic
+from backend.connections.services_catalog import PROVIDER_SERVICES
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +227,8 @@ class ProviderRegistry:
         # Code-backed providers first
         for pid, provider in sorted(self._providers.items()):
             meta = provider.get_metadata()
+            specs = PROVIDER_SERVICES.get(meta.id, [])
+            supported_services = [s.name for s in specs]
             result.append(ProviderPublic(
                 id=meta.id,
                 name=meta.name,
@@ -237,11 +240,14 @@ class ProviderRegistry:
                 available=meta.available,
                 available_reason=meta.available_reason,
                 configuration_schema=meta.configuration_schema,
+                supported_services=supported_services,
             ))
 
         # Catalog-only entries (coming soon)
         for cid, entry in sorted(self._catalog.items()):
             if cid not in self._providers:
+                specs = PROVIDER_SERVICES.get(entry["id"], [])
+                supported_services = [s.name for s in specs]
                 result.append(ProviderPublic(
                     id=entry["id"],
                     name=entry["name"],
@@ -252,18 +258,37 @@ class ProviderRegistry:
                     capabilities=[],
                     available=False,
                     available_reason="coming_soon",
+                    supported_services=supported_services,
                 ))
 
         return result
 
     def get_categories(self) -> list[str]:
-        """Return all unique categories across all providers."""
+        """Return all unique enterprise categories across all providers."""
+        preferred_order = [
+            "AI / LLM",
+            "Email",
+            "Cloud Storage",
+            "Office Documents",
+            "Communication",
+            "CRM / Sales",
+            "Databases",
+            "Developer Tools",
+            "Finance",
+            "HR",
+            "Identity & Security",
+            "Custom Integrations",
+        ]
         cats: set[str] = set()
         for provider in self._providers.values():
             cats.update(provider.get_metadata().categories)
         for entry in self._catalog.values():
             cats.update(entry.get("categories", []))
-        return sorted(cats)
+
+        # Order by preferred enterprise ordering, then any additional alphabetical
+        ordered = [c for c in preferred_order if c in cats]
+        remainder = sorted(c for c in cats if c not in preferred_order)
+        return ordered + remainder
 
     @property
     def provider_ids(self) -> list[str]:

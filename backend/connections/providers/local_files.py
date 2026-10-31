@@ -23,9 +23,9 @@ class LocalFilesProvider(BaseProvider):
         return ProviderMetadata(
             id="local_files",
             name="Local Files & Folders",
-            categories=("Storage / Documents",),
+            categories=("Cloud Storage", "Office Documents"),
             icon="folder",
-            description="Connect a local folder containing company documents, spreadsheets, or data.",
+            description="Connect a company folder containing documents, spreadsheets, or data via Nanvi Desktop Agent or mounted server storage.",
             auth_type=AuthType.FILESYSTEM,
             capabilities=frozenset({
                 Capability.CREDENTIALS_FORM,

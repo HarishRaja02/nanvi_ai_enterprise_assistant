@@ -80,6 +80,8 @@ def init_sqlite_connections_schema(conn: sqlite3.Connection) -> None:
                 last_tested_at TEXT,
                 last_used_at TEXT,
                 last_synced_at TEXT,
+                services_config TEXT DEFAULT '{}',
+                sync_config TEXT DEFAULT '{"auto_sync": true, "frequency": "1h"}',
                 created_by TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -92,7 +94,18 @@ def init_sqlite_connections_schema(conn: sqlite3.Connection) -> None:
 
             CREATE INDEX IF NOT EXISTS idx_connections_tenant_status
                 ON connections (tenant_id, status) WHERE deleted_at IS NULL;
+        """)
 
+        # Add columns to existing SQLite database if missing
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(connections);")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "services_config" not in existing_cols:
+            cursor.execute("ALTER TABLE connections ADD COLUMN services_config TEXT DEFAULT '{}';")
+        if "sync_config" not in existing_cols:
+            cursor.execute("ALTER TABLE connections ADD COLUMN sync_config TEXT DEFAULT '{\"auto_sync\": true, \"frequency\": \"1h\"}';")
+
+        conn.executescript("""
             CREATE TABLE IF NOT EXISTS oauth_states (
                 state TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,

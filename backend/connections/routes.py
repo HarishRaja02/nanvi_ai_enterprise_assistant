@@ -26,8 +26,12 @@ from backend.connections.schemas import (
     CreateConnectionRequest,
     ProviderListResponse,
     ProviderPublic,
+    ServiceState,
+    SyncConnectionResponse,
     TestConnectionResponse,
     UpdateConnectionRequest,
+    UpdateServiceRequest,
+    UpdateSyncConfigRequest,
     ValidateConnectionRequest,
 )
 from backend.security.dependencies import get_current_user
@@ -162,6 +166,88 @@ def delete_connection(
     """Disconnect and soft-delete a connection."""
     try:
         manager.delete_connection(connection_id, user)
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.get("/{connection_id}/services", response_model=list[ServiceState])
+def get_connection_services(
+    connection_id: str,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> list[ServiceState]:
+    """Get all individual services and permissions for a connected account."""
+    try:
+        conn = manager.get_connection(connection_id, user)
+        return conn.services
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.patch("/{connection_id}/services/{service_id}", response_model=ConnectionPublic)
+def update_connection_service(
+    connection_id: str,
+    service_id: str,
+    req: UpdateServiceRequest,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> ConnectionPublic:
+    """Enable/disable an individual service or update granular permissions."""
+    try:
+        return manager.update_service(connection_id, service_id, user, req)
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.patch("/{connection_id}/sync-config", response_model=ConnectionPublic)
+def update_sync_configuration(
+    connection_id: str,
+    req: UpdateSyncConfigRequest,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> ConnectionPublic:
+    """Update synchronization schedule and automated sync frequency."""
+    try:
+        return manager.update_sync_config(connection_id, user, req)
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.post("/{connection_id}/sync", response_model=SyncConnectionResponse)
+def trigger_connection_sync(
+    connection_id: str,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> SyncConnectionResponse:
+    """Trigger an on-demand synchronization for all active services."""
+    try:
+        return manager.sync_connection(connection_id, user)
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.post("/{connection_id}/revoke", response_model=ConnectionPublic)
+def revoke_connection(
+    connection_id: str,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> ConnectionPublic:
+    """Revoke authorization at provider and mark disconnected safely."""
+    try:
+        return manager.revoke_connection(connection_id, user)
+    except Exception as exc:
+        raise _handle_error(exc)
+
+
+@router.get("/{connection_id}/audit")
+def get_connection_audit(
+    connection_id: str,
+    user: UserIdentity = Depends(get_current_user),
+    manager: ConnectionManager = Depends(get_connection_manager),
+) -> list[dict[str, Any]]:
+    """List recent audit events specific to this connection."""
+    try:
+        return manager.list_connection_audit(connection_id, user)
     except Exception as exc:
         raise _handle_error(exc)
 

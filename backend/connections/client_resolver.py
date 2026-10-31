@@ -10,12 +10,17 @@ from backend.connections.base import AmbiguousConnection, Capability, ProviderUn
 from backend.security.models import UserIdentity
 
 
+from backend.connections.services_catalog import is_service_enabled_for_connection
+
+
 def resolve_client_for_agent(
     manager: Any,
     provider_or_capability: str,
     user: UserIdentity,
     *,
     connection_id: str | None = None,
+    service_name: str | None = None,
+    required_permission: str | None = None,
 ) -> Any:
     """Resolve an authenticated client for an AI agent.
 
@@ -76,6 +81,11 @@ def resolve_client_for_agent(
             raise AmbiguousConnection(
                 f"Multiple connections found for '{provider_or_capability}'. Please specify connection_id."
             )
+
+    if service_name and not is_service_enabled_for_connection(row, service_name, required_permission):
+        raise ProviderUnavailable(
+            f"Service '{service_name}' is disabled or unauthorized in your Connections Hub for '{row.get('display_name')}'. You can enable it in Settings → Connections Hub."
+        )
 
     provider = manager._registry.get_provider(row["provider"])
     if not provider:

@@ -877,6 +877,59 @@ if (!response.ok) {
     return this.request<{ authorization_url: string }>(`/connections/oauth/${encodeURIComponent(provider)}/authorize?${qp.toString()}`);
   }
 
+  getConnectionServices(id: string) {
+    return this.request<{ services: ServiceState[] }>(`/connections/${encodeURIComponent(id)}/services`);
+  }
+
+  updateConnectionService(
+    id: string,
+    serviceId: string,
+    req: { enabled?: boolean; permissions?: string[]; sync_frequency?: string }
+  ) {
+    return this.request<{ status: string; service: ServiceState }>(
+      `/connections/${encodeURIComponent(id)}/services/${encodeURIComponent(serviceId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(req),
+      }
+    );
+  }
+
+  updateConnectionSyncConfig(
+    id: string,
+    req: { auto_sync?: boolean; frequency?: string }
+  ) {
+    return this.request<{ status: string; sync_config: SyncConfig }>(
+      `/connections/${encodeURIComponent(id)}/sync-config`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(req),
+      }
+    );
+  }
+
+  syncConnection(id: string) {
+    return this.request<{ status: string; synced_at: string; items_checked: number }>(
+      `/connections/${encodeURIComponent(id)}/sync`,
+      {
+        method: "POST",
+      }
+    );
+  }
+
+  revokeConnection(id: string) {
+    return this.request<{ status: string; revoked_at: string; provider_revoked: boolean; message: string }>(
+      `/connections/${encodeURIComponent(id)}/revoke`,
+      {
+        method: "POST",
+      }
+    );
+  }
+
+  listConnectionAudit(id: string) {
+    return this.request<ConnectionAuditEvent[]>(`/connections/${encodeURIComponent(id)}/audit`);
+  }
+
   listConnectionAuditEvents() {
     return this.request<any[]>("/connections/audit/events");
   }
@@ -1105,6 +1158,54 @@ export type LocalAgentTokenResponse = {
   display_name: string;
 };
 
+export type ServicePermission = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+};
+
+export type ServiceState = {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string | null;
+  enabled: boolean;
+  status: "AUTHORIZED" | "UNAUTHORIZED" | "CONFIG_REQUIRED";
+  requires_scopes: string[];
+  granted_scopes: string[];
+  permissions: ServicePermission[];
+  last_synced_at?: string | null;
+  sync_frequency?: string | null;
+};
+
+export type ProviderServiceDef = {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string | null;
+  default_enabled: boolean;
+  requires_scopes: string[];
+};
+
+export type SyncConfig = {
+  auto_sync: boolean;
+  frequency: string;
+  last_synced_at?: string | null;
+  last_status?: string | null;
+  last_error?: string | null;
+};
+
+export type ConnectionAuditEvent = {
+  id: string;
+  connection_id: string;
+  event_type: string;
+  actor_user_id?: string | null;
+  details: Record<string, any>;
+  ip_address?: string | null;
+  created_at: string;
+};
+
 export type ProviderPublic = {
   id: string;
   name: string;
@@ -1116,6 +1217,7 @@ export type ProviderPublic = {
   available: boolean;
   available_reason: string;
   configuration_schema: Record<string, any>;
+  supported_services?: ProviderServiceDef[];
 };
 
 export type ConnectionPublic = {
@@ -1124,11 +1226,18 @@ export type ConnectionPublic = {
   display_name: string;
   account_identifier?: string | null;
   scope_level: "user" | "organization";
+  account_type?: "Personal" | "Organization";
   status: "CONNECTED" | "DISCONNECTED" | "ERROR" | "EXPIRED" | "REAUTH_REQUIRED" | "TESTING";
   status_reason?: string | null;
   granted_scopes: string[];
   metadata_safe: Record<string, any>;
   credential_type?: string | null;
+  services?: ServiceState[];
+  enabled_services_count?: number;
+  total_services_count?: number;
+  sync_config?: SyncConfig;
+  auto_sync?: boolean;
+  sync_frequency?: string;
   last_tested_at?: string | null;
   last_used_at?: string | null;
   last_synced_at?: string | null;
