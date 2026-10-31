@@ -118,6 +118,24 @@ body {
   cursor: pointer;
 }
 .role-login-password-toggle:hover { background: #f3f4f6; color: #111827; }
+.role-dropdown-trigger:hover:not(:disabled) {
+  border-color: #006583 !important;
+  background: #f8fafc !important;
+}
+.role-dropdown-trigger:focus-visible {
+  outline: 2px solid #006583;
+  outline-offset: 2px;
+}
+@keyframes role-dropdown-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .role-login-role-group {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
