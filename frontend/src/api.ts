@@ -878,7 +878,7 @@ if (!response.ok) {
   }
 
   getConnectionServices(id: string) {
-    return this.request<{ services: ServiceState[] }>(`/connections/${encodeURIComponent(id)}/services`);
+    return this.request<ServiceState[] | { services: ServiceState[] }>(`/connections/${encodeURIComponent(id)}/services`);
   }
 
   updateConnectionService(
@@ -886,7 +886,7 @@ if (!response.ok) {
     serviceId: string,
     req: { enabled?: boolean; permissions?: string[]; sync_frequency?: string }
   ) {
-    return this.request<{ status: string; service: ServiceState }>(
+    return this.request<ConnectionPublic | { status: string; service: ServiceState }>(
       `/connections/${encodeURIComponent(id)}/services/${encodeURIComponent(serviceId)}`,
       {
         method: "PATCH",
@@ -1160,9 +1160,12 @@ export type LocalAgentTokenResponse = {
 
 export type ServicePermission = {
   id: string;
-  name: string;
+  name?: string;
+  label?: string;
   description: string;
-  enabled: boolean;
+  enabled?: boolean;
+  granted?: boolean;
+  required_scopes?: string[];
 };
 
 export type ServiceState = {
@@ -1171,12 +1174,16 @@ export type ServiceState = {
   description: string;
   icon?: string | null;
   enabled: boolean;
-  status: "AUTHORIZED" | "UNAUTHORIZED" | "CONFIG_REQUIRED";
-  requires_scopes: string[];
-  granted_scopes: string[];
+  status: "AUTHORIZED" | "UNAUTHORIZED" | "CONFIG_REQUIRED" | "ENABLED" | "DISABLED" | string;
+  status_reason?: string | null;
+  required_scopes?: string[];
+  requires_scopes?: string[];
+  granted_scopes?: string[];
   permissions: ServicePermission[];
   last_synced_at?: string | null;
   sync_frequency?: string | null;
+  sync_status?: string | null;
+  item_count?: number | null;
 };
 
 export type ProviderServiceDef = {

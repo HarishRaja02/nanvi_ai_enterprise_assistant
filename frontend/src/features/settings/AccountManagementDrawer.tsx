@@ -87,8 +87,11 @@ export function AccountManagementDrawer({
     try {
       setLoadingServices(true);
       const res = await api.getConnectionServices(connection.id);
-      if (res?.services) {
-        setServices(res.services);
+      const list = Array.isArray(res) ? res : (res as any)?.services;
+      if (Array.isArray(list)) {
+        setServices(list);
+      } else if (connection.services) {
+        setServices(connection.services);
       }
     } catch {
       // Fallback to connection.services
@@ -116,8 +119,9 @@ export function AccountManagementDrawer({
   // Toggle individual service enabled / disabled
   const handleToggleService = async (service: ServiceState) => {
     if (service.status === "UNAUTHORIZED") {
+      const missingScopes = (service.required_scopes || service.requires_scopes || []).join(", ");
       notify(
-        `Cannot enable ${service.name}: missing required OAuth scope (${service.requires_scopes.join(", ")}). Please re-authorize the account.`,
+        `Cannot enable ${service.name}: missing required OAuth scope (${missingScopes || "not granted"}). Please re-authorize the account.`,
         "error"
       );
       return;
@@ -126,21 +130,32 @@ export function AccountManagementDrawer({
     const nextEnabled = !service.enabled;
     try {
       setUpdatingServiceId(service.id);
-      const res = await api.updateConnectionService(connection.id, service.id, {
+      const res: any = await api.updateConnectionService(connection.id, service.id, {
         enabled: nextEnabled,
       });
 
-      if (res?.service) {
+      const updatedSvc: ServiceState | undefined =
+        res?.service ||
+        (Array.isArray(res?.services) && res.services.find((s: ServiceState) => s.id === service.id));
+
+      if (updatedSvc) {
         setServices((prev) =>
-          prev.map((s) => (s.id === service.id ? res.service : s))
+          prev.map((s) => (s.id === service.id ? updatedSvc : s))
         );
-        notify(
-          `${service.name} is now ${nextEnabled ? "Enabled" : "Disabled"}. AI Assistant will ${nextEnabled ? "now access" : "no longer access"} this service.`,
-          nextEnabled ? "success" : "info"
+      } else if (Array.isArray(res?.services)) {
+        setServices(res.services);
+      } else {
+        setServices((prev) =>
+          prev.map((s) => (s.id === service.id ? { ...s, enabled: nextEnabled } : s))
         );
-        onUpdated();
-        loadAudit();
       }
+
+      notify(
+        `${service.name} is now ${nextEnabled ? "Enabled" : "Disabled"}. AI Assistant will ${nextEnabled ? "now access" : "no longer access"} this service.`,
+        nextEnabled ? "success" : "info"
+      );
+      onUpdated();
+      loadAudit();
     } catch (err: any) {
       notify(err.message || `Failed to update ${service.name}.`, "error");
     } finally {
@@ -150,9 +165,10 @@ export function AccountManagementDrawer({
 
   // Toggle granular permission checkbox for a service
   const handleTogglePermission = async (service: ServiceState, permId: string, currentEnabled: boolean) => {
-    const updatedPerms = service.permissions.map((p) =>
-      p.id === permId ? p.id : (p.enabled ? p.id : null)
-    ).filter(Boolean) as string[];
+    const updatedPerms = service.permissions.map((p) => {
+      const isEnabled = p.enabled ?? (p as any).granted ?? false;
+      return p.id === permId ? p.id : (isEnabled ? p.id : null);
+    }).filter(Boolean) as string[];
 
     const finalPerms = currentEnabled
       ? updatedPerms.filter((id) => id !== permId)
@@ -160,16 +176,23 @@ export function AccountManagementDrawer({
 
     try {
       setUpdatingServiceId(service.id);
-      const res = await api.updateConnectionService(connection.id, service.id, {
+      const res: any = await api.updateConnectionService(connection.id, service.id, {
         permissions: finalPerms,
       });
-      if (res?.service) {
+
+      const updatedSvc: ServiceState | undefined =
+        res?.service ||
+        (Array.isArray(res?.services) && res.services.find((s: ServiceState) => s.id === service.id));
+
+      if (updatedSvc) {
         setServices((prev) =>
-          prev.map((s) => (s.id === service.id ? res.service : s))
+          prev.map((s) => (s.id === service.id ? updatedSvc : s))
         );
-        notify(`Updated permissions for ${service.name}.`, "success");
-        onUpdated();
+      } else if (Array.isArray(res?.services)) {
+        setServices(res.services);
       }
+      notify(`Updated permissions for ${service.name}.`, "success");
+      onUpdated();
     } catch (err: any) {
       notify(err.message || "Failed to update permissions.", "error");
     } finally {
@@ -573,7 +596,7 @@ export function AccountManagementDrawer({
                           >
                             <AlertCircleIcon size={14} />
                             <span>
-                              Scope <code>{service.requires_scopes.join(", ")}</code> not granted. Reconnect this account to authorize this service.
+                              Scope <code>{(service.required_scopes || service.requires_scopes || []).join(", ") || "OAuth authorization"}</code> not granted. Reconnect this account to authorize this service.
                             </span>
                           </div>
                         )}
@@ -594,28 +617,32 @@ export function AccountManagementDrawer({
                               Granular Permissions
                             </span>
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
-                              {service.permissions.map((perm) => (
-                                <label
-                                  key={perm.id}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.375rem",
-                                    fontSize: "0.75rem",
-                                    color: "var(--text-secondary, #475569)",
-                                    cursor: service.enabled ? "pointer" : "not-allowed",
-                                    opacity: service.enabled ? 1 : 0.6,
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={perm.enabled}
-                                    disabled={!service.enabled || isUpdating}
-                                    onChange={() => handleTogglePermission(service, perm.id, perm.enabled)}
-                                  />
-                                  <span>{perm.name}</span>
-                                </label>
-                              ))}
+                              {service.permissions.map((perm) => {
+                                const isPermEnabled = perm.enabled ?? (perm as any).granted ?? false;
+                                const permLabel = perm.name || (perm as any).label || perm.id;
+                                return (
+                                  <label
+                                    key={perm.id}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: "0.375rem",
+                                      fontSize: "0.75rem",
+                                      color: "var(--text-secondary, #475569)",
+                                      cursor: service.enabled ? "pointer" : "not-allowed",
+                                      opacity: service.enabled ? 1 : 0.6,
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={isPermEnabled}
+                                      disabled={!service.enabled || isUpdating}
+                                      onChange={() => handleTogglePermission(service, perm.id, isPermEnabled)}
+                                    />
+                                    <span>{permLabel}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
                           </div>
                         )}

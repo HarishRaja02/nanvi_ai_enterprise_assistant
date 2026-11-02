@@ -6,7 +6,7 @@ fields. Never includes credentials or raw secrets.
 from __future__ import annotations
 
 from typing import Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -20,6 +20,14 @@ class ServicePermission(BaseModel):
     description: str
     granted: bool = True
     required_scopes: list[str] = Field(default_factory=list)
+
+    @computed_field
+    def name(self) -> str:
+        return self.label
+
+    @computed_field
+    def enabled(self) -> bool:
+        return self.granted
 
 
 class ServiceState(BaseModel):
@@ -38,6 +46,10 @@ class ServiceState(BaseModel):
     sync_frequency: str = "1h"
     sync_status: str = "IDLE"  # IDLE | SYNCING | SUCCESS | FAILED
     item_count: int | None = None
+
+    @computed_field
+    def requires_scopes(self) -> list[str]:
+        return self.required_scopes
 
 
 # ═══════════════════════════════════════════════════════════════
