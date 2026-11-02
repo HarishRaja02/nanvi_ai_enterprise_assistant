@@ -1,54 +1,94 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, MousePointer2, Search, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, MousePointer2, Search, Sparkles, X } from "lucide-react";
 import { IconButton } from "../ui/Button";
+import type { View } from "../../lib/access";
 
-type HelpTopic = { title: string; text: string; steps: string[] };
+type HelpTopic = {
+  title: string;
+  text: string;
+  steps: string[];
+  targetView: View;
+  tab?: string;
+  actionLabel?: string;
+};
 
 const TOPICS: HelpTopic[] = [
   {
     title: "Ask Nanvi",
     text: "Enter a question in the message box. Press Enter to send, or Shift+Enter to start a new line.",
     steps: ["Type your question in the message box.", "Press Enter to send it.", "Read Nanvi’s answer and sources."],
+    targetView: "Chat",
+    actionLabel: "Open Assistant",
   },
   {
     title: "Attach a file",
     text: "Choose Attach File to add a PDF, DOCX, XLSX, CSV, TXT, or Markdown file to your question.",
     steps: ["Choose Attach File beside the message box.", "Select a supported document from your device.", "Add your question and send."],
+    targetView: "Chat",
+    actionLabel: "Open Assistant",
   },
   {
     title: "Company file search",
     text: "Use the company file search control in the composer to turn document search on or off for a question.",
     steps: ["Turn company file search on in the composer.", "Type a question about company documents.", "Send it to get an answer grounded in files."],
+    targetView: "Knowledge",
+    actionLabel: "Go to Knowledge",
   },
   {
     title: "Sources and answers",
     text: "When an answer includes sources, select a source to inspect the available document details. You can copy or retry an answer using its actions.",
     steps: ["Select a source listed under an answer.", "Review the document details that open.", "Use Copy or Retry from the answer actions."],
+    targetView: "Chat",
+    actionLabel: "Open Assistant",
   },
   {
     title: "Conversation history",
     text: "Select a conversation under Recent to continue it. Choose New chat to begin a separate conversation.",
     steps: ["Open a conversation under Recent.", "Continue by sending your next message.", "Choose New chat to start a separate conversation."],
+    targetView: "Chat",
+    actionLabel: "Open Assistant",
   },
   {
     title: "Reports and other tools",
     text: "Open More tools for the Knowledge, Email, Data, Reports, and department pages available to your account. Settings stays in the main navigation.",
     steps: ["Open More tools in the navigation.", "Choose a page available to your account.", "Use its search or actions to explore your data."],
+    targetView: "Reports",
+    actionLabel: "Go to Reports",
   },
   {
     title: "Connections Hub",
     text: "Open Settings, then Connections Hub to see which services Nanvi can use, such as cloud storage, email, and databases. Active Connections shows linked services; Integrations Catalog lists available services. Depending on your role, you can connect, test, or manage a service and set its personal or organization scope.",
     steps: ["Open Settings, then Connections Hub.", "Review linked services or browse the catalog.", "Connect, test, or manage services allowed for your role."],
+    targetView: "Settings",
+    tab: "connections",
+    actionLabel: "Go to Connections Hub",
+  },
+  {
+    title: "User Activity Logs",
+    text: "Exclusively for Superior and Admin roles: view all user queries and system-generated answers partitioned by date.",
+    steps: ["Open Logs under Settings in the side tab.", "Select a date from the daily dropdown.", "Inspect user prompts, answers, and export to CSV."],
+    targetView: "Logs",
+    actionLabel: "Go to Logs",
   },
 ];
 
-type Props = { onClose: () => void };
+type Props = {
+  onClose: () => void;
+  onNavigate?: (view: View, tab?: string) => void;
+};
 
-export function HelpPanel({ onClose }: Props) {
+export function HelpPanel({ onClose, onNavigate }: Props) {
   const [query, setQuery] = useState("");
   const [hoveredTopic, setHoveredTopic] = useState<string | null>(null);
   const [focusedTopic, setFocusedTopic] = useState<string | null>(null);
   const [pinnedTopic, setPinnedTopic] = useState<string | null>(null);
+
+  const handleNavigate = (topic: HelpTopic) => {
+    if (onNavigate) {
+      onNavigate(topic.targetView, topic.tab);
+    }
+    onClose();
+  };
   const searchRef = useRef<HTMLInputElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
@@ -125,19 +165,72 @@ export function HelpPanel({ onClose }: Props) {
                   }
                 }}
               >
-                <button
-                  type="button"
+                <div
                   className="help-topic-trigger"
+                  role="button"
+                  tabIndex={0}
                   aria-expanded={isOpen}
                   aria-controls={isOpen ? `help-walkthrough-${topicId}` : undefined}
-                  onClick={() => setPinnedTopic((current) => current === topic.title ? null : topic.title)}
+                  onClick={() => handleNavigate(topic)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleNavigate(topic);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
                 >
                   <span className="help-topic-copy">
-                    <span className="help-topic-title" role="heading" aria-level={3}>{topic.title}</span>
+                    <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+                      <span className="help-topic-title" role="heading" aria-level={3}>{topic.title}</span>
+                      <span
+                        className="help-topic-nav-badge"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          color: "var(--primary-700, #0f766e)",
+                          background: "var(--primary-50, #f0fdfa)",
+                          border: "1px solid var(--primary-200, #99f6e4)",
+                          padding: "2px 7px",
+                          borderRadius: "9999px",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <span>{topic.actionLabel || "Open"}</span>
+                        <ArrowUpRight size={13} aria-hidden="true" />
+                      </span>
+                    </span>
                     <span className="help-topic-text">{topic.text}</span>
                   </span>
-                  <ChevronDown className="help-topic-chevron" size={18} aria-hidden="true" />
-                </button>
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title="Toggle walkthrough steps"
+                    aria-label={`Toggle walkthrough steps for ${topic.title}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPinnedTopic((current) => current === topic.title ? null : topic.title);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setPinnedTopic((current) => current === topic.title ? null : topic.title);
+                      }
+                    }}
+                    style={{
+                      padding: "2px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <ChevronDown className="help-topic-chevron" size={18} aria-hidden="true" />
+                  </span>
+                </div>
                 {isOpen && (
                   <div id={`help-walkthrough-${topicId}`} className="help-walkthrough" aria-label={`${topic.title} animated walkthrough`}>
                     <div className="help-walkthrough-head">
@@ -153,6 +246,32 @@ export function HelpPanel({ onClose }: Props) {
                         </li>
                       ))}
                     </ol>
+                    <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="help-navigate-action-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleNavigate(topic);
+                        }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "6px 14px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          borderRadius: "var(--radius-md, 6px)",
+                          background: "var(--primary-600, #0f766e)",
+                          color: "#ffffff",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>{topic.actionLabel || `Go to ${topic.title}`}</span>
+                        <ArrowUpRight size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </section>

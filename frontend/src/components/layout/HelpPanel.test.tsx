@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HelpPanel } from "./HelpPanel";
 
 function Harness() {
@@ -31,5 +31,19 @@ describe("HelpPanel", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
+  });
+
+  it("navigates to that page and closes when a specific help topic is clicked", async () => {
+    const user = userEvent.setup();
+    const onNavigate = vi.fn();
+    const onClose = vi.fn();
+    render(<HelpPanel onClose={onClose} onNavigate={onNavigate} />);
+
+    // Click on "Connections Hub"
+    const connectionsTopic = screen.getByRole("heading", { name: "Connections Hub" });
+    await user.click(connectionsTopic);
+
+    expect(onNavigate).toHaveBeenCalledWith("Settings", "connections");
+    expect(onClose).toHaveBeenCalled();
   });
 });

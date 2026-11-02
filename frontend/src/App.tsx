@@ -197,7 +197,14 @@ export function App() {
     else mainRef.current?.focus({ preventScroll: true });
   }, [activeView]);
 
-  const goTo = useCallback((next: View) => {
+  const goTo = useCallback((next: View, tab?: string) => {
+    const url = new URL(window.location.href);
+    if (tab) {
+      url.searchParams.set("tab", tab);
+    } else {
+      url.searchParams.delete("tab");
+    }
+    window.history.replaceState({}, "", url.toString());
     setView(next);
     setNavOpen(false);
   }, []);
@@ -395,7 +402,15 @@ export function App() {
 
       {openedSource && <SourceDialog source={openedSource} api={api} onClose={() => setOpenedSource(null)} />}
 
-      {helpOpen && <HelpPanel onClose={() => setHelpOpen(false)} />}
+      {helpOpen && (
+        <HelpPanel
+          onClose={() => setHelpOpen(false)}
+          onNavigate={(nextView, tab) => {
+            goTo(nextView, tab);
+            setHelpOpen(false);
+          }}
+        />
+      )}
 
       <CommandPalette
         open={paletteOpen}

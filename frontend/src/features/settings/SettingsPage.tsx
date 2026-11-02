@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ConnectionsHub } from "./ConnectionsHub";
 import { AuditLogView } from "./AuditLogView";
 import { AccountManagement } from "./AccountManagement";
@@ -34,6 +34,13 @@ export function SettingsPage({ api, identity, fontScale, onFontScaleChange }: Pr
     if (tabParam && availableTabs.includes(tabParam)) return tabParam;
     return canManageUsers ? "accounts" : "display";
   });
+
+  useEffect(() => {
+    const tabParam = new URLSearchParams(window.location.search).get("tab") as Tab | null;
+    if (tabParam && availableTabs.includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [availableTabs]);
 
   const tabs: { id: Tab; label: string; icon?: ReactNode }[] = [
     { id: "display", label: "Text size" },
