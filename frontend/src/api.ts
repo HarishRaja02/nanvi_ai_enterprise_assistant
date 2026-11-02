@@ -213,9 +213,30 @@ export type UploadDocumentResponse = {
   message: string;
 };
 
-export type HistoryResponse = { conversations: Conversation[] };
-export type SourceReference = ChatSource;
-export type DownloadUrlResponse = { download_url: string };
+export type UserLogEntry = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  user_role: string;
+  tenant_id: string;
+  query: string;
+  answer: string;
+  capability?: string;
+  model?: string;
+  created_at: string;
+  log_date: string;
+};
+
+export type UserLogDatesResponse = {
+  dates: string[];
+  today: string;
+};
+
+export type UserLogsResponse = {
+  logs: UserLogEntry[];
+  total: number;
+  date?: string | null;
+};
 
 export class ApiError extends Error {
   readonly status: number;
@@ -1076,6 +1097,28 @@ if (!response.ok) {
 
   getMySupportTickets() {
     return this.request<SupportTicket[]>("/support/my-tickets");
+  }
+
+  // --- User Query & System Answer Logs (Superior & Admin only) ---
+  getUserLogDates() {
+    return this.request<UserLogDatesResponse>("/logs/dates");
+  }
+
+  getUserLogs(params?: {
+    date?: string;
+    search?: string;
+    user_id?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.date) q.set("date", params.date);
+    if (params?.search) q.set("search", params.search);
+    if (params?.user_id) q.set("user_id", params.user_id);
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.offset) q.set("offset", String(params.offset));
+    const qs = q.toString();
+    return this.request<UserLogsResponse>(qs ? `/logs?${qs}` : "/logs");
   }
 }
 

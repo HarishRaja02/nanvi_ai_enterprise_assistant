@@ -9,15 +9,16 @@ export type Role =
 export type Permission =
   | "FILE_READ" | "FILE_WRITE" | "EMAIL_READ" | "EMAIL_SEND"
   | "DATABASE_READ" | "DATABASE_WRITE" | "REPORT_CREATE" | "REPORT_DOWNLOAD"
-  | "FINANCE_READ" | "HR_READ" | "AUDIT_READ" | "USER_MANAGE" | "ADMIN_ACCESS";
+  | "FINANCE_READ" | "HR_READ" | "AUDIT_READ" | "USER_MANAGE" | "ADMIN_ACCESS"
+  | "SYSTEM_LOGS_READ";
 
-export type View = "Chat" | "Knowledge" | "Email" | "Data" | "Reports" | "Finance" | "HR" | "Audit" | "Settings" | "AdminDashboard";
+export type View = "Chat" | "Knowledge" | "Email" | "Data" | "Reports" | "Finance" | "HR" | "Audit" | "Settings" | "AdminDashboard" | "Logs";
 
 export type CanonicalRole = "Admin" | "Superior" | "Supervisor" | "Project Engineer" | "Employee";
 
 export const ROLE_PERMISSIONS: Record<CanonicalRole, Permission[]> = {
-  Admin: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE", "ADMIN_ACCESS"],
-  Superior: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE"],
+  Admin: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE", "ADMIN_ACCESS", "SYSTEM_LOGS_READ"],
+  Superior: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "AUDIT_READ", "USER_MANAGE", "SYSTEM_LOGS_READ"],
   Supervisor: ["FILE_READ", "FILE_WRITE", "EMAIL_READ", "EMAIL_SEND", "DATABASE_READ", "DATABASE_WRITE", "REPORT_CREATE", "REPORT_DOWNLOAD", "FINANCE_READ", "HR_READ", "USER_MANAGE"],
   "Project Engineer": ["FILE_READ"],
   Employee: ["FILE_READ"],
@@ -85,6 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "Audit", label: "Audit", permission: "AUDIT_READ" },
       { id: "Settings", label: "Settings", permission: "USER_MANAGE" },
+      { id: "Logs", label: "Logs", permission: "SYSTEM_LOGS_READ" },
     ],
   },
 ];

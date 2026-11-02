@@ -27,11 +27,13 @@ type Props = {
 };
 
 export function Sidebar(p: Props) {
+  const primaryOrder = ["Chat", "Settings", "Logs"];
   const primaryItems = p.groups
     .flatMap((group) => group.items)
-    .filter((item) => item.id === "Chat" || item.id === "Settings");
+    .filter((item) => primaryOrder.includes(item.id))
+    .sort((a, b) => primaryOrder.indexOf(a.id) - primaryOrder.indexOf(b.id));
   const moreGroups = p.groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => item.id !== "Chat" && item.id !== "Settings") }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => !primaryOrder.includes(item.id)) }))
     .filter((group) => group.items.length > 0);
   const moreToolsActive = moreGroups.some((group) => group.items.some((item) => item.id === p.active));
   const [moreToolsOpen, setMoreToolsOpen] = useState(false);

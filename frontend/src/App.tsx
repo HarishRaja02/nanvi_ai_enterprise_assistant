@@ -16,6 +16,7 @@ import { WorkspacePage } from "./features/workspaces/WorkspacePage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { VoiceAssistantMode } from "./features/voice/VoiceAssistantMode";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
+import { UserLogsPage } from "./features/logs/UserLogsPage";
 import { ReportIssueModal } from "./components/support/ReportIssueModal";
 
 import { useChat } from "./hooks/useChat";
@@ -365,10 +366,13 @@ export function App() {
             {activeView === "Settings" && (
               <SettingsPage api={api} identity={identity} fontScale={fontScale} onFontScaleChange={setFontScale} />
             )}
+            {activeView === "Logs" && (
+              <UserLogsPage api={api} onReturn={() => goTo("Chat")} />
+            )}
             {activeView === "AdminDashboard" && (
               <AdminDashboard api={api} identity={identity} onNavigateHome={() => goTo("Chat")} />
             )}
-            {activeView !== "Chat" && activeView !== "Reports" && activeView !== "Audit" && activeView !== "Settings" && activeView !== "AdminDashboard" && (
+            {activeView !== "Chat" && activeView !== "Reports" && activeView !== "Audit" && activeView !== "Settings" && activeView !== "Logs" && activeView !== "AdminDashboard" && (
               <WorkspacePage view={activeView} permissions={permissions} onAsk={ask} api={api} />
             )}
 

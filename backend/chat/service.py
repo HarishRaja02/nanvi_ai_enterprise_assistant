@@ -50,6 +50,26 @@ class ChatService:
         return None
 
     def ask(self, user: UserAttributes, request: ChatRequest) -> ChatResponse:
+        res = self._ask_internal(user, request)
+        try:
+            from backend.logs.store import get_user_log_store
+            role_val = next(iter(user.roles), "Employee") if user.roles else "Employee"
+            if hasattr(role_val, "value"):
+                role_val = role_val.value
+            get_user_log_store().record_log(
+                user_id=user.user_id,
+                user_name=getattr(user, "name", None) or user.user_id,
+                user_role=str(role_val),
+                query=request.query,
+                answer=res.answer,
+                capability=str(res.capability or ""),
+                tenant_id=user.tenant_id,
+            )
+        except Exception as exc:
+            logger.warning("Could not record user query log: %s", exc)
+        return res
+
+    def _ask_internal(self, user: UserAttributes, request: ChatRequest) -> ChatResponse:
         query = validate_non_empty(request.query, "query", 4000)
         conversation_id = request.conversation_id or uuid4().hex
         self._store.bind_owner(conversation_id, user.user_id, user.tenant_id)

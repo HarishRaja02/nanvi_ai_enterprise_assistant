@@ -8,7 +8,7 @@ describe("access (UX-only visibility)", () => {
     expect(ids(permissionsFor(["Employee"]))).toEqual(["Chat", "Knowledge"]);
     expect(ids(permissionsFor(["Project Engineer"]))).toEqual(["Chat", "Knowledge"]);
     expect(ids(permissionsFor(["Supervisor"]))).toEqual(["Chat", "Knowledge", "Email", "Data", "Reports", "Finance", "HR", "Settings"]);
-    expect(ids(permissionsFor(["Superior"]))).toEqual(["Chat", "Knowledge", "Email", "Data", "Reports", "Finance", "HR", "Audit", "Settings"]);
+    expect(ids(permissionsFor(["Superior"]))).toEqual(["Chat", "Knowledge", "Email", "Data", "Reports", "Finance", "HR", "Audit", "Settings", "Logs"]);
   });
   it("unions permissions when the backend reports several roles", () => {
     expect(ids(permissionsFor(["Employee", "Supervisor"]))).toContain("Finance");

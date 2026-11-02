@@ -1,4 +1,4 @@
-import { BookOpen, Database, FileText, Landmark, Mail, MessagesSquare, ScrollText, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react";
+import { BookOpen, ClipboardList, Database, FileText, Landmark, Mail, MessagesSquare, ScrollText, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react";
 import type { View } from "../../lib/access";
 
 /** One icon per module, from a single library, so navigation reads consistently everywhere. */
@@ -12,6 +12,7 @@ export const NAV_ICONS: Record<View, LucideIcon> = {
   HR: Users,
   Audit: ScrollText,
   Settings: Settings,
+  Logs: ClipboardList,
   AdminDashboard: ShieldCheck,
 };
 

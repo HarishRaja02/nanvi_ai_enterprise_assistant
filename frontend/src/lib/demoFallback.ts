@@ -58,6 +58,48 @@ export function getDemoFallbackResponse<T>(path: string, init?: RequestInit): T 
     return { status: "disconnected" } as unknown as T;
   }
 
+  if (cleanPath === "/logs/dates") {
+    return {
+      dates: ["02-11-2026", "01-11-2026", "31-10-2026"],
+      today: "02-11-2026",
+    } as unknown as T;
+  }
+
+  if (cleanPath === "/logs") {
+    return {
+      logs: [
+        {
+          id: "log-demo-1",
+          user_id: "priya.sharma",
+          user_name: "Priya Sharma",
+          user_role: "Supervisor",
+          tenant_id: "enterprise-tenant",
+          query: "What is the status of the Q3 CloudNova contract renewal?",
+          answer: "The CloudNova contract renewal schedule for Q3 2026 is active. The standard 24-month term renewal is scheduled with annual license value of $180,000.",
+          capability: "knowledge",
+          model: "llama-3.3-70b-versatile",
+          created_at: new Date().toISOString(),
+          log_date: "02-11-2026",
+        },
+        {
+          id: "log-demo-2",
+          user_id: "rahul.verma",
+          user_name: "Rahul Verma",
+          user_role: "Project Engineer",
+          tenant_id: "enterprise-tenant",
+          query: "Give me the deployment steps for the container orchestration cluster",
+          answer: "Deployment follows standard GitOps pipeline on AWS ECS with zero-downtime rolling updates enabled.",
+          capability: "knowledge",
+          model: "llama-3.3-70b-versatile",
+          created_at: new Date(Date.now() - 3600000).toISOString(),
+          log_date: "02-11-2026",
+        },
+      ],
+      total: 2,
+      date: "02-11-2026",
+    } as unknown as T;
+  }
+
   if (cleanPath === "/email/manual-connect") {
     let email = "demo@nanvi.enterprise";
     let name = "Demo Email";
