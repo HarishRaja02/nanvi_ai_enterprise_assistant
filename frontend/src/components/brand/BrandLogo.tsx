@@ -113,7 +113,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 9. Microsoft Outlook
-  if (key === "outlook" || key === "microsoft_outlook" || key === "exchange") {
+  if (key === "outlook" || key === "microsoft_outlook" || key === "outlook_email" || key === "exchange") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="6" y="4" width="16" height="16" rx="2" fill="#0078D4" />
@@ -125,7 +125,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 10. Microsoft OneDrive
-  if (key === "onedrive" || key === "microsoft_onedrive") {
+  if (key === "onedrive" || key === "microsoft_onedrive" || key === "onedrive_files") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path d="M19.4 15.2C19.8 14.5 20 13.8 20 13C20 10.8 18.2 9 16 9C15.8 9 15.6 9 15.4 9.1C14.7 6.7 12.5 5 10 5C7.2 5 5 7.2 5 10C5 10.3 5 10.6 5.1 10.8C3.3 11.4 2 13 2 15C2 17.2 3.8 19 6 19H18C19.7 19 21 17.7 21 16C21 15.7 20.9 15.4 20.8 15.2H19.4Z" fill="#0078D4" />
@@ -135,7 +135,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 11. Microsoft SharePoint
-  if (key === "sharepoint" || key === "microsoft_sharepoint") {
+  if (key === "sharepoint" || key === "microsoft_sharepoint" || key === "sharepoint_sites") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <circle cx="15.5" cy="8.5" r="5.5" fill="#008272" />
@@ -170,7 +170,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 14. IMAP
-  if (key === "imap" || key === "generic_imap") {
+  if (key === "imap" || key === "generic_imap" || key === "imap_inbox" || key === "mail") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="2" y="4" width="20" height="16" rx="3" fill="#0284C7" />
@@ -181,7 +181,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 15. SMTP
-  if (key === "smtp" || key === "generic_smtp") {
+  if (key === "smtp" || key === "generic_smtp" || key === "smtp_sender" || key === "send") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="2" y="2" width="20" height="20" rx="5" fill="#0D9488" />
@@ -192,7 +192,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 16. Box
-  if (key === "box" || key === "box_enterprise") {
+  if (key === "box" || key === "box_enterprise" || key === "box_storage") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="2" y="2" width="20" height="20" rx="4" fill="#0061D5" />
@@ -205,7 +205,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 17. Dropbox
-  if (key === "dropbox" || key === "dropbox_business") {
+  if (key === "dropbox" || key === "dropbox_business" || key === "dropbox_storage") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path d="M7 3L2 6.5L7 10L12 6.5L7 3Z" fill="#0061FE" />
@@ -218,7 +218,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 18. Egnyte
-  if (key === "egnyte") {
+  if (key === "egnyte" || key === "egnyte_storage") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="2" y="2" width="20" height="20" rx="4" fill="#002D62" />
@@ -232,7 +232,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 19. Supabase
-  if (key === "supabase") {
+  if (key === "supabase" || key === "rest_api") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path d="M12.8 2.5L20.2 11.8C20.9 12.7 20.3 14 19.2 14H13V21.5L4.8 11.2C4.1 10.3 4.7 9 5.8 9H12V2.5C12 2.5 12.8 2.5 12.8 2.5Z" fill="#3ECF8E" />
@@ -242,7 +242,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 20. PostgreSQL
-  if (key === "postgresql" || key === "postgres") {
+  if (key === "postgresql" || key === "postgres" || key === "postgres_db" || key === "sql_engine") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path d="M12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2Z" fill="#336791" />
@@ -287,7 +287,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 24. GitHub
-  if (key === "github") {
+  if (key === "github" || key === "repos") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12C2 16.42 4.87 20.17 8.84 21.5C9.34 21.58 9.5 21.27 9.5 21V19.31C6.73 19.91 6.14 17.97 6.14 17.97C5.68 16.81 5.03 16.5 5.03 16.5C4.12 15.88 5.1 15.9 5.1 15.9C6.1 15.97 6.63 16.93 6.63 16.93C7.5 18.45 8.97 18 9.54 17.76C9.63 17.11 9.89 16.67 10.17 16.42C7.95 16.17 5.62 15.31 5.62 11.5C5.62 10.39 6.01 9.5 6.67 8.8C6.56 8.55 6.22 7.52 6.77 6.15C6.77 6.15 7.61 5.88 9.54 7.18C10.35 6.95 11.22 6.84 12.08 6.84C12.94 6.84 13.81 6.95 14.62 7.18C16.55 5.88 17.39 6.15 17.39 6.15C17.94 7.52 17.6 8.55 17.49 8.8C18.15 9.5 18.54 10.39 18.54 11.5C18.54 15.32 16.2 16.17 13.97 16.42C14.33 16.73 14.65 17.34 14.65 18.28V21C14.65 21.28 14.82 21.6 15.34 21.5C19.29 20.16 22.16 16.42 22.16 12C22.16 6.477 17.68 2 12 2Z" fill="#181717" />
@@ -310,7 +310,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 26. Custom REST API
-  if (key === "custom_api" || key === "custom api" || key === "api") {
+  if (key === "custom_api" || key === "custom api" || key === "api" || key === "api_endpoints") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <rect x="2" y="3" width="20" height="18" rx="4" fill="#0F766E" />
@@ -322,7 +322,7 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
   }
 
   // 27. Local Files & Folders
-  if (key === "local_files" || key === "local files" || key === "filesystem" || key === "local_files_folders") {
+  if (key === "local_files" || key === "local files" || key === "filesystem" || key === "local_files_folders" || key === "local_storage" || key === "folder") {
     return (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className} style={style}>
         <path d="M3 6C3 4.9 3.9 4 5 4H9.5L11.5 6.5H19C20.1 6.5 21 7.4 21 8.5V17C21 18.1 20.1 19 19 19H5C3.9 19 3 18.1 3 17V6Z" fill="#F59E0B" />

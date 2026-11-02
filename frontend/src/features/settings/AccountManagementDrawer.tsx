@@ -245,8 +245,9 @@ export function AccountManagementDrawer({
     setSyncingNow(true);
     try {
       const res = await api.syncConnection(connection.id);
+      const timeStr = res.synced_at ? new Date(res.synced_at).toLocaleTimeString() : new Date().toLocaleTimeString();
       notify(
-        `Sync completed: ${res.items_checked ?? 0} resources checked at ${new Date(res.synced_at).toLocaleTimeString()}`,
+        `Sync completed: ${res.items_checked ?? 0} resources checked at ${timeStr}`,
         "success"
       );
       onUpdated();
@@ -511,7 +512,7 @@ export function AccountManagementDrawer({
                                 flexShrink: 0,
                               }}
                             >
-                              <BrandLogo name={service.id} size={22} />
+                              <BrandLogo name={service.icon || service.id || connection.provider} size={22} />
                             </div>
                             <div>
                               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -985,7 +986,7 @@ export function AccountManagementDrawer({
                         {auditLogs.slice(0, 15).map((log, i) => (
                           <tr key={log.id || i} style={{ borderBottom: "1px solid var(--border-subtle, #f1f5f9)" }}>
                             <td style={{ padding: "0.5rem 0.75rem", whiteSpace: "nowrap", color: "var(--text-muted, #64748b)" }}>
-                              {new Date(log.created_at).toLocaleTimeString()}
+                              {log.created_at ? new Date(log.created_at).toLocaleTimeString() : "Recent"}
                             </td>
                             <td style={{ padding: "0.5rem 0.75rem", fontWeight: 500, color: "var(--text, #0f172a)" }}>
                               {log.event_type}
