@@ -1,0 +1,599 @@
+[
+  {
+    "id": "eval-01",
+    "query": "Vendor name DataBridge / invoice date around 2025-08-09",
+    "expected_files": [
+      "invoice_007.pdf"
+    ],
+    "category": "observed_failure_invoice_date_entity"
+  },
+  {
+    "id": "eval-02",
+    "query": "find the project file that going to end soon",
+    "expected_files": [
+      "project_brief_015.pdf",
+      "project_brief_017.pdf",
+      "tasks_001.csv",
+      "tasks_006.csv",
+      "tasks_011.csv"
+    ],
+    "category": "observed_failure_project_ending_soon"
+  },
+  {
+    "id": "eval-03",
+    "query": "Apex Civil pvt limited company",
+    "expected_files": [
+      "enterprise_license_agreement_apex.docx",
+      "companydata_index.json"
+    ],
+    "category": "observed_failure_partial_company_name"
+  },
+  {
+    "id": "eval-04",
+    "query": "find the invoice file that close to 9 aug 225",
+    "expected_files": [
+      "invoice_007.pdf"
+    ],
+    "category": "observed_failure_typo_year"
+  },
+  {
+    "id": "eval-05",
+    "query": "DataBridge for 9 aug 25",
+    "expected_files": [
+      "invoice_007.pdf"
+    ],
+    "category": "observed_failure_followup_date"
+  },
+  {
+    "id": "eval-inv-06",
+    "query": "find invoice file for SecureNe dated 2025-04-25",
+    "expected_files": [
+      "invoice_001.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-07",
+    "query": "invoice from sec around 2025-04-25",
+    "expected_files": [
+      "invoice_001.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-08",
+    "query": "find invoice file for DataBridg dated 2025-04-15",
+    "expected_files": [
+      "invoice_002.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-09",
+    "query": "invoice from dat around 2025-04-15",
+    "expected_files": [
+      "invoice_002.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-10",
+    "query": "find invoice file for CloudNov dated 2025-01-31",
+    "expected_files": [
+      "invoice_003.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-11",
+    "query": "invoice from clo around 2025-01-31",
+    "expected_files": [
+      "invoice_003.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-12",
+    "query": "find invoice file for Prime Teleco dated 2025-01-28",
+    "expected_files": [
+      "invoice_004.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-13",
+    "query": "invoice from pri tel around 2025-01-28",
+    "expected_files": [
+      "invoice_004.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-14",
+    "query": "find invoice file for SecureNe dated 2026-07-13",
+    "expected_files": [
+      "invoice_005.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-15",
+    "query": "invoice from sec around 2026-07-13",
+    "expected_files": [
+      "invoice_005.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-16",
+    "query": "find invoice file for OfficeHu dated 2025-01-07",
+    "expected_files": [
+      "invoice_006.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-17",
+    "query": "invoice from off around 2025-01-07",
+    "expected_files": [
+      "invoice_006.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-18",
+    "query": "find invoice file for DataBridg dated 2025-08-09",
+    "expected_files": [
+      "invoice_007.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-19",
+    "query": "invoice from dat around 2025-08-09",
+    "expected_files": [
+      "invoice_007.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-20",
+    "query": "find invoice file for CloudNov dated 2026-01-03",
+    "expected_files": [
+      "invoice_008.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-21",
+    "query": "invoice from clo around 2026-01-03",
+    "expected_files": [
+      "invoice_008.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-22",
+    "query": "find invoice file for SecureNe dated 2026-04-16",
+    "expected_files": [
+      "invoice_009.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-23",
+    "query": "invoice from sec around 2026-04-16",
+    "expected_files": [
+      "invoice_009.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-24",
+    "query": "find invoice file for Prime Teleco dated 2025-10-28",
+    "expected_files": [
+      "invoice_010.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-25",
+    "query": "invoice from pri tel around 2025-10-28",
+    "expected_files": [
+      "invoice_010.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-26",
+    "query": "find invoice file for CloudNov dated 2025-02-16",
+    "expected_files": [
+      "invoice_011.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-27",
+    "query": "invoice from clo around 2025-02-16",
+    "expected_files": [
+      "invoice_011.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-28",
+    "query": "find invoice file for CloudNov dated 2026-01-25",
+    "expected_files": [
+      "invoice_012.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-29",
+    "query": "invoice from clo around 2026-01-25",
+    "expected_files": [
+      "invoice_012.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-30",
+    "query": "find invoice file for DataBridg dated 2026-01-15",
+    "expected_files": [
+      "invoice_013.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-31",
+    "query": "invoice from dat around 2026-01-15",
+    "expected_files": [
+      "invoice_013.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-32",
+    "query": "find invoice file for SecureNe dated 2025-03-15",
+    "expected_files": [
+      "invoice_014.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-33",
+    "query": "invoice from sec around 2025-03-15",
+    "expected_files": [
+      "invoice_014.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-34",
+    "query": "find invoice file for DataBridg dated 2026-04-19",
+    "expected_files": [
+      "invoice_015.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-35",
+    "query": "invoice from dat around 2026-04-19",
+    "expected_files": [
+      "invoice_015.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-36",
+    "query": "find invoice file for Prime Teleco dated 2025-08-13",
+    "expected_files": [
+      "invoice_016.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-37",
+    "query": "invoice from pri tel around 2025-08-13",
+    "expected_files": [
+      "invoice_016.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-38",
+    "query": "find invoice file for OfficeHu dated 2026-02-15",
+    "expected_files": [
+      "invoice_017.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-39",
+    "query": "invoice from off around 2026-02-15",
+    "expected_files": [
+      "invoice_017.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-40",
+    "query": "find invoice file for SecureNe dated 2025-11-19",
+    "expected_files": [
+      "invoice_018.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-41",
+    "query": "invoice from sec around 2025-11-19",
+    "expected_files": [
+      "invoice_018.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-42",
+    "query": "find invoice file for Metro Supplie dated 2025-05-27",
+    "expected_files": [
+      "invoice_019.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-43",
+    "query": "invoice from met sup around 2025-05-27",
+    "expected_files": [
+      "invoice_019.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-44",
+    "query": "find invoice file for Prime Teleco dated 2026-07-06",
+    "expected_files": [
+      "invoice_020.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-45",
+    "query": "invoice from pri tel around 2026-07-06",
+    "expected_files": [
+      "invoice_020.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-46",
+    "query": "find invoice file for Metro Supplie dated 2026-01-06",
+    "expected_files": [
+      "invoice_021.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-47",
+    "query": "invoice from met sup around 2026-01-06",
+    "expected_files": [
+      "invoice_021.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-48",
+    "query": "find invoice file for CloudNov dated 2025-02-18",
+    "expected_files": [
+      "invoice_022.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-49",
+    "query": "invoice from clo around 2025-02-18",
+    "expected_files": [
+      "invoice_022.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-50",
+    "query": "find invoice file for SecureNe dated 2026-03-09",
+    "expected_files": [
+      "invoice_023.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-51",
+    "query": "invoice from sec around 2026-03-09",
+    "expected_files": [
+      "invoice_023.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-52",
+    "query": "find invoice file for Metro Supplie dated 2026-06-26",
+    "expected_files": [
+      "invoice_024.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-53",
+    "query": "invoice from met sup around 2026-06-26",
+    "expected_files": [
+      "invoice_024.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-inv-54",
+    "query": "find invoice file for SecureNe dated 2025-04-28",
+    "expected_files": [
+      "invoice_025.pdf"
+    ],
+    "category": "invoice_typo_vendor_date"
+  },
+  {
+    "id": "eval-inv-55",
+    "query": "invoice from sec around 2025-04-28",
+    "expected_files": [
+      "invoice_025.pdf"
+    ],
+    "category": "invoice_prefix_vendor_date"
+  },
+  {
+    "id": "eval-proj-56",
+    "query": "show project brief for automation",
+    "expected_files": [
+      "project_brief_001.pdf"
+    ],
+    "category": "project_partial_name"
+  },
+  {
+    "id": "eval-proj-57",
+    "query": "find the project file for Automation Engine ending around 2027-03-25",
+    "expected_files": [
+      "project_brief_001.pdf"
+    ],
+    "category": "project_name_date"
+  },
+  {
+    "id": "eval-proj-58",
+    "query": "show project brief for customer",
+    "expected_files": [
+      "project_brief_002.pdf"
+    ],
+    "category": "project_partial_name"
+  },
+  {
+    "id": "eval-proj-59",
+    "query": "find the project file for Customer Portal ending around 2026-11-01",
+    "expected_files": [
+      "project_brief_002.pdf"
+    ],
+    "category": "project_name_date"
+  },
+  {
+    "id": "eval-proj-60",
+    "query": "show project brief for analytics",
+    "expected_files": [
+      "project_brief_003.pdf"
+    ],
+    "category": "project_partial_name"
+  },
+  {
+    "id": "eval-proj-61",
+    "query": "find the project file for Analytics Dashboard ending around 2027-03-02",
+    "expected_files": [
+      "project_brief_003.pdf"
+    ],
+    "category": "project_name_date"
+  },
+  {
+    "id": "eval-proj-62",
+    "query": "show project brief for analytics",
+    "expected_files": [
+      "project_brief_004.pdf"
+    ],
+    "category": "project_partial_name"
+  },
+  {
+    "id": "eval-proj-63",
+    "query": "find the project file for Analytics Dashboard ending around 2027-05-23",
+    "expected_files": [
+      "project_brief_004.pdf"
+    ],
+    "category": "project_name_date"
+  },
+  {
+    "id": "eval-proj-64",
+    "query": "show project brief for analytics",
+    "expected_files": [
+      "project_brief_005.pdf"
+    ],
+    "category": "project_partial_name"
+  },
+  {
+    "id": "eval-proj-65",
+    "query": "find the project file for Analytics Dashboard ending around 2027-10-23",
+    "expected_files": [
+      "project_brief_005.pdf"
+    ],
+    "category": "project_name_date"
+  },
+  {
+    "id": "eval-doc-66",
+    "query": "find contract or policy document for enterprise license agreement apex",
+    "expected_files": [
+      "enterprise_license_agreement_apex.docx"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-67",
+    "query": "find contract or policy document for mutual nda template v3",
+    "expected_files": [
+      "mutual_nda_template_v3.pdf"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-68",
+    "query": "find contract or policy document for nda-0001",
+    "expected_files": [
+      "NDA-0001.pdf"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-69",
+    "query": "find contract or policy document for nda-0002",
+    "expected_files": [
+      "NDA-0002.pdf"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-70",
+    "query": "find contract or policy document for pur-0001",
+    "expected_files": [
+      "PUR-0001.pdf"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-71",
+    "query": "find contract or policy document for pur-0002",
+    "expected_files": [
+      "PUR-0002.pdf"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-72",
+    "query": "find contract or policy document for contract register 01",
+    "expected_files": [
+      "contract_register_01.csv"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-73",
+    "query": "find contract or policy document for travel and expense policy",
+    "expected_files": [
+      "travel_and_expense_policy.docx"
+    ],
+    "category": "contract_policy_search"
+  },
+  {
+    "id": "eval-doc-74",
+    "query": "find contract or policy document for annual budget forecast 2026",
+    "expected_files": [
+      "annual_budget_forecast_2026.pdf"
+    ],
+    "category": "contract_policy_search"
+  }
+]
