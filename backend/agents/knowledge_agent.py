@@ -161,7 +161,7 @@ class KnowledgeAgent(Agent):
                 self.capability,
                 "I couldn't find sufficiently relevant information in the authorized documents to answer this question.",
                 (),
-                deterministic=True,
+                deterministic=False,
             )
 
         if self._retrieval is None:

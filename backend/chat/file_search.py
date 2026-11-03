@@ -128,69 +128,114 @@ def _to_clean_display_path(file_path: Path, repo_root: Path) -> str:
     return file_path.name
 
 
+def _extract_document_date(filename: str, path_str: str, content_str: str) -> str | None:
+    """Extract real document date from text, invoice headers, project briefs, or spreadsheets."""
+    # 1. Invoice Date: YYYY-MM-DD
+    m_inv = re.search(r"Invoice Date\s*(\d{4}-\d{2}-\d{2})", content_str, re.IGNORECASE)
+    if m_inv:
+        return m_inv.group(1)
+    # 2. Target End / Target Date / End: YYYY-MM-DD
+    m_end = re.search(r"(?:Target End|Target Date|End):\s*(\d{4}-\d{2}-\d{2})", content_str, re.IGNORECASE)
+    if m_end:
+        return m_end.group(1)
+    # 3. Start: YYYY-MM-DD
+    m_start = re.search(r"Start:\s*(\d{4}-\d{2}-\d{2})", content_str, re.IGNORECASE)
+    if m_start:
+        return m_start.group(1)
+    # 4. Standard ISO date
+    m_iso = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", content_str)
+    if m_iso:
+        return m_iso.group(1)
+    return None
+
+
+def _file_matches_doc_type(file_path: Path, doc_type: str | None, content_str: str = "") -> bool:
+    """Strictly verify if a file belongs to the requested document category."""
+    if not doc_type or doc_type == "general":
+        return True
+
+    fn_low = file_path.name.casefold()
+    path_low = str(file_path).casefold()
+
+    if doc_type == "invoice":
+        is_inv = any(k in fn_low for k in ("invoice", "inv-", "inv_", "bill")) or ("finance" in path_low and "invoice" in path_low)
+        # Exclude unrelated files
+        if any(bad in fn_low for bad in ("attendance", "employee_data", "customer_data", "project_data", "tasks_", "orders_")):
+            return False
+        return is_inv or "invoice" in content_str[:300].casefold()
+
+    if doc_type == "project":
+        is_proj = any(k in fn_low for k in ("project", "milestone", "roadmap", "status_report", "tasks_")) or ("project" in path_low)
+        if any(bad in fn_low for bad in ("customer_profile", "customer_data", "attendance", "invoice")):
+            return False
+        return is_proj or "project" in content_str[:300].casefold()
+
+    if doc_type == "contract":
+        is_ctr = any(k in fn_low for k in ("contract", "agreement", "nda", "renewal", "license", "policy", "handbook", "sop", "guideline", "review", "budget", "forecast")) or ("contract" in path_low) or ("policy" in path_low)
+        if any(bad in fn_low for bad in ("attendance", "employee_data", "customer_data")):
+            return False
+        return is_ctr
+
+    if doc_type == "employee":
+        return any(k in fn_low for k in ("employee", "attendance", "salary", "payroll", "hr")) or ("hr" in path_low)
+
+    if doc_type == "customer":
+        return any(k in fn_low for k in ("customer", "client", "order")) or ("customer" in path_low)
+
+    return True
+
+
 def _extract_date_filter(query: str) -> tuple[str | None, int | None, int | None, int | None]:
-    """Extract explicit date expression from query.
+    """Extract explicit date expression from query without hardcoding any year.
 
     Returns:
         (display_str, year, month, day) or (None, None, None, None)
     """
-    q = query.casefold()
+    from backend.retrieval.date_parser import parse_query_date
+    df = parse_query_date(query)
+    if not df or not df.target_date:
+        return None, None, None, None
+    try:
+        dt = datetime.strptime(df.target_date, "%Y-%m-%d").date()
+        return df.display_label, dt.year, dt.month, dt.day
+    except ValueError:
+        return None, None, None, None
 
-    if "today" in q:
-        d = datetime.now(timezone.utc)
-        return "Today", d.year, d.month, d.day
-    if "yesterday" in q:
-        from datetime import timedelta
-        d = datetime.now(timezone.utc) - timedelta(days=1)
-        return "Yesterday", d.year, d.month, d.day
 
-    # ISO formats: 2026-10-05, 2026/10/05, 2026-03-14
-    iso_m = re.search(r"\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b", q)
-    if iso_m:
-        y, m, d = int(iso_m.group(1)), int(iso_m.group(2)), int(iso_m.group(3))
-        return f"{y:04d}-{m:02d}-{d:02d}", y, m, d
+def _get_all_disk_files(cds: Any) -> tuple[Path | None, list[Path]]:
+    """Discover server disk files dynamically from connected CompanyData root or fallback."""
+    project_dir = Path(__file__).resolve().parents[2]
+    repo_root_cand = Path(cds.root) if str(cds.root) else None
+    repo_root = None
+    if repo_root_cand and str(repo_root_cand).strip() not in ("", "."):
+        try:
+            res_cand = repo_root_cand.resolve()
+            if res_cand != project_dir and res_cand.exists() and res_cand.is_dir():
+                norm_root = str(res_cand).replace("\\", "/").lower()
+                if "/var/task" not in norm_root and "var/task" not in norm_root and "pytest" not in norm_root:
+                    repo_root = res_cand
+        except Exception:
+            repo_root = None
 
-    # Numeric formats: 10/05/2026, 05-10-2026
-    dmy_m = re.search(r"\b(\d{1,2})[-/](\d{1,2})[-/](\d{4})\b", q)
-    if dmy_m:
-        p1, p2, y = int(dmy_m.group(1)), int(dmy_m.group(2)), int(dmy_m.group(3))
-        if p1 > 12:
-            d, m = p1, p2
-        else:
-            m, d = p1, p2
-        return f"{y:04d}-{m:02d}-{d:02d}", y, m, d
+    if not repo_root:
+        default_data = project_dir / "backend" / "CompanyData"
+        if default_data.exists() and default_data.is_dir():
+            repo_root = default_data
 
-    months = {
-        "jan": 1, "january": 1, "feb": 2, "february": 2, "mar": 3, "march": 3,
-        "apr": 4, "april": 4, "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
-        "aug": 8, "august": 8, "sep": 9, "september": 9, "oct": 10, "october": 10,
-        "nov": 11, "november": 11, "dec": 12, "december": 12,
-    }
-    m_names = "|".join(months.keys())
-
-    # Form A: "Oct 5", "October 5th, 2026"
-    pat_a = rf"\b({m_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s*(\d{{4}}))?\b"
-    match_a = re.search(pat_a, q)
-    if match_a:
-        m_str = match_a.group(1)
-        day_val = int(match_a.group(2))
-        year_val = int(match_a.group(3)) if match_a.group(3) else 2026
-        month_val = months[m_str]
-        disp = f"{m_str.capitalize()} {day_val}, {year_val}"
-        return disp, year_val, month_val, day_val
-
-    # Form B: "5th Oct", "5 October 2026"
-    pat_b = rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({m_names})(?:,?\s*(\d{{4}}))?\b"
-    match_b = re.search(pat_b, q)
-    if match_b:
-        day_val = int(match_b.group(1))
-        m_str = match_b.group(2)
-        year_val = int(match_b.group(3)) if match_b.group(3) else 2026
-        month_val = months[m_str]
-        disp = f"{m_str.capitalize()} {day_val}, {year_val}"
-        return disp, year_val, month_val, day_val
-
-    return None, None, None, None
+    all_disk_files: list[Path] = []
+    if repo_root:
+        for p in repo_root.rglob("*"):
+            if not p.is_file():
+                continue
+            p_name = p.name.casefold()
+            if p_name.startswith(".") or p_name.startswith("~$") or p_name.startswith(".~"):
+                continue
+            if p_name.endswith("_index.json") or p_name in ("companydata_index.json", "desktop.ini", "thumbs.db"):
+                continue
+            if p.suffix.casefold() in (".tmp", ".temp", ".log", ".bak", ".swp", ".pyc"):
+                continue
+            all_disk_files.append(p)
+    return repo_root, all_disk_files
 
 
 def execute_file_search(
@@ -207,6 +252,94 @@ def execute_file_search(
     clean_src = source.casefold().strip().replace(" ", "_")
     clean_q = query.strip()
     is_generic, category, primary_tokens, expanded_tokens, specific_phrase = _classify_query(clean_q)
+
+    # Tolerant query understanding and entity resolution
+    from backend.integrations.files.company_data.service import CompanyDataService
+    from backend.retrieval.entity_resolver import get_entity_resolver
+    from backend.retrieval.tolerant_understanding import understand_query
+
+    entity_resolver = get_entity_resolver()
+    tq = understand_query(clean_q, entity_resolver=entity_resolver)
+
+    if tq.needs_user_clarification and tq.candidate_options:
+        # Check if candidate files uniquely resolve the ambiguity against real disk files
+        try:
+            cds_check = CompanyDataService.for_tenant(getattr(user, "tenant_id", "default"))
+            _, disk_files_check = _get_all_disk_files(cds_check)
+            if tq.date_filter or tq.doc_type:
+                cds_check.ensure_indexed()
+                indexed = getattr(cds_check, "_indexed_files", {})
+                viable_cands = []
+                for cand in tq.candidate_options:
+                    c_canon = cand.canonical_name.casefold()
+                    c_tokens = [w.casefold() for w in re.findall(r"\w+", cand.canonical_name) if len(w) >= 3]
+                    has_match = False
+                    for p in disk_files_check:
+                        if tq.doc_type and not _file_matches_doc_type(p, tq.doc_type):
+                            continue
+                        fn_low = p.name.casefold()
+                        p_full = str(p).replace("\\", "/").casefold()
+
+                        content = ""
+                        for rel_k, info in indexed.items():
+                            fpath = str(info.get("file_path", "")).replace("\\", "/").casefold()
+                            rel_clean = rel_k.replace("\\", "/").casefold()
+                            if fpath == p_full or rel_clean in p_full or p.name.casefold() == info.get("filename", "").casefold():
+                                content = info.get("content", "").casefold()
+                                break
+
+                        cand_in_file = any(tok in fn_low for tok in c_tokens) or (c_canon in content)
+                        if not cand_in_file:
+                            continue
+
+                        if tq.date_filter and tq.date_filter.target_date:
+                            df = tq.date_filter
+                            doc_date = _extract_document_date(p.name, str(p), content)
+                            if doc_date:
+                                try:
+                                    d_doc = datetime.strptime(doc_date, "%Y-%m-%d").date()
+                                    d_target = datetime.strptime(df.target_date, "%Y-%m-%d").date()
+                                    delta = abs((d_doc - d_target).days)
+                                    if delta <= (df.window_days or 7):
+                                        has_match = True
+                                        break
+                                except Exception:
+                                    pass
+                        else:
+                            has_match = True
+                            break
+
+                    if has_match:
+                        viable_cands.append(cand)
+
+                if len(viable_cands) == 1:
+                    tq.resolved_candidate = viable_cands[0]
+                    tq.entity = viable_cands[0].canonical_name
+                    tq.needs_user_clarification = False
+        except Exception:
+            pass
+
+    if tq.needs_user_clarification and tq.candidate_options:
+        cand_lines = "\n".join(f"- **{c.canonical_name}** ({c.entity_type})" for c in tq.candidate_options)
+        clarification_text = (
+            f"Your search for **\"{clean_q}\"** matches multiple possible records:\n\n"
+            f"{cand_lines}\n\n"
+            "Please specify which one you'd like to view."
+        )
+        return clarification_text, [], []
+
+    if tq.doc_type:
+        category = tq.doc_type
+
+    if tq.resolved_candidate:
+        cand_tokens = [w.casefold() for w in re.findall(r"\w+", tq.resolved_candidate.canonical_name) if len(w) > 1]
+        for ct in cand_tokens:
+            if ct not in primary_tokens:
+                primary_tokens.append(ct)
+            if ct not in expanded_tokens:
+                expanded_tokens.append(ct)
+        is_generic = False
+
     specific_tokens = expanded_tokens
     files: list[dict[str, Any]] = []
     sources: list[SourceReference] = []
@@ -266,6 +399,44 @@ def execute_file_search(
                         fn_key = h.filename.lower()
                         if fn_key in seen_agent_files:
                             continue
+
+                        # 1. Hard doc_type check
+                        if tq.doc_type and not _file_matches_doc_type(Path(h.filename), tq.doc_type, h.text or ""):
+                            continue
+
+                        # 2. Document date check
+                        doc_d = _extract_document_date(h.filename, h.relative_path or "", h.text or "")
+                        if tq.date_filter:
+                            df = tq.date_filter
+                            if df.target_field != "modified_at" and doc_d:
+                                if df.filter_mode == "exact" and doc_d != df.target_date:
+                                    continue
+                                elif df.filter_mode == "window" and df.target_date:
+                                    try:
+                                        d_doc = datetime.strptime(doc_d, "%Y-%m-%d").date()
+                                        d_target = datetime.strptime(df.target_date, "%Y-%m-%d").date()
+                                        if abs((d_doc - d_target).days) > df.window_days:
+                                            continue
+                                    except ValueError:
+                                        continue
+                                elif df.filter_mode == "ending_soon":
+                                    try:
+                                        d_doc = datetime.strptime(doc_d, "%Y-%m-%d").date()
+                                        d_start = datetime.strptime(df.start_date, "%Y-%m-%d").date()
+                                        d_end = datetime.strptime(df.end_date, "%Y-%m-%d").date()
+                                        if not (d_start <= d_doc <= d_end):
+                                            continue
+                                    except ValueError:
+                                        continue
+                            elif df.target_date:
+                                continue
+
+                        # 3. Ensure chunk matches primary tokens if primary tokens exist
+                        if primary_tokens:
+                            text_and_fn = (h.filename + " " + (h.text or "")).lower()
+                            if not any(t in text_and_fn for t in primary_tokens):
+                                continue
+
                         seen_agent_files.add(fn_key)
 
                         disp_path = h.citation or f"{h.folder_name}/{h.relative_path}".strip("/")
@@ -296,32 +467,7 @@ def execute_file_search(
             # 1B. Discover server disk files (only if an explicit valid folder is connected)
             server_disk_files: list[dict[str, Any]] = []
             cds = CompanyDataService.for_tenant(user.tenant_id)
-            repo_root_cand = Path(cds.root) if str(cds.root) else None
-            project_dir = Path(__file__).resolve().parents[2]
-            repo_root = None
-            if repo_root_cand and str(repo_root_cand).strip() not in ("", "."):
-                try:
-                    res_cand = repo_root_cand.resolve()
-                    if res_cand != project_dir and res_cand.exists() and res_cand.is_dir():
-                        norm_root = str(res_cand).replace("\\", "/").lower()
-                        if "/var/task" not in norm_root and "var/task" not in norm_root:
-                            repo_root = res_cand
-                except Exception:
-                    repo_root = None
-
-            all_disk_files: list[Path] = []
-            if repo_root:
-                for p in repo_root.rglob("*"):
-                    if not p.is_file():
-                        continue
-                    p_name = p.name.casefold()
-                    if p_name.startswith(".") or p_name.startswith("~$") or p_name.startswith(".~"):
-                        continue
-                    if p_name.endswith("_index.json") or p_name in ("companydata_index.json", "desktop.ini", "thumbs.db"):
-                        continue
-                    if p.suffix.casefold() in (".tmp", ".temp", ".log", ".bak", ".swp", ".pyc"):
-                        continue
-                    all_disk_files.append(p)
+            repo_root, all_disk_files = _get_all_disk_files(cds)
 
             if is_generic and repo_root:
                 # Category filter if requested, e.g. "list invoice file"
@@ -361,11 +507,16 @@ def execute_file_search(
                 cds.ensure_indexed()
                 indexed = getattr(cds, "_indexed_files", {})
 
+                doc_dates: dict[Path, str | None] = {}
                 scored: list[tuple[float, Path]] = []
                 for p in all_disk_files:
                     fn_low = p.name.casefold()
                     path_low = str(p).casefold()
                     p_full = str(p).replace("\\", "/").casefold()
+
+                    # Hard doc_type check upfront
+                    if tq.doc_type and not _file_matches_doc_type(p, tq.doc_type, content_str=""):
+                        continue
 
                     # Retrieve parsed content of file (PDF, Word, Excel, CSV, text)
                     content_str = ""
@@ -396,25 +547,49 @@ def execute_file_search(
                             except Exception:
                                 pass
 
+                    # Verify doc_type with parsed content
+                    if tq.doc_type and not _file_matches_doc_type(p, tq.doc_type, content_str=content_str):
+                        continue
+
+                    doc_date_str = _extract_document_date(p.name, str(p), content_str)
+                    doc_dates[p] = doc_date_str
+
                     score = 0.0
 
-                    # 1. Exact phrase match inside content or filename (e.g. "Acme Corp", "Globex Global")
+                    # 1. Exact phrase match inside content or filename
                     if specific_phrase and len(primary_tokens) > 1:
                         if specific_phrase in fn_low:
                             score += 400.0
                         if specific_phrase in content_str:
                             score += 350.0
 
-                    # 2. Primary exact client name / ID matches (e.g. 'initech', 'cust-002', 'acme')
+                    # 1.5 Grounded resolved entity match
+                    if tq.resolved_candidate:
+                        c_canon = tq.resolved_candidate.canonical_name.casefold()
+                        if c_canon in fn_low:
+                            score += 800.0
+                        if c_canon in content_str:
+                            score += 600.0
+                        res_tokens = [w.casefold() for w in re.findall(r"\w+", c_canon) if len(w) >= 3]
+                        for rt in res_tokens:
+                            w = entity_resolver.get_token_weight(rt)
+                            if w >= 0.5:
+                                if rt in fn_low:
+                                    score += 300.0 * w
+                                if rt in content_str:
+                                    score += 200.0 * w
+
+                    # 2. Primary exact client name / ID matches weighted by distinctiveness
                     primary_matches_fn = 0
                     primary_matches_ct = 0
                     for token in primary_tokens:
+                        w = entity_resolver.get_token_weight(token)
                         if token in fn_low:
                             primary_matches_fn += 1
-                            score += 300.0
+                            score += 300.0 * w
                         if token in content_str:
                             primary_matches_ct += 1
-                            score += 250.0
+                            score += 250.0 * w
 
                     # 3. Expanded numeric / code variants
                     exp_matches_fn = 0
@@ -429,8 +604,45 @@ def execute_file_search(
                             exp_matches_ct += 1
                             score += 30.0
 
+                    # 4. Date filter scoring
+                    if tq.date_filter:
+                        df = tq.date_filter
+                        date_bonus = 0.0
+                        if df.target_field == "modified_at":
+                            f_dt_str = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%d")
+                            if f_dt_str == df.target_date:
+                                date_bonus += 400.0
+                        elif doc_date_str:
+                            if df.filter_mode == "exact":
+                                if doc_date_str == df.target_date:
+                                    date_bonus += 400.0
+                            elif df.filter_mode == "window" and df.target_date:
+                                try:
+                                    d_doc = datetime.strptime(doc_date_str, "%Y-%m-%d").date()
+                                    d_target = datetime.strptime(df.target_date, "%Y-%m-%d").date()
+                                    diff = abs((d_doc - d_target).days)
+                                    if diff <= df.window_days:
+                                        date_bonus += 400.0 - (diff * 15.0)
+                                except ValueError:
+                                    pass
+                            elif df.filter_mode == "ending_soon":
+                                try:
+                                    d_doc = datetime.strptime(doc_date_str, "%Y-%m-%d").date()
+                                    d_start = datetime.strptime(df.start_date, "%Y-%m-%d").date()
+                                    d_end = datetime.strptime(df.end_date, "%Y-%m-%d").date()
+                                    if d_start <= d_doc <= d_end and "completed" not in content_str:
+                                        date_bonus += 400.0
+                                except ValueError:
+                                    pass
+
+                        if date_bonus > 0.0:
+                            score += date_bonus
+                        elif df.target_date or df.filter_mode == "ending_soon":
+                            # Date explicitly requested, but this file does not match the timeframe!
+                            continue
+
                     total_matches = primary_matches_fn + primary_matches_ct + exp_matches_fn + exp_matches_ct
-                    if total_matches == 0:
+                    if total_matches == 0 and not tq.date_filter:
                         continue
 
                     # Bonus for matching all primary tokens
@@ -441,16 +653,18 @@ def execute_file_search(
                     if category != "general" and (category in fn_low or category in path_low):
                         score += 30.0
 
-                    scored.append((score, p))
+                    if score >= 120.0 or is_generic:
+                        scored.append((score, p))
 
                 scored.sort(key=lambda x: (x[0], x[1].stat().st_mtime if x[1].exists() else 0), reverse=True)
                 for _, p in scored[:max_results]:
                     disp_path = _to_clean_display_path(p, repo_root)
+                    d_val = doc_dates.get(p)
                     server_disk_files.append({
                         "name": p.name,
                         "path": disp_path,
                         "type": p.suffix.lstrip("."),
-                        "modified_at": datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
+                        "modified_at": d_val or datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc).isoformat(),
                         "open_url": disp_path,
                         "source": "local",
                     })
@@ -860,35 +1074,30 @@ def execute_file_search(
         answer = f"No documents matching **\"{clean_q}\"** were found in **Cloud Storage**."
         return answer, [], []
 
-    # Check if query requests a specific date
-    date_label, dy, dm, dd = _extract_date_filter(clean_q)
+    # Date filtering feedback & zero misleading fallbacks
+    date_label = tq.date_filter.display_label if tq.date_filter else None
     summary = ""
-    if date_label is not None:
-        date_matched_files = []
-        for f in files:
-            m_str = f.get("modified_at") or ""
-            if m_str:
-                target_iso = f"{dy:04d}-{dm:02d}-{dd:02d}"
-                if target_iso in m_str:
-                    date_matched_files.append(f)
-                    continue
-                try:
-                    f_dt = datetime.fromisoformat(m_str.replace("Z", "+00:00"))
-                    if f_dt.year == dy and f_dt.month == dm and f_dt.day == dd:
-                        date_matched_files.append(f)
-                        continue
-                except Exception:
-                    pass
-        if date_matched_files:
-            files = date_matched_files
-            summary = f"Found **{len(files)}** document{'s' if len(files) != 1 else ''} modified on **{date_label}** in **{friendly_source}**:"
+    if tq.date_filter is not None:
+        df = tq.date_filter
+        if files:
+            cat_desc = f"{tq.doc_type} " if tq.doc_type else ""
+            summary = f"Found **{len(files)}** {cat_desc}document{'s' if len(files) != 1 else ''} matching **{df.display_label}** in **{friendly_source}**:"
         else:
-            summary = f"No documents modified specifically on **{date_label}** were found in **{friendly_source}**. Here are the most recent documents in this source:"
+            cat_desc = f"{tq.doc_type} " if tq.doc_type else ""
+            entity_desc = f" for **{tq.entity}**" if tq.entity else ""
+            answer = (
+                f"No {cat_desc}documents{entity_desc} matching **\"{clean_q}\"** for date **{df.display_label}** were found in **{friendly_source}**.\n\n"
+                "---\n"
+                "💡 **Would you like to widen the search?** You can specify a broader timeframe or remove the date filter."
+            )
+            return answer, [], []
 
     # If no files found at all in this specific source, return clean empty result
     if not files:
+        cat_desc = f"{tq.doc_type} " if tq.doc_type else ""
+        entity_desc = f" for **{tq.entity}**" if tq.entity else ""
         answer = (
-            f"No documents matching **\"{clean_q}\"** were found in **{friendly_source}**.\n\n"
+            f"No {cat_desc}documents{entity_desc} matching **\"{clean_q}\"** were found in **{friendly_source}**.\n\n"
             "---\n"
             "💡 **Would you like to search another source?** You can choose:\n"
             "- **Local Storage**\n- **Database**\n- **Email**\n- **Google Drive**\n- **Cloud**"

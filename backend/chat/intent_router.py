@@ -160,7 +160,7 @@ class IntentRouter:
             )
 
         # 7. Check if query is conversational general Q&A (e.g. "what is artificial intelligence", "can you tell me a story")
-        if not re.search(r"\b(invoice|invoices|inv|contract|contracts|customer|customers|employee|employees|database|record|records|ledger|file|files|document|documents|balance|salary|email|emails|gmail|inbox|mail|message|messages|nda|pur|emp|po|prj)\b", q_lower):
+        if not re.search(r"\b(project|projects|invoice|invoices|inv|contract|contracts|customer|customers|employee|employees|database|record|records|ledger|file|files|document|documents|balance|salary|email|emails|gmail|inbox|mail|message|messages|nda|pur|emp|po|prj)\b", q_lower):
             # No enterprise data keywords present
             return IntentDecision(
                 ChatIntent.CONVERSATION,
@@ -169,16 +169,14 @@ class IntentRouter:
                 suggested_action="chatgpt_conversational_response",
             )
 
-        # 8. Ambiguous queries mentioning enterprise concepts:
-        # If it's phrased conversationally (e.g. "tell me about our customers", "what is our policy on leave")
-        # without explicit search action, check if it can be answered from company memory or general chat.
-        if not has_action_verb and any(w in q_lower for w in ("what", "how", "who", "tell me", "explain", "why")):
-            return IntentDecision(
-                ChatIntent.CONVERSATION,
-                confidence=0.75,
-                reason="Conversational inquiry regarding company domain or policies",
-                suggested_action="company_memory_conversational_response",
-            )
+        # 8. Enterprise queries (e.g. "tell me about project atlas", "what is project atlas", "status of invoice 2")
+        # Route to enterprise data and knowledge orchestrator
+        return IntentDecision(
+            ChatIntent.FILE_OR_DATA_QUERY,
+            confidence=0.85,
+            reason="Contains business keywords; routing to enterprise data pipeline",
+            suggested_action="execute_file_or_data_pipeline",
+        )
 
         # Default fallback: focused file or data retrieval
         return IntentDecision(

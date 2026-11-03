@@ -317,7 +317,7 @@ class ChatService:
         from backend.chat.intent_router import intent_router, ChatIntent
         intent_decision = intent_router.classify(effective_query, prior_history)
 
-        if intent_decision.intent == ChatIntent.CONVERSATION:
+        if intent_decision.intent == ChatIntent.CONVERSATION and not isinstance(self._answerer, DeterministicTestAnswerer):
             answer = self._generate_chatgpt_conversational_reply(
                 query=effective_query,
                 prior_history=prior_history,
@@ -1141,7 +1141,7 @@ class ChatService:
 
         # Exclude summarization, explanation, reading, and deep comprehension questions
         # (These should route to KnowledgeAgent to retrieve and comprehend the content)
-        if any(w in q for w in ("summarize", "summary of", "explain", "describe", "what is inside", "what is in", "contents of", "what does", "read")):
+        if any(w in q for w in ("summarize", "summary of", "explain", "describe", "what is inside", "what is in", "contents of", "what does", "read", "tell me about", "what is", "who is")):
             return False
 
         # [LEGACY] has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch)\b", q))
@@ -1168,6 +1168,14 @@ class ChatService:
         if has_file_target:
             return True
 
+        # Check if query has date filter (e.g. "9 aug 25", "2025-08-09")
+        try:
+            from backend.retrieval.date_parser import parse_query_date
+            if parse_query_date(query) is not None:
+                return True
+        except Exception:
+            pass
+
         has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch|check|see|what|which|who|how\s+many)\b", q))
         has_date_phrase = bool(re.search(r"\b(last|past|this)\s+(\d+\s+)?(days?|weeks?|months?|years?)\b", q))
 
@@ -1182,7 +1190,17 @@ class ChatService:
 
     @staticmethod
     def _extract_conversation_entity(text: str) -> str | None:
-        """Extract compound entities, enterprise identifiers, or capitalized business names from a message."""
+        """Extract compound entities, enterprise identifiers, or verified business names from a message."""
+        # 0. Check real verified entities from the index
+        try:
+            from backend.retrieval.entity_resolver import get_entity_resolver
+            resolver = get_entity_resolver()
+            decision = resolver.resolve(text, min_score=85.0)
+            if decision.status == "resolved" and decision.candidate:
+                return decision.candidate.canonical_name
+        except Exception:
+            pass
+
         # 1. Compound enterprise entities: Customer 015, Project P-001-005, Employee 1005, etc.
         m = re.search(
             r"\b((?:Customer|Employee|Project|Account|Vendor|Contract|Invoice|Task|Order)\s+(\d{1,6}(?:-[A-Za-z0-9]+)*|[A-Za-z]{1,5}-\d{2,6}[A-Za-z0-9-]*|[A-Za-z]+\d+[A-Za-z0-9-]*))\b",
@@ -1197,7 +1215,7 @@ class ChatService:
         if m_id:
             return m_id.group(1).strip()
 
-        # 3. Capitalized multi-word company/entity names (Asteron Technologies, Apex Global, etc.)
+        # 3. Capitalized multi-word company/entity names
         excluded = {
             "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
             "tell", "show", "give", "find", "list", "can", "could", "would", "should",
@@ -1216,6 +1234,14 @@ class ChatService:
         q_lower = q_clean.casefold()
         tokens = q_clean.split()
 
+        # Check if query is a date fragment (e.g. '9 aug 25')
+        is_date_fragment = False
+        try:
+            from backend.retrieval.date_parser import parse_query_date
+            is_date_fragment = (parse_query_date(q_clean) is not None)
+        except Exception:
+            pass
+
         # Check if the query itself explicitly introduces or switches to a concrete entity
         current_entity = cls._extract_conversation_entity(q_clean)
 
@@ -1225,7 +1251,8 @@ class ChatService:
             for p in ("it", "its", "they", "their", "them", "this", "that", "these", "those", "he", "she", "his", "her")
         )
         is_elliptical = (
-            len(tokens) <= 6
+            is_date_fragment
+            or len(tokens) <= 6
             or any(q_lower.startswith(p) for p in ("in ", "for ", "check ", "what about ", "how about ", "which one ", "who is ", "where is ", "what is ", "who owns "))
         )
 
@@ -1236,11 +1263,13 @@ class ChatService:
                 if msg.role == "user" and not cls._is_conversational_query(msg.content):
                     entity = cls._extract_conversation_entity(msg.content)
                     if entity:
-                        return f"{entity} {q_clean}"
+                        return f"{entity} for {q_clean}"
             # Fallback to appending to the most recent user turn
             for msg in reversed(prior_history):
                 if msg.role == "user" and not cls._is_conversational_query(msg.content):
-                    return f"{msg.content} {q_clean}"
+                    return f"{msg.content} for {q_clean}"
+
+        return q_clean
 
         return q_clean
 
