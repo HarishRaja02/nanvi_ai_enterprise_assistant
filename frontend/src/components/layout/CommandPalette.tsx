@@ -16,7 +16,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { View } from "../../lib/access";
+import { HIDDEN_VIEWS, type View } from "../../lib/access";
 
 interface Props {
   open: boolean;
@@ -36,6 +36,7 @@ interface PaletteItem {
   title: string;
   description: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
+  targetView?: View;
   run: () => void;
 }
 
@@ -108,6 +109,7 @@ export function CommandPalette({
         title: "Knowledge Vaults",
         description: "Explore indexed contracts, policies, and documents",
         icon: BookOpen,
+        targetView: "Knowledge",
         run: () => {
           onNavigate("Knowledge");
           onClose();
@@ -141,6 +143,7 @@ export function CommandPalette({
         title: "Finance & Payables",
         description: "Invoices, forecasts, and expense compliance",
         icon: BarChart3,
+        targetView: "Finance",
         run: () => {
           onNavigate("Finance");
           onClose();
@@ -152,6 +155,7 @@ export function CommandPalette({
         title: "HR & People",
         description: "Handbook policies, vacation, and headcount",
         icon: Users,
+        targetView: "HR",
         run: () => {
           onNavigate("HR");
           onClose();
@@ -239,16 +243,20 @@ export function CommandPalette({
   }, [onClose, onNavigate, onAsk, onNewConversation, ragEnabled, onToggleRag, theme, onToggleTheme]);
 
   // Filter items
+  const visibleItems = useMemo(() => {
+    return items.filter((item) => !item.targetView || !HIDDEN_VIEWS.includes(item.targetView));
+  }, [items]);
+
   const filtered = useMemo(() => {
-    if (!query.trim()) return items;
+    if (!query.trim()) return visibleItems;
     const q = query.toLowerCase();
-    return items.filter(
+    return visibleItems.filter(
       (item) =>
         item.title.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q) ||
         item.category.toLowerCase().includes(q),
     );
-  }, [items, query]);
+  }, [visibleItems, query]);
 
   useEffect(() => {
     setSelectedIndex(0);

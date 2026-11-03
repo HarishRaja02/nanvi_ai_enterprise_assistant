@@ -53,8 +53,11 @@ export function permissionsFor(roles: readonly string[]): Permission[] {
   return [...set];
 }
 
-export type NavEntry = { id: View; label: string; permission?: Permission };
+export type NavEntry = { id: View; label: string; permission?: Permission; hidden?: boolean };
 export type NavGroup = { id: string; label?: string; items: NavEntry[] };
+
+/** Modules hidden from the frontend navigation and entrypoints while preserving their implementation. */
+export const HIDDEN_VIEWS: readonly View[] = ["Knowledge", "Finance", "HR", "Audit"];
 
 /** Only modules that exist in the app. Grouped by the job they do for the user. */
 export const NAV_GROUPS: NavGroup[] = [
@@ -62,7 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "sources", label: "Sources",
     items: [
-      { id: "Knowledge", label: "Knowledge", permission: "FILE_READ" },
+      { id: "Knowledge", label: "Knowledge", permission: "FILE_READ", hidden: true },
       { id: "Email", label: "Email", permission: "EMAIL_READ" },
       { id: "Data", label: "Data", permission: "DATABASE_READ" },
     ],
@@ -71,8 +74,8 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "departments", label: "Departments",
     items: [
-      { id: "Finance", label: "Finance", permission: "FINANCE_READ" },
-      { id: "HR", label: "HR", permission: "HR_READ" },
+      { id: "Finance", label: "Finance", permission: "FINANCE_READ", hidden: true },
+      { id: "HR", label: "HR", permission: "HR_READ", hidden: true },
     ],
   },
   {
@@ -84,7 +87,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: "governance", label: "Governance",
     items: [
-      { id: "Audit", label: "Audit", permission: "AUDIT_READ" },
+      { id: "Audit", label: "Audit", permission: "AUDIT_READ", hidden: true },
       { id: "Settings", label: "Settings", permission: "USER_MANAGE" },
       { id: "Logs", label: "Logs", permission: "SYSTEM_LOGS_READ" },
     ],
@@ -92,11 +95,18 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 
-export function visibleNav(permissions: readonly Permission[], canAccessAdmin: boolean = false): NavGroup[] {
+export function visibleNav(
+  permissions: readonly Permission[],
+  canAccessAdmin: boolean = false,
+  includeHidden: boolean = false,
+): NavGroup[] {
   return NAV_GROUPS
     .map((g) => ({
       ...g,
       items: g.items.filter((i) => {
+        if (!includeHidden && (i.hidden || HIDDEN_VIEWS.includes(i.id))) {
+          return false;
+        }
         if (i.id === "AdminDashboard") {
           return canAccessAdmin || permissions.includes("ADMIN_ACCESS");
         }

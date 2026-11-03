@@ -31,8 +31,8 @@ const TOPICS: HelpTopic[] = [
     title: "Company file search",
     text: "Use the company file search control in the composer to turn document search on or off for a question.",
     steps: ["Turn company file search on in the composer.", "Type a question about company documents.", "Send it to get an answer grounded in files."],
-    targetView: "Knowledge",
-    actionLabel: "Go to Knowledge",
+    targetView: "Chat",
+    actionLabel: "Open Assistant",
   },
   {
     title: "Sources and answers",
@@ -50,7 +50,7 @@ const TOPICS: HelpTopic[] = [
   },
   {
     title: "Reports and other tools",
-    text: "Open More tools for the Knowledge, Email, Data, Reports, and department pages available to your account. Settings stays in the main navigation.",
+    text: "Open More tools for the Email, Data, and Reports pages available to your account. Settings stays in the main navigation.",
     steps: ["Open More tools in the navigation.", "Choose a page available to your account.", "Use its search or actions to explore your data."],
     targetView: "Reports",
     actionLabel: "Go to Reports",
