@@ -80,8 +80,8 @@ class KeywordRetriever:
         self._doc_lens.pop(chunk_id, None)
         self._chunks.pop(chunk_id, None)
 
-    def search(self, query: str, top_k: int) -> list[RetrievalHit]:
-        """Perform BM25 search across indexed chunks."""
+    def search(self, query: str, top_k: int, min_score: float = 0.20) -> list[RetrievalHit]:
+        """Perform BM25 search across indexed chunks with minimum score threshold."""
         query_tokens = _tokens(query)
         if not query_tokens or top_k <= 0 or not self._chunks:
             return []
@@ -137,8 +137,8 @@ class KeywordRetriever:
                 bm25_score *= (1.0 + 0.5 * coverage_ratio)
                 scored.append((bm25_score, cid))
             elif any(t in fn_toks for t in query_tokens):
-                # Filename-only match: low baseline score
-                scored.append((0.05, cid))
+                # Filename-only match: require at least 1 significant token match
+                scored.append((0.25, cid))
 
-        best = nlargest(top_k, scored, key=lambda item: (item[0], item[1]))
+        best = [(s, cid) for s, cid in nlargest(top_k, scored, key=lambda item: (item[0], item[1])) if s >= min_score]
         return [RetrievalHit(self._chunks[cid], score, "keyword") for score, cid in best]

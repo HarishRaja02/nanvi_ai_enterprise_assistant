@@ -142,6 +142,7 @@ class FileMetadataIndex:
         query: str,
         department_filter: str | None = None,
         limit: int = 10,
+        min_score: float = 20.0,
     ) -> list[tuple[float, FileRecord]]:
         """Search files using deterministic filename, extension, path, and keyword matching.
         
@@ -228,7 +229,7 @@ class FileMetadataIndex:
                 if rec.file_type.casefold() in q_lower:
                     score += 8.0
 
-                if score > 0.0:
+                if score >= min_score:
                     scored.append((score, rec))
 
             scored.sort(key=lambda item: item[0], reverse=True)
