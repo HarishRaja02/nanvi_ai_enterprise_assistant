@@ -8,7 +8,9 @@ import logging
 import os
 import sqlite3
 import threading
+import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,17 +53,47 @@ class UserLogStore:
         self._lock = threading.Lock()
         self._initialized = False
         self._memory_conn: sqlite3.Connection | None = None
+        self._pool = None
+        self._cached_dates: list[str] | None = None
+        self._cached_dates_time: float = 0.0
+
+        if self._dsn:
+            try:
+                from psycopg_pool import ConnectionPool
+                from psycopg.rows import dict_row
+                self._pool = ConnectionPool(
+                    self._dsn,
+                    min_size=1,
+                    max_size=5,
+                    timeout=5,
+                    kwargs={"row_factory": dict_row},
+                    open=True,
+                )
+            except Exception as exc:
+                logger.warning("Could not initialize connection pool for user logs (%s); fallback to direct connect.", exc)
+                self._pool = None
 
     @property
     def _table(self) -> str:
-        return "public.user_query_logs" if self._dsn else "user_query_logs"
+        return "public.user_query_logs" if (self._pool or self._dsn) else "user_query_logs"
 
+    @contextmanager
     def _connect(self):
+        if self._pool:
+            try:
+                with self._pool.connection() as conn:
+                    yield conn
+                return
+            except Exception as exc:
+                logger.warning("Pooled PostgreSQL query failed (%s); trying direct connection.", exc)
+
         if self._dsn:
             try:
                 import psycopg
                 from psycopg.rows import dict_row
-                return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=5)
+                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=4) as conn:
+                    yield conn
+                return
             except Exception as exc:
                 logger.warning("PostgreSQL user logs connection failed (%s); falling back to local SQLite.", exc)
                 self._dsn = ""
@@ -74,14 +106,20 @@ class UserLogStore:
             if self._memory_conn is None:
                 self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
                 self._memory_conn.row_factory = sqlite3.Row
-            return self._memory_conn
+            conn = self._memory_conn
 
         conn.row_factory = sqlite3.Row
         try:
             conn.execute("PRAGMA journal_mode=WAL")
         except Exception:
             pass
-        return conn
+
+        try:
+            with conn:
+                yield conn
+        finally:
+            if conn != self._memory_conn:
+                conn.close()
 
     def initialize(self) -> None:
         with self._lock:
@@ -203,6 +241,9 @@ class UserLogStore:
                         ),
                     )
                     conn.commit()
+            with self._lock:
+                if self._cached_dates is not None and log_date not in self._cached_dates:
+                    self._cached_dates.insert(0, log_date)
             return log_id
         except Exception as exc:
             logger.error("Failed to insert user query log: %s", exc)
@@ -210,8 +251,15 @@ class UserLogStore:
 
     def get_available_dates(self) -> list[str]:
         """Return distinct dates (DD-MM-YYYY) in descending order, guaranteeing today is included."""
-        self.initialize()
         today = datetime.now(timezone.utc).strftime("%d-%m-%Y")
+        now_ts = time.time()
+        with self._lock:
+            if self._cached_dates is not None and (now_ts - self._cached_dates_time < 30.0):
+                if today not in self._cached_dates:
+                    self._cached_dates.insert(0, today)
+                return list(self._cached_dates)
+
+        self.initialize()
         dates: set[str] = {today}
 
         try:
@@ -239,6 +287,9 @@ class UserLogStore:
 
         # Sort descending by date (newest first)
         sorted_dates = sorted(dates, key=_parse_date_key, reverse=True)
+        with self._lock:
+            self._cached_dates = list(sorted_dates)
+            self._cached_dates_time = now_ts
         return sorted_dates
 
     def get_logs(

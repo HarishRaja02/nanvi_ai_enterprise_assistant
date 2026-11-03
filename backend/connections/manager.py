@@ -99,6 +99,7 @@ class ConnectionManager:
         self._sqlite_path = sqlite_path
         self._sqlite_lock = threading.Lock()
         self._sqlite_conn: sqlite3.Connection | None = None
+        self._pg_pool = None
 
         self._init_storage()
         self._audit = audit_writer or ConnectionAuditWriter(self._database_url, execute_fn=self._execute)
@@ -114,6 +115,20 @@ class ConnectionManager:
                         cur.execute("SELECT 1;")
                 run_connections_migrations(self._database_url)
                 self._use_postgres = True
+                try:
+                    from psycopg_pool import ConnectionPool
+                    from psycopg.rows import dict_row
+                    self._pg_pool = ConnectionPool(
+                        self._database_url,
+                        min_size=1,
+                        max_size=5,
+                        timeout=5,
+                        kwargs={"autocommit": True, "row_factory": dict_row},
+                        open=True,
+                    )
+                except Exception as p_err:
+                    logger.warning("Could not initialize connection pool for connections (%s); direct fallback.", p_err)
+                    self._pg_pool = None
                 logger.info("ConnectionManager initialized with PostgreSQL backend.")
                 return
             except Exception as exc:
@@ -141,6 +156,14 @@ class ConnectionManager:
 
     def _execute(self, pg_sql: str, sqlite_sql: str, params: tuple[Any, ...]) -> None:
         if self._use_postgres:
+            if self._pg_pool:
+                try:
+                    with self._pg_pool.connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(pg_sql, params)
+                    return
+                except Exception as exc:
+                    logger.warning("Pooled execute failed (%s); trying direct connect.", exc)
             import psycopg
             with psycopg.connect(self._database_url, autocommit=True, connect_timeout=5) as conn:
                 with conn.cursor() as cur:
@@ -153,6 +176,14 @@ class ConnectionManager:
 
     def _query(self, pg_sql: str, sqlite_sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
         if self._use_postgres:
+            if self._pg_pool:
+                try:
+                    with self._pg_pool.connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(pg_sql, params)
+                            return list(cur.fetchall())
+                except Exception as exc:
+                    logger.warning("Pooled query failed (%s); trying direct connect.", exc)
             import psycopg
             from psycopg.rows import dict_row
             with psycopg.connect(self._database_url, connect_timeout=5, row_factory=dict_row) as conn:

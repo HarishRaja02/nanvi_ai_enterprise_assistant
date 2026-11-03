@@ -21,9 +21,18 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
   const [categories, setCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedScope, setSelectedScope] = useState<string>("all");
   const [testingId, setTestingId] = useState<string | null>(null);
+
+  // Debounce search to prevent UI lag on rapid typing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Modals & Drawer State
   const [connectProvider, setConnectProvider] = useState<ProviderPublic | null>(null);
@@ -85,8 +94,8 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
     return (connections || []).filter((c) => {
       if (!c) return false;
       if (selectedScope !== "all" && c.scope_level !== selectedScope) return false;
-      if (search) {
-        const q = search.toLowerCase();
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
         const name = (c.display_name || "").toLowerCase();
         const prov = (c.provider || "").toLowerCase();
         const acc = (c.account_identifier || "").toLowerCase();
@@ -94,7 +103,7 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       }
       return true;
     });
-  }, [connections, selectedScope, search]);
+  }, [connections, selectedScope, debouncedSearch]);
 
   // Filtered providers catalog
   const filteredProviders = useMemo(() => {
@@ -108,8 +117,8 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       if (selectedCategory !== "All" && !cats.includes(selectedCategory)) {
         return false;
       }
-      if (search) {
-        const q = search.toLowerCase();
+      if (debouncedSearch) {
+        const q = debouncedSearch.toLowerCase();
         const name = (p.name || "").toLowerCase();
         const desc = (p.description || "").toLowerCase();
         const cat = cats.join(" ").toLowerCase();
@@ -117,7 +126,7 @@ export function ConnectionsHub({ api, canManageOrg }: Props) {
       }
       return true;
     });
-  }, [providers, selectedCategory, search]);
+  }, [providers, selectedCategory, debouncedSearch]);
 
   return (
     <div

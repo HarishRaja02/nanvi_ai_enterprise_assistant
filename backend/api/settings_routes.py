@@ -165,7 +165,7 @@ def _resolve_requested_path(path: str) -> Path:
 
 
 def _folder_stats(folder_path: str) -> dict:
-    """Return basic stats about a folder."""
+    """Return basic stats about a folder quickly without recursive freeze."""
     if not folder_path or "/var/task" in folder_path.replace("\\", "/").lower():
         return {"exists": False, "folder_count": 0, "file_count": 0}
     p = Path(folder_path)
@@ -175,13 +175,17 @@ def _folder_stats(folder_path: str) -> dict:
     folder_count = 0
     file_count = 0
     try:
-        for entry in p.rglob("*"):
-            if entry.name.startswith(".") or entry.name.startswith("~$"):
-                continue
-            if entry.is_dir():
-                folder_count += 1
-            elif entry.is_file():
-                file_count += 1
+        # Avoid unbounded deep traversal of hidden/massive folders (like venv or node_modules)
+        for root, dirs, files in os.walk(folder_path):
+            dirs[:] = [
+                d for d in dirs
+                if not d.startswith(".")
+                and d.lower() not in ("node_modules", "venv", ".git", "__pycache__", "dist", "build", "coverage", ".pytest_cache")
+            ]
+            folder_count += len(dirs)
+            file_count += sum(1 for f in files if not f.startswith(".") and not f.startswith("~$"))
+            if file_count > 25000:
+                break
     except (PermissionError, OSError):
         pass
     return {"exists": True, "folder_count": folder_count, "file_count": file_count}

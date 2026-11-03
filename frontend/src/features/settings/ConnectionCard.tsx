@@ -13,7 +13,7 @@ type ActiveConnectionCardProps = {
   testing?: boolean;
 };
 
-export function ActiveConnectionCard({
+export const ActiveConnectionCard = React.memo(function ActiveConnectionCard({
   connection,
   onManage,
   onTest,
@@ -220,7 +220,7 @@ export function ActiveConnectionCard({
       </div>
     </div>
   );
-}
+});
 
 type ProviderCatalogCardProps = {
   provider: ProviderPublic;
@@ -228,7 +228,7 @@ type ProviderCatalogCardProps = {
   onConnect: (provider: ProviderPublic) => void;
 };
 
-export function ProviderCatalogCard({ provider, isConnected, onConnect }: ProviderCatalogCardProps) {
+export const ProviderCatalogCard = React.memo(function ProviderCatalogCard({ provider, isConnected, onConnect }: ProviderCatalogCardProps) {
   const isAvailable = Boolean(provider?.available);
   const isComingSoon =
     provider?.available_reason === "coming_soon" ||
@@ -401,4 +401,4 @@ export function ProviderCatalogCard({ provider, isConnected, onConnect }: Provid
       </div>
     </div>
   );
-}
+});

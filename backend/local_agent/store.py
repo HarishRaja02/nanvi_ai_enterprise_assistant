@@ -58,6 +58,7 @@ class LocalAgentStore:
 
         # In-memory fast cache: {(tenant_id, user_id): dict}
         self._data: dict[tuple[str, str], dict[str, Any]] = {}
+        self._cache_ts: dict[tuple[str, str], float] = {}
         self._load_local_file()
         if self._dsn:
             self._init_db()
@@ -124,6 +125,10 @@ class LocalAgentStore:
     def _load_key(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Fetch fresh state for a tenant/user from PostgreSQL or memory."""
         k = self._key(tenant_id, user_id)
+        now_ts = time.time()
+        if k in self._data and (now_ts - self._cache_ts.get(k, 0.0) < 3.0):
+            return self._data[k]
+
         if self._dsn:
             try:
                 import psycopg
@@ -142,6 +147,7 @@ class LocalAgentStore:
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
                         }
+                        self._cache_ts[k] = now_ts
                         return self._data[k]
 
                     # Tenant fallback: find most recent agent data for this tenant
@@ -158,6 +164,7 @@ class LocalAgentStore:
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
                         }
+                        self._cache_ts[k] = now_ts
                         return self._data[k]
 
                     # Global demo fallback: if tenant doesn't match, return most recently updated agent row
@@ -173,6 +180,7 @@ class LocalAgentStore:
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
                         }
+                        self._cache_ts[k] = now_ts
                         return self._data[k]
             except Exception as exc:
                 logger.debug("PostgreSQL load error for %s: %s", k, exc)
@@ -193,6 +201,7 @@ class LocalAgentStore:
         """Persist state for a tenant/user to PostgreSQL and local file."""
         k = self._key(tenant_id, user_id)
         self._data[k] = val
+        self._cache_ts[k] = time.time()
         if self._dsn:
             try:
                 import psycopg

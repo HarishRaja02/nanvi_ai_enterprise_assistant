@@ -20,23 +20,28 @@ export function CompanyFolderPicker({ api }: Props) {
   const [showAdvancedCli, setShowAdvancedCli] = useState(false);
 
   const rapidPollRef = useRef<number | null>(null);
+  const lastDispatchedRef = useRef<string>("");
 
   const fetchStatus = useCallback(async () => {
     try {
       const res = await api.getLocalAgentStatus();
       setAgentStatus(res);
-      // Dispatch update so other components (e.g. useCompanyFolder) update immediately
+      // Only dispatch update if folder state actually changed to avoid constant root App re-renders
       const primary = res.connected_folders && res.connected_folders.length > 0 ? res.connected_folders[0] : null;
-      window.dispatchEvent(
-        new CustomEvent("nanvi:company-folder-updated", {
-          detail: {
-            path: primary ? primary.folder_path : "",
-            exists: Boolean(primary),
-            folder_count: res.connected_folders ? res.connected_folders.length : 0,
-            file_count: res.total_files || 0,
-          },
-        })
-      );
+      const path = primary ? primary.folder_path : "";
+      const exists = Boolean(primary);
+      const folder_count = res.connected_folders ? res.connected_folders.length : 0;
+      const file_count = res.total_files || 0;
+      const signature = `${path}|${exists}|${folder_count}|${file_count}`;
+
+      if (lastDispatchedRef.current !== signature) {
+        lastDispatchedRef.current = signature;
+        window.dispatchEvent(
+          new CustomEvent("nanvi:company-folder-updated", {
+            detail: { path, exists, folder_count, file_count },
+          })
+        );
+      }
       return res;
     } catch {
       return null;
@@ -54,13 +59,13 @@ export function CompanyFolderPicker({ api }: Props) {
     };
   }, [fetchStatus]);
 
-  // Smooth polling: 1500ms when waiting for connection/syncing, 3500ms when online and idle
+  // Polling: 4000ms when waiting for connection/syncing, 8000ms when online and idle
   useEffect(() => {
     let timer: NodeJS.Timeout;
 
     const scheduleNext = () => {
       const isOnline = Boolean(agentStatus?.is_online);
-      const delay = isOnline ? 3500 : 1500;
+      const delay = isOnline ? 8000 : 4000;
       timer = setTimeout(() => {
         void fetchStatus().then(() => {
           scheduleNext();

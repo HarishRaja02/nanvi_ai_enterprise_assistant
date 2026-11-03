@@ -31,10 +31,19 @@ export function UserLogsPage({ api }: Props) {
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [search, setSearch] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
   const [userFilter, setUserFilter] = useState<string>("all");
   const [selectedLog, setSelectedLog] = useState<UserLogEntry | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Debounce search input to avoid spamming the backend on each keystroke
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // 1. Fetch available dates partitioned by day
   const fetchDates = useCallback(async () => {
@@ -42,11 +51,12 @@ export function UserLogsPage({ api }: Props) {
       const res = await api.getUserLogDates();
       setDates(res.dates || []);
       setTodayDate(res.today || "");
-      if (!selectedDate && res.today) {
-        setSelectedDate(res.today);
-      } else if (!selectedDate && res.dates && res.dates.length > 0) {
-        setSelectedDate(res.dates[0]);
-      }
+      setSelectedDate((curr) => {
+        if (curr) return curr;
+        if (res.today) return res.today;
+        if (res.dates && res.dates.length > 0) return res.dates[0];
+        return "";
+      });
     } catch (err: any) {
       console.warn("Could not load log dates:", err);
       // Fallback today date if offline or error
@@ -57,9 +67,9 @@ export function UserLogsPage({ api }: Props) {
       const fallbackToday = `${dd}-${mm}-${yyyy}`;
       setDates([fallbackToday]);
       setTodayDate(fallbackToday);
-      if (!selectedDate) setSelectedDate(fallbackToday);
+      setSelectedDate((curr) => curr || fallbackToday);
     }
-  }, [api, selectedDate]);
+  }, [api]);
 
   // 2. Fetch logs matching current date, search, and user filter
   const fetchLogs = useCallback(
@@ -71,7 +81,7 @@ export function UserLogsPage({ api }: Props) {
       try {
         const res = await api.getUserLogs({
           date: selectedDate || undefined,
-          search: search.trim() || undefined,
+          search: debouncedSearch.trim() || undefined,
           user_id: userFilter !== "all" ? userFilter : undefined,
           limit: 200,
         });
@@ -86,7 +96,7 @@ export function UserLogsPage({ api }: Props) {
         setRefreshing(false);
       }
     },
-    [api, selectedDate, search, userFilter]
+    [api, selectedDate, debouncedSearch, userFilter]
   );
 
   // Initial load
@@ -98,7 +108,7 @@ export function UserLogsPage({ api }: Props) {
     if (selectedDate) {
       fetchLogs();
     }
-  }, [selectedDate, search, userFilter, fetchLogs]);
+  }, [selectedDate, debouncedSearch, userFilter, fetchLogs]);
 
   // Escape key closes modal
   useEffect(() => {

@@ -11,7 +11,7 @@ type BrandLogoProps = {
  * High-fidelity, official brand vector logos for enterprise SaaS providers & individual services.
  * Designed according to official brand guidelines with accurate geometry, color palettes and aspect ratios.
  */
-export function BrandLogo({ name, size = 24, className = "", style = {} }: BrandLogoProps) {
+export const BrandLogo = React.memo(function BrandLogo({ name, size = 24, className = "", style = {} }: BrandLogoProps) {
   const key = (name || "").toLowerCase().trim();
 
   // 1. Google Workspace
@@ -404,4 +404,4 @@ export function BrandLogo({ name, size = 24, className = "", style = {} }: Brand
       {initial}
     </div>
   );
-}
+});

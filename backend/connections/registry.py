@@ -192,6 +192,8 @@ class ProviderRegistry:
     def __init__(self) -> None:
         self._providers: dict[str, BaseProvider] = {}
         self._catalog: dict[str, dict[str, Any]] = {}
+        self._cached_list_all: list[ProviderPublic] | None = None
+        self._cached_categories: list[str] | None = None
 
         # Load phase-2 catalog entries
         for entry in _CATALOG_ENTRIES:
@@ -210,6 +212,8 @@ class ProviderRegistry:
         self._providers[meta.id] = provider
         # Remove from catalog-only if it was there
         self._catalog.pop(meta.id, None)
+        self._cached_list_all = None
+        self._cached_categories = None
         logger.info("Registered connection provider: %s (%s)", meta.id, meta.name)
 
     def get_provider(self, provider_id: str) -> BaseProvider | None:
@@ -222,6 +226,9 @@ class ProviderRegistry:
         Code-backed providers use their metadata; catalog-only entries
         appear as unavailable ("Coming soon").
         """
+        if self._cached_list_all is not None:
+            return self._cached_list_all
+
         result: list[ProviderPublic] = []
 
         # Code-backed providers first
@@ -261,10 +268,14 @@ class ProviderRegistry:
                     supported_services=supported_services,
                 ))
 
+        self._cached_list_all = result
         return result
 
     def get_categories(self) -> list[str]:
         """Return all unique enterprise categories across all providers."""
+        if self._cached_categories is not None:
+            return self._cached_categories
+
         preferred_order = [
             "AI / LLM",
             "Email",
@@ -288,7 +299,9 @@ class ProviderRegistry:
         # Order by preferred enterprise ordering, then any additional alphabetical
         ordered = [c for c in preferred_order if c in cats]
         remainder = sorted(c for c in cats if c not in preferred_order)
-        return ordered + remainder
+        final_categories = ordered + remainder
+        self._cached_categories = final_categories
+        return final_categories
 
     @property
     def provider_ids(self) -> list[str]:
