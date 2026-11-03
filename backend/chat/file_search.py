@@ -254,12 +254,17 @@ def execute_file_search(
     is_generic, category, primary_tokens, expanded_tokens, specific_phrase = _classify_query(clean_q)
 
     # Tolerant query understanding and entity resolution
-    from backend.integrations.files.company_data.service import CompanyDataService
-    from backend.retrieval.entity_resolver import get_entity_resolver
-    from backend.retrieval.tolerant_understanding import understand_query
+    try:
+        from backend.integrations.files.company_data.service import CompanyDataService
+        from backend.retrieval.entity_resolver import get_entity_resolver
+        from backend.retrieval.tolerant_understanding import understand_query, TolerantQuery
 
-    entity_resolver = get_entity_resolver()
-    tq = understand_query(clean_q, entity_resolver=entity_resolver)
+        entity_resolver = get_entity_resolver()
+        tq = understand_query(clean_q, entity_resolver=entity_resolver)
+    except Exception as exc:
+        logger.warning("Entity resolution / tolerant query understanding failed, falling back: %s", exc)
+        from backend.retrieval.tolerant_understanding import TolerantQuery
+        tq = TolerantQuery(original_query=clean_q)
 
     if tq.needs_user_clarification and tq.candidate_options:
         # Check if candidate files uniquely resolve the ambiguity against real disk files

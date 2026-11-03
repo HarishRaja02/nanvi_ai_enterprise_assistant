@@ -13,7 +13,71 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Sequence
 
-import rapidfuzz.fuzz as fuzz
+try:
+    import rapidfuzz.fuzz as fuzz
+except ImportError:
+    from difflib import SequenceMatcher
+
+    class _FuzzFallback:
+        """Pure-Python fallback for fuzzy string matching using standard library difflib."""
+
+        @staticmethod
+        def ratio(s1: str, s2: str) -> float:
+            if not s1 and not s2:
+                return 100.0
+            if not s1 or not s2:
+                return 0.0
+            return SequenceMatcher(None, s1, s2).ratio() * 100.0
+
+        @staticmethod
+        def partial_ratio(s1: str, s2: str) -> float:
+            if not s1 or not s2:
+                return 0.0
+            if s1 == s2:
+                return 100.0
+            shorter, longer = (s1, s2) if len(s1) <= len(s2) else (s2, s1)
+            if shorter in longer:
+                return 100.0
+            m = SequenceMatcher(None, shorter, longer)
+            best = 0.0
+            for block in m.get_matching_blocks():
+                if block.size == 0:
+                    continue
+                sub = longer[max(0, block.b - block.a): block.b - block.a + len(shorter)]
+                r = SequenceMatcher(None, shorter, sub).ratio() * 100.0
+                if r > best:
+                    best = r
+            prefix_match = SequenceMatcher(None, shorter, longer[:len(shorter)]).ratio() * 100.0
+            return max(best, prefix_match)
+
+        @staticmethod
+        def token_sort_ratio(s1: str, s2: str) -> float:
+            t1 = " ".join(sorted(s1.split()))
+            t2 = " ".join(sorted(s2.split()))
+            return _FuzzFallback.ratio(t1, t2)
+
+        @staticmethod
+        def token_set_ratio(s1: str, s2: str) -> float:
+            set1 = set(s1.split())
+            set2 = set(s2.split())
+            inter = set1.intersection(set2)
+            if not inter:
+                return _FuzzFallback.token_sort_ratio(s1, s2)
+            diff1to2 = set1 - set2
+            diff2to1 = set2 - set1
+            t0 = " ".join(sorted(inter))
+            t1 = (t0 + " " + " ".join(sorted(diff1to2))).strip()
+            t2 = (t0 + " " + " ".join(sorted(diff2to1))).strip()
+            r1 = _FuzzFallback.ratio(t0, t1)
+            r2 = _FuzzFallback.ratio(t0, t2)
+            r3 = _FuzzFallback.ratio(t1, t2)
+            return max(r1, r2, r3)
+
+        @staticmethod
+        def partial_token_set_ratio(s1: str, s2: str) -> float:
+            return _FuzzFallback.token_set_ratio(s1, s2)
+
+    fuzz = _FuzzFallback  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 

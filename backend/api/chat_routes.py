@@ -95,6 +95,23 @@ def chat(
         log_event(logger, "api_chat_failed", logging.ERROR, actor_id=user.user_id, tenant_id=user.tenant_id,
                   outcome="orchestration_error", exception_type=type(exc).__name__, duration_ms=round((time.perf_counter() - started) * 1000, 2))
         raise HTTPException(status_code=502, detail="AI orchestration failed")
+    except Exception as exc:
+        log_event(logger, "api_chat_failed", logging.ERROR, actor_id=user.user_id, tenant_id=user.tenant_id,
+                  outcome="unexpected_error", exception_type=type(exc).__name__, duration_ms=round((time.perf_counter() - started) * 1000, 2))
+        logger.exception("Unexpected error in chat endpoint: %s", exc)
+        return {
+            "conversation_id": body.conversation_id or "default",
+            "answer": "I encountered an unexpected issue while processing your request. Please try again or rephrase your query.",
+            "capability": "conversation",
+            "sources": [],
+            "trace": [f"Error: {type(exc).__name__}"],
+            "history": [],
+            "report_id": None,
+            "data_source": "live",
+            "source_selection_required": False,
+            "pending_search_query": None,
+            "file_results": None,
+        }
     log_event(logger, "api_chat_completed", actor_id=user.user_id, tenant_id=user.tenant_id,
               capability=str(response.capability), source_count=len(response.sources),
               duration_ms=round((time.perf_counter() - started) * 1000, 2))
