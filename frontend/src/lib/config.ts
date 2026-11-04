@@ -35,23 +35,29 @@ export function parseSsoUrl(raw: string | undefined): string | null {
 
 export const SSO_LOGIN_URL = parseSsoUrl(import.meta.env.VITE_SSO_LOGIN_URL);
 
+const isDesktop = typeof window !== "undefined" && (
+  window.location.protocol === "file:" ||
+  Boolean((window as any).electronAPI?.isDesktop)
+);
+const assetPrefix = isDesktop ? "." : "";
+
 /**
  * Optional external hosted link / CDN URL for video animation.
  * Defaults to the local bundled public asset path `/assets/nanvi-ai-enterprise-animation.mp4`.
  */
 export const HERO_VIDEO_URL =
   (import.meta.env.VITE_HERO_VIDEO_URL as string | undefined)?.trim() ||
-  "/assets/nanvi-ai-enterprise-animation.mp4";
+  `${assetPrefix}/assets/nanvi-ai-enterprise-animation.mp4`;
 
 /**
  * Optional external hosted link / CDN URL for brand logos.
  * Defaults to local bundled public assets.
  */
 export const LOGO_URL =
-  (import.meta.env.VITE_LOGO_URL as string | undefined)?.trim() || "/nanvi-logo.png";
+  (import.meta.env.VITE_LOGO_URL as string | undefined)?.trim() || `${assetPrefix}/nanvi-logo.png`;
 
 export const ICON_URL =
-  (import.meta.env.VITE_ICON_URL as string | undefined)?.trim() || "/nanvi-n-icon.png";
+  (import.meta.env.VITE_ICON_URL as string | undefined)?.trim() || `${assetPrefix}/nanvi-n-icon.png`;
 
 /**
  * Voice-First Enterprise Interface Feature Flag.

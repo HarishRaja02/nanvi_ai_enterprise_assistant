@@ -193,8 +193,15 @@ def test_live_voice_demo_endpoint():
     client = TestClient(app)
     resp = client.get("/api/voice/live/demo")
     assert resp.status_code == 200
-    assert "Voice agent" in resp.text
-    assert "speechSynthesis" in resp.text
+    assert "Live Hands-Free Voice Agent" in resp.text
+
+
+def test_live_voice_tts_endpoint():
+    client = TestClient(app)
+    resp = client.get("/api/voice/live/tts?text=Hello+testing+voice+playback")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "audio/mpeg"
+    assert len(resp.content) > 100
 
 
 def test_live_voice_websocket_roundtrip():

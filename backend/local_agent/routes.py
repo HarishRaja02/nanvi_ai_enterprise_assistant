@@ -267,6 +267,18 @@ def get_document_content(
                 },
             )
 
+        # Native Video preview
+        if suffix in (".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v", ".ogg"):
+            return Response(
+                content=target_file.read_bytes(),
+                media_type=media_type or "video/mp4",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_file.name}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Accept-Ranges": "bytes",
+                },
+            )
+
         # Raw HTML
         if suffix in (".html", ".htm"):
             return FileResponse(
@@ -479,9 +491,11 @@ async def download_agent_package(
         # User not logged in or in demo mode: generate a default pairing token so BAT download never fails
         default_user = UserIdentity(
             subject="default",
+            issuer="nanvi",
             tenant_id="enterprise-tenant",
             roles=frozenset({Role.IT_ADMIN}),
             email="user@company.local",
+            name="Company User",
         )
         try:
             resp = service.create_pairing_token(default_user, server_url)

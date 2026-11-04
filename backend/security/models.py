@@ -7,7 +7,7 @@ from backend.security.authorization.rbac import Role
 @dataclass(frozen=True)
 class UserIdentity:
     subject: str
-    issuer: str
+    issuer: str = "nanvi"
     email: str | None = None
     name: str | None = None
     tenant_id: str | None = None

@@ -200,6 +200,12 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     return ext.endsWith(".png") || ext.endsWith(".jpg") || ext.endsWith(".jpeg") || ext.endsWith(".gif") || ext.endsWith(".webp") || ext.endsWith(".svg");
   };
 
+  const isVideo = (file: FileResultItem, mime?: string | null) => {
+    if (mime && mime.startsWith("video/")) return true;
+    const ext = file.name.toLowerCase();
+    return ext.endsWith(".mp4") || ext.endsWith(".webm") || ext.endsWith(".mov") || ext.endsWith(".mkv") || ext.endsWith(".avi") || ext.endsWith(".m4v") || ext.endsWith(".ogg");
+  };
+
   return (
     <div className="file-results-container">
       <div className="file-results-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
@@ -418,8 +424,21 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
               </div>
             )}
 
+            {/* Render In-Memory Video */}
+            {!blobLoading && blobUrl && isVideo(previewFile, blobMime) && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", height: "65vh", background: "#0f172a", borderRadius: "8px", overflow: "hidden" }}>
+                <video
+                  src={blobUrl}
+                  controls
+                  autoPlay
+                  playsInline
+                  style={{ maxWidth: "100%", maxHeight: "100%", outline: "none" }}
+                />
+              </div>
+            )}
+
             {/* Render In-Memory Text / CSV / Code / Fallback */}
-            {!blobLoading && blobUrl && !isPdf(previewFile, blobMime) && !isImage(previewFile, blobMime) && (
+            {!blobLoading && blobUrl && !isPdf(previewFile, blobMime) && !isImage(previewFile, blobMime) && !isVideo(previewFile, blobMime) && (
               <div style={{ width: "100%", height: "65vh", borderRadius: "8px", overflow: "hidden", border: "1px solid #cbd5e1", background: "#ffffff" }}>
                 <iframe
                   src={blobUrl}

@@ -1,4 +1,4 @@
-﻿"""Audio plumbing: energy VAD, turn/barge-in detection, and the PCM -> STT -> session pipeline.
+"""Audio plumbing: energy VAD, turn/barge-in detection, and the PCM -> STT -> session pipeline.
 Input format everywhere: 16 kHz, mono, PCM S16LE, 20 ms frames (640 bytes)."""
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ class EnergyVAD(VADProvider):
     """Adaptive-threshold energy VAD. Replaceable (e.g. Silero/WebRTC VAD) via the VADProvider interface."""
     name = "energy"
 
-    def __init__(self, min_rms: float = 500.0, ratio: float = 3.0):
+    def __init__(self, min_rms: float = 650.0, ratio: float = 3.2):
         self.min_rms, self.ratio, self.noise = min_rms, ratio, 100.0
 
     def is_speech(self, pcm_s16le_20ms: bytes) -> bool:
@@ -43,9 +43,9 @@ class TurnDetector:
     barge_in fires only when the agent is speaking AND the user has produced `barge_in_ms` of
     continuous speech, so coughs and short backchannels ("mm-hmm") do not interrupt.
     """
-    start_ms: int = 100
+    start_ms: int = 140
     end_ms: int = 500
-    barge_in_ms: int = 300
+    barge_in_ms: int = 350
     in_speech: bool = False
     _run: int = 0
     _sil: int = 0

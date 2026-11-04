@@ -362,6 +362,10 @@ export function SourceDialog({ source, api, onClose }: { source: SourceView; api
                   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", height: "100%", background: "#0f172a" }}>
                     <img src={previewBlobUrl} alt={shown.title} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                   </div>
+                ) : previewMime?.startsWith("video/") || /\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(shown.title) ? (
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", height: "100%", background: "#0f172a" }}>
+                    <video src={previewBlobUrl} controls autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "100%", outline: "none" }} />
+                  </div>
                 ) : (
                   <iframe
                     src={previewBlobUrl}
