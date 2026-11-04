@@ -77,59 +77,87 @@ export function Composer({
     setIsListening(false);
   };
 
+  // Fast client-side phonetic & enterprise entity normalizer (0ms latency)
+  const applyFastCorrections = (text: string): string => {
+    let s = text.trim();
+    s = s.replace(/\b(?:sri|shri)?\s*ganesh?\s*(?:ready\s*mix|redymix|radymix)?\b/gi, "Sri Ganesh ReadyMix");
+    s = s.replace(/\b(?:in\s*voice|in\s*voices)\b/gi, "invoice");
+    s = s.replace(/\b(?:ageing|aging)\s*(?:brakdown|break\s*down)\b/gi, "aging breakdown");
+    s = s.replace(/\b(?:contrct|contraxt|contarct)\b/gi, "contract");
+    s = s.replace(/\b(?:agreemnt|aggrement)\b/gi, "agreement");
+    s = s.replace(/\b(?:warenty|warrenty)\b/gi, "warranty");
+    s = s.replace(/\b(?:liabilty|liabelity)\b/gi, "liability");
+    s = s.replace(/\b(?:procument|procuremnt)\b/gi, "procurement");
+    s = s.replace(/\bfind\s+(?:the\s+)?invoices?\b/gi, "find invoice");
+    return s;
+  };
+
   const handleFinishSpeaking = async (rawSpokenText: string) => {
     stopListening();
     const spoken = rawSpokenText.trim();
     if (!spoken) return;
 
-    setIsRefining(true);
-    try {
-      let refinedText = spoken;
-      let shouldClarify = false;
-      let clarificationMsg: string | null = null;
-      let suggestionsList: string[] = [];
+    // 1. Instant check for filler/unclear speech (0ms)
+    const fillers = new Set(["uh", "um", "ah", "eh", "er", "hmm", "mm", "huh", "like"]);
+    const words = spoken.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean);
+    const isOnlyFiller = words.length === 0 || words.every((w) => fillers.has(w));
 
+    if (isOnlyFiller) {
+      setClarification({
+        message: "I couldn't identify the specific document or vendor name. Are you referring to one of these?",
+        suggestions: [
+          "Sri Ganesh ReadyMix vendor find invoice",
+          "Show invoice aging breakdown",
+          "Summarize bridge contract agreement terms",
+        ],
+      });
+      return;
+    }
+
+    // 2. Instant client-side correction (0ms)
+    const fastCorrected = applyFastCorrections(spoken);
+    setValue(fastCorrected);
+    setIsRefining(true);
+
+    try {
+      let finalQuery = fastCorrected;
+
+      // If backend refine API is available, race it with a fast 350ms budget so it never lags
       if (api?.refineSpokenQuery) {
         try {
-          const res = await api.refineSpokenQuery(spoken);
-          if (res.status === "clarify") {
-            shouldClarify = true;
-            clarificationMsg =
-              res.clarification ||
-              "I couldn't identify the specific document or vendor name. Are you referring to one of these?";
-            suggestionsList = res.suggestions || [];
-          } else if (res.refined_query) {
-            refinedText = res.refined_query;
+          const refinePromise = api.refineSpokenQuery(spoken);
+          const timeoutPromise = new Promise<{ status: "timeout" }>((resolve) =>
+            setTimeout(() => resolve({ status: "timeout" }), 350)
+          );
+          const outcome: any = await Promise.race([refinePromise, timeoutPromise]);
+
+          if (outcome && outcome.status === "clarify") {
+            setClarification({
+              message: outcome.clarification || "Are you referring to one of these documents or vendors?",
+              suggestions: outcome.suggestions?.length
+                ? outcome.suggestions
+                : [
+                    "Sri Ganesh ReadyMix vendor find invoice",
+                    "Show invoice aging breakdown",
+                    "Summarize bridge contract agreement terms",
+                  ],
+            });
+            setIsRefining(false);
+            return;
+          } else if (outcome && outcome.refined_query) {
+            finalQuery = outcome.refined_query;
+            setValue(finalQuery);
           }
-        } catch (apiErr) {
-          console.warn("Refine query API call failed, using raw spoken text:", apiErr);
+        } catch {
+          // Keep fastCorrected if API is slow or offline
         }
       }
 
-      if (shouldClarify) {
-        setClarification({
-          message:
-            clarificationMsg || "Are you referring to one of these documents or vendors?",
-          suggestions:
-            suggestionsList.length > 0
-              ? suggestionsList
-              : [
-                  "Sri Ganesh ReadyMix vendor find invoice",
-                  "Show invoice aging breakdown",
-                  "Summarize bridge contract agreement terms",
-                ],
-        });
-        setIsRefining(false);
-        return;
-      }
-
-      // Populate corrected query into textarea
-      setValue(refinedText);
       setIsRefining(false);
 
-      // Auto-send query hands-free without requiring the user to click anything!
-      if (refinedText && !busy) {
-        const sent = await onSend(refinedText, ragEnabled, attachedFile?.name);
+      // Auto-send query immediately hands-free!
+      if (finalQuery && !busy) {
+        const sent = await onSend(finalQuery, ragEnabled, attachedFile?.name);
         if (sent) {
           setValue("");
           setAttachedFile(null);
@@ -185,13 +213,13 @@ export function Composer({
           accumulatedTranscriptRef.current = currentFull;
           setValue(currentFull);
 
-          // Hands-free auto-detect end of speech: 1400ms of silence triggers query refinement & send
+          // Fast & snappy hands-free silence timeout: 650ms after speech pause triggers instant send!
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
           }
           silenceTimerRef.current = setTimeout(() => {
             void handleFinishSpeaking(accumulatedTranscriptRef.current);
-          }, 1400);
+          }, 650);
         }
       };
 
@@ -498,7 +526,11 @@ export function Composer({
           >
             {isListening ? (
               <>
-                <span className="voice-pulse-dot" aria-hidden="true" />
+                <span className="voice-live-wave" aria-hidden="true">
+                  <span className="wave-bar b1" />
+                  <span className="wave-bar b2" />
+                  <span className="wave-bar b3" />
+                </span>
                 <span>Listening...</span>
               </>
             ) : isRefining ? (
