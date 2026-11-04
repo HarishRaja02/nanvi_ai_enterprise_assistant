@@ -350,6 +350,12 @@ export function App() {
           onOpenReportIssue={() => setReportModalOpen(true)}
           canAccessAdmin={canAccessAdmin}
           onOpenAdmin={() => goTo("AdminDashboard")}
+          connectedFolder={companyFolder.folderPath ? {
+            path: companyFolder.folderPath,
+            name: companyFolder.folderName,
+            fileCount: companyFolder.fileCount,
+          } : undefined}
+          onOpenFolderPicker={() => setFolderPickerOpen(true)}
         />
 
         <div className="app-body">

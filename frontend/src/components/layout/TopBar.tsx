@@ -12,6 +12,8 @@ type Props = {
   onOpenReportIssue?: () => void;
   onOpenAdmin?: () => void;
   canAccessAdmin?: boolean;
+  connectedFolder?: { path: string; name: string; fileCount: number };
+  onOpenFolderPicker?: () => void;
   /** Present only on views that have a details panel. */
   panel?: { open: boolean; onToggle: () => void };
 };
@@ -27,6 +29,8 @@ export function TopBar({
   onOpenReportIssue,
   onOpenAdmin,
   canAccessAdmin,
+  connectedFolder,
+  onOpenFolderPicker,
   panel,
 }: Props) {
 
@@ -39,6 +43,40 @@ export function TopBar({
       </div>
 
       <div className="topbar-actions">
+        {connectedFolder && Boolean(connectedFolder.path) && (
+          <button
+            type="button"
+            className="topbar-folder-pill"
+            onClick={onOpenFolderPicker}
+            title={`Connected local folder: ${connectedFolder.path} (${connectedFolder.fileCount} files). Click to manage.`}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "5px 12px",
+              background: "#ecfdf5",
+              border: "1px solid #86efac",
+              color: "#166534",
+              borderRadius: "20px",
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              cursor: onOpenFolderPicker ? "pointer" : "default",
+              boxShadow: "0 1px 3px rgba(22, 163, 74, 0.1)",
+            }}
+          >
+            <span
+              style={{
+                width: "8px",
+                height: "8px",
+                borderRadius: "50%",
+                background: "#16a34a",
+                boxShadow: "0 0 0 2px rgba(22, 163, 74, 0.3)",
+              }}
+            />
+            <span>📁 {connectedFolder.name || "Folder"} ({connectedFolder.fileCount} files)</span>
+          </button>
+        )}
+
         {environmentMode && (
           <span
             className="environment-mode-indicator"

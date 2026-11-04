@@ -188,9 +188,17 @@ class NanviLocalAgent:
         """Revoke approval for a local folder."""
         target = str(Path(folder_path).expanduser().resolve())
         target_norm = target.replace("\\", "/").rstrip("/").lower()
+        target_base = target_norm.split("/")[-1] if "/" in target_norm else target_norm
         matched_key = None
         for af_key in list(self.approved_folders.keys()):
-            if af_key == target or af_key.replace("\\", "/").rstrip("/").lower() == target_norm:
+            norm_k = af_key.replace("\\", "/").rstrip("/").lower()
+            if (
+                norm_k == target_norm
+                or norm_k.endswith("/" + target_base)
+                or norm_k == target_base
+                or Path(af_key).name.lower() == target_base
+                or (target_base and target_base in norm_k)
+            ):
                 matched_key = af_key
                 break
         if matched_key:

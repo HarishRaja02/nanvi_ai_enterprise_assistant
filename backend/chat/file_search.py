@@ -493,7 +493,7 @@ def execute_file_search(
                             continue
                     matched_files.append(p)
 
-                if not matched_files and category != "general":
+                if not matched_files and category == "general":
                     matched_files = all_disk_files
 
                 # Sort by recently added / modified time descending

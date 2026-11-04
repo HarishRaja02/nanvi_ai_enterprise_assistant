@@ -100,6 +100,8 @@ class LocalAgentStore:
                     "folders": entry.get("folders", {}),
                     "chunks": entry.get("chunks", []),
                     "requested_folders": entry.get("requested_folders", []),
+                    "pending_commands": entry.get("pending_commands", []),
+                    "disconnected_folders": entry.get("disconnected_folders", []),
                 }
         except Exception as exc:
             logger.debug("Could not load local_agent_store.json: %s", exc)
@@ -146,6 +148,7 @@ class LocalAgentStore:
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
+                            "disconnected_folders": d.get("disconnected_folders", []),
                         }
                         self._cache_ts[k] = now_ts
                         return self._data[k]
@@ -163,6 +166,7 @@ class LocalAgentStore:
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
+                            "disconnected_folders": d.get("disconnected_folders", []),
                         }
                         self._cache_ts[k] = now_ts
                         return self._data[k]
@@ -179,6 +183,7 @@ class LocalAgentStore:
                             "chunks": d.get("chunks", []),
                             "requested_folders": d.get("requested_folders", []),
                             "pending_commands": d.get("pending_commands", []),
+                            "disconnected_folders": d.get("disconnected_folders", []),
                         }
                         self._cache_ts[k] = now_ts
                         return self._data[k]
@@ -326,17 +331,30 @@ class LocalAgentStore:
             last_ts = agent.get("last_heartbeat_ts", 0.0)
             is_online = (time.time() - last_ts) < HEARTBEAT_TTL_SECONDS
 
+            disconn = set(str(d).replace("\\", "/").rstrip("/").lower() for d in val.get("disconnected_folders", []))
             folders = []
             total_files = 0
-            total_chunks = len(val.get("chunks", []))
+            total_chunks = len([
+                c for c in val.get("chunks", [])
+                if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in disconn
+                and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in disconn
+            ])
 
             for f_dict in val.get("folders", {}).values():
+                fid = str(f_dict.get("folder_id") or "").replace("\\", "/").rstrip("/").lower()
+                fpath = str(f_dict.get("folder_path") or "").replace("\\", "/").rstrip("/").lower()
+                fbase = fpath.split("/")[-1] if "/" in fpath else fpath
+                if (fid in disconn or fpath in disconn or fbase in disconn or
+                    any(d in fid or d in fpath or fid in d or fpath in d for d in disconn if d)):
+                    continue
                 total_files += f_dict.get("file_count", 0)
                 folders.append(LocalFolderInfo(**f_dict))
 
             # Resilient fallback to default agent or other tenant agent
             if (not is_online or not folders) and user_id != "default":
                 def_val = self._load_key(tenant_id, "default")
+                def_disconn = set(str(d).replace("\\", "/").rstrip("/").lower() for d in def_val.get("disconnected_folders", []))
+                combined_disconn = disconn.union(def_disconn)
                 def_agent = def_val.get("agent", {})
                 def_last_ts = def_agent.get("last_heartbeat_ts", 0.0)
                 def_online = (time.time() - def_last_ts) < HEARTBEAT_TTL_SECONDS
@@ -344,9 +362,27 @@ class LocalAgentStore:
                 if def_online or def_folders:
                     is_online = def_online
                     agent = def_agent
-                    folders = [LocalFolderInfo(**f_dict) for f_dict in def_folders.values()]
+                    folders = []
+                    for f_dict in def_folders.values():
+                        fid = str(f_dict.get("folder_id") or "").replace("\\", "/").rstrip("/").lower()
+                        fpath = str(f_dict.get("folder_path") or "").replace("\\", "/").rstrip("/").lower()
+                        fbase = fpath.split("/")[-1] if "/" in fpath else fpath
+                        if (fid in combined_disconn or fpath in combined_disconn or fbase in combined_disconn or
+                            any(d in fid or d in fpath or fid in d or fpath in d for d in combined_disconn if d)):
+                            continue
+                        folders.append(LocalFolderInfo(**f_dict))
                     total_files = sum(f.file_count for f in folders)
-                    total_chunks = len(def_val.get("chunks", []))
+                    total_chunks = len([
+                        c for c in def_val.get("chunks", [])
+                        if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in combined_disconn
+                        and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in combined_disconn
+                    ])
+            else:
+                total_chunks = len([
+                    c for c in val.get("chunks", [])
+                    if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in disconn
+                    and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in disconn
+                ])
 
             return {
                 "is_online": is_online,
@@ -374,6 +410,15 @@ class LocalAgentStore:
                 val["chunks"] = []
 
             # 1. Update folder registry
+            # Do not resync if this folder was disconnected
+            disconn = set(val.get("disconnected_folders", []))
+            fid_norm = str(fid).replace("\\", "/").rstrip("/").lower()
+            fpath_norm = str(payload.folder_path).replace("\\", "/").rstrip("/").lower()
+            fbase_norm = fpath_norm.split("/")[-1] if "/" in fpath_norm else fpath_norm
+            if (fid_norm in disconn or fpath_norm in disconn or fbase_norm in disconn or
+                any(d in fid_norm or d in fpath_norm or fid_norm in d or fpath_norm in d for d in disconn if d)):
+                return
+
             folders = val.setdefault("folders", {})
             prev_folder = folders.get(fid, {})
             prev_file_count = prev_folder.get("file_count", 0)
@@ -423,8 +468,10 @@ class LocalAgentStore:
 
     def remove_folder(self, tenant_id: str, user_id: str, folder_id: str) -> bool:
         """Remove a connected folder and its chunks across tenant keys, and queue removal to Windows PC agent."""
-        clean_fid = str(folder_id).strip()
+        import urllib.parse
+        clean_fid = urllib.parse.unquote(str(folder_id).strip())
         norm_fid = clean_fid.replace("\\", "/").rstrip("/").lower()
+        base_name_fid = norm_fid.split("/")[-1] if "/" in norm_fid else norm_fid
 
         with self._lock:
             keys_to_clean = [(tenant_id, user_id)]
@@ -432,6 +479,9 @@ class LocalAgentStore:
                 keys_to_clean.append((tenant_id, "default"))
             if tenant_id != "enterprise-tenant":
                 keys_to_clean.append(("enterprise-tenant", "default"))
+            for k in list(self._data.keys()):
+                if k not in keys_to_clean:
+                    keys_to_clean.append(k)
 
             matched = False
             removed_paths = []
@@ -444,7 +494,12 @@ class LocalAgentStore:
                     f_path = str(f_info.get("folder_path") or fid).strip()
                     norm_path = f_path.replace("\\", "/").rstrip("/").lower()
                     norm_f_id = str(fid).replace("\\", "/").rstrip("/").lower()
-                    if norm_f_id == norm_fid or norm_path == norm_fid:
+                    if (
+                        norm_f_id == norm_fid
+                        or norm_path == norm_fid
+                        or (base_name_fid and (norm_f_id.endswith("/" + base_name_fid) or norm_path.endswith("/" + base_name_fid)))
+                        or (norm_fid and (norm_fid in norm_f_id or norm_fid in norm_path or norm_f_id in norm_fid or norm_path in norm_fid))
+                    ):
                         fids_to_del.append(fid)
                         removed_paths.append(f_path)
 
@@ -478,6 +533,76 @@ class LocalAgentStore:
                         "payload": {"folder_path": cmd_path, "folder_id": clean_fid},
                     })
                     self._save_key(t_k, u_k, val)
+
+            # Bulk update all rows in PostgreSQL if configured
+            if self._dsn:
+                try:
+                    import psycopg
+                    from psycopg.rows import dict_row
+                    all_del_norms = {norm_fid, *(p.replace("\\", "/").rstrip("/").lower() for p in removed_paths)}
+                    if base_name_fid:
+                        all_del_norms.add(base_name_fid)
+                    with psycopg.connect(self._dsn, autocommit=True, connect_timeout=4, row_factory=dict_row) as conn:
+                        rows = conn.execute("SELECT tenant_id, user_id, data FROM public.nanvi_local_agent_store").fetchall()
+                        for r in rows:
+                            row_t = r["tenant_id"]
+                            row_u = r["user_id"]
+                            row_data = r.get("data") or {}
+                            row_folders = row_data.get("folders", {})
+                            row_to_del = []
+                            for fid, finfo in list(row_folders.items()):
+                                f_p = str(finfo.get("folder_path") or fid).strip().replace("\\", "/").rstrip("/").lower()
+                                f_i = str(fid).strip().replace("\\", "/").rstrip("/").lower()
+                                if (
+                                    f_i == norm_fid
+                                    or f_p == norm_fid
+                                    or (base_name_fid and (f_i.endswith("/" + base_name_fid) or f_p.endswith("/" + base_name_fid)))
+                                    or (norm_fid and (norm_fid in f_i or norm_fid in f_p or f_i in norm_fid or f_p in norm_fid))
+                                ):
+                                    row_to_del.append(fid)
+                            for fid in row_to_del:
+                                row_folders.pop(fid, None)
+                            row_data["folders"] = row_folders
+                            row_data["chunks"] = [
+                                c for c in row_data.get("chunks", [])
+                                if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in all_del_norms
+                                and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in all_del_norms
+                            ]
+                            disconn_set = set(row_data.get("disconnected_folders", []))
+                            disconn_set.update(all_del_norms)
+                            row_data["disconnected_folders"] = list(disconn_set)
+                            cmd_path = removed_paths[0] if removed_paths else clean_fid
+                            row_cmds = row_data.setdefault("pending_commands", [])
+                            row_cmds.append({
+                                "id": f"cmd_{int(time.time() * 1000)}",
+                                "command": "remove_folder",
+                                "payload": {"folder_path": cmd_path, "folder_id": clean_fid},
+                            })
+                            conn.execute(
+                                "UPDATE public.nanvi_local_agent_store SET data = %s::jsonb, updated_at = NOW() WHERE tenant_id = %s AND user_id = %s",
+                                (json.dumps(row_data), row_t, row_u),
+                            )
+                except Exception as exc:
+                    logger.warning("PostgreSQL remove_folder bulk update error: %s", exc)
+
+            # Clear persisted active folder file so company_data service clears it
+            try:
+                from backend.integrations.files.company_data.persistence import ACTIVE_FOLDERS_FILE, ACTIVE_FOLDER_FILE
+                if ACTIVE_FOLDERS_FILE.exists():
+                    ACTIVE_FOLDERS_FILE.write_text("{}", encoding="utf-8")
+                if ACTIVE_FOLDER_FILE.exists():
+                    ACTIVE_FOLDER_FILE.write_text("{}", encoding="utf-8")
+            except Exception:
+                pass
+
+            try:
+                from backend.integrations.files.company_data_service import CompanyDataService
+                cds = CompanyDataService.for_tenant(tenant_id)
+                cds.clear_cache()
+            except Exception:
+                pass
+
+            return True
 
             return matched or True
     def queue_command(self, tenant_id: str, user_id: str, command: str, payload: dict[str, Any]) -> str:

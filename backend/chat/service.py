@@ -356,7 +356,7 @@ class ChatService:
             effective_query,
         ).strip(" :,-'\"?.")
 
-        if direct_source and not is_pure_report and not is_multi_source:
+        if direct_source and not is_pure_report:
             clean_q = clean_search_q or effective_query
             from backend.chat.file_search import execute_file_search
             answer, files, sources = execute_file_search(user, clean_q, direct_source, max_results=10)
@@ -371,7 +371,7 @@ class ChatService:
                 file_results=tuple(files),
             )
 
-        if not is_pure_report and not is_multi_source and Capability.DATA_ANALYSIS not in caps and Capability.WEB_SEARCH not in caps and self._is_file_search_query(effective_query):
+        if not is_pure_report and Capability.DATA_ANALYSIS not in caps and Capability.WEB_SEARCH not in caps and self._is_file_search_query(effective_query):
             search_target = self._extract_file_search_target(effective_query)
             if not search_target:
                 # User expressed intent ("i need to find the file" / "i need one file") without specifying target yet
@@ -394,16 +394,17 @@ class ChatService:
                     db_ans, db_files, db_sources = execute_file_search(user, search_target, "database", max_results=10)
                     if db_files:
                         answer, files, sources = db_ans, db_files, db_sources
-                self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
-                return ChatResponse(
-                    conversation_id=conversation_id,
-                    answer=answer,
-                    sources=tuple(sources),
-                    capability="document_search",
-                    trace=("Direct file search executed automatically across local storage and database",),
-                    history=self._store.get(conversation_id),
-                    file_results=tuple(files),
-                )
+                if files:
+                    self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
+                    return ChatResponse(
+                        conversation_id=conversation_id,
+                        answer=answer,
+                        sources=tuple(sources),
+                        capability="document_search",
+                        trace=("Direct file search executed automatically across local storage and database",),
+                        history=self._store.get(conversation_id),
+                        file_results=tuple(files),
+                    )
 
         # 3. Route capabilities using effective query
         capabilities = self._capabilities_for_query(effective_query)
@@ -565,10 +566,31 @@ class ChatService:
         except Exception as exc:
             logger.warning("Could not auto-update conversation context: %s", exc)
 
+        cand_file_results = None
+        if self._is_file_search_query(effective_query):
+            cand_files = []
+            seen_cand_paths = set()
+            for s in source_map.values():
+                loc = str(getattr(s, "location", "") or getattr(s, "uri", "") or "").strip()
+                title = str(getattr(s, "display_name", "") or getattr(s, "title", "") or "").strip()
+                if loc and loc not in seen_cand_paths and ("\\" in loc or "/" in loc or "." in title):
+                    seen_cand_paths.add(loc)
+                    cand_files.append({
+                        "name": title or Path(loc).name,
+                        "path": loc,
+                        "full_path": loc,
+                        "display_path": title or loc,
+                        "type": Path(title or loc).suffix.lstrip("."),
+                        "open_url": loc,
+                        "source": "knowledge",
+                    })
+            if cand_files:
+                cand_file_results = tuple(cand_files)
+
         data_source = "synthetic" if any(getattr(r, "data_source", "live") == "synthetic" for r in responses) else "live"
         return ChatResponse(conversation_id, answer, tuple(source_map.values()),
                             ",".join(c.value for c in capabilities), tuple(traces), self._store.get(conversation_id),
-                            report_id=report_id, data_source=data_source)
+                            report_id=report_id, data_source=data_source, file_results=cand_file_results)
 
     @staticmethod
     def _capabilities_for_query(query: str) -> tuple[Capability, ...]:

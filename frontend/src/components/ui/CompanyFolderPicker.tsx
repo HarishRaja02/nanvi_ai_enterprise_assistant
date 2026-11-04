@@ -20,6 +20,7 @@ export function CompanyFolderPicker({ api }: Props) {
   const [customLocalFolder, setCustomLocalFolder] = useState("");
   const [addingFolder, setAddingFolder] = useState(false);
   const [browsingFolder, setBrowsingFolder] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
   const [addFolderMsg, setAddFolderMsg] = useState<string | null>(null);
   const [downloadingAgent, setDownloadingAgent] = useState(false);
   const [showAdvancedCli, setShowAdvancedCli] = useState(false);
@@ -137,16 +138,51 @@ export function CompanyFolderPicker({ api }: Props) {
   };
 
   const handleDisconnectFolder = async (folderId: string) => {
+    if (!folderId) return;
+    setDisconnectingId(folderId);
+    setMessage(null);
+
+    // Optimistically update local UI state immediately
+    const norm = folderId.replace(/\\/g, "/").toLowerCase();
+    const baseNorm = norm.split("/").pop() || norm;
+    setAgentStatus((prev) => {
+      if (!prev) return prev;
+      const updated = (prev.connected_folders || []).filter((f) => {
+        const fId = (f.folder_id || "").replace(/\\/g, "/").toLowerCase();
+        const fPath = (f.folder_path || "").replace(/\\/g, "/").toLowerCase();
+        const fBase = fPath.split("/").pop() || fPath;
+        if (fId === norm || fPath === norm || fBase === baseNorm || fId === baseNorm) return false;
+        if (norm && (fId.includes(norm) || fPath.includes(norm) || norm.includes(fId) || norm.includes(fPath))) return false;
+        return true;
+      });
+      return {
+        ...prev,
+        connected_folders: updated,
+        total_files: updated.length === 0 ? 0 : updated.reduce((acc, x) => acc + (x.file_count || 0), 0),
+        total_chunks: updated.length === 0 ? 0 : updated.reduce((acc, x) => acc + (x.chunk_count || 0), 0),
+      };
+    });
+
+    // Notify the rest of the application (TopBar, ContextPanel, Sidebar)
+    window.dispatchEvent(
+      new CustomEvent("nanvi:company-folder-updated", {
+        detail: { path: "", exists: false, folder_count: 0, file_count: 0 },
+      })
+    );
+
     try {
       await api.removeLocalFolder(folderId);
       await fetchStatus();
       triggerRapidPoll();
-      setMessage({ text: "Folder disconnected successfully.", type: "success" });
-    } catch (err) {
+      setMessage({ text: "✓ Folder removed and disconnected successfully.", type: "success" });
+    } catch (err: any) {
+      await fetchStatus();
       setMessage({
-        text: err instanceof Error ? err.message : "Failed to disconnect folder.",
+        text: err?.message || "Failed to disconnect folder.",
         type: "error",
       });
+    } finally {
+      setDisconnectingId(null);
     }
   };
 
@@ -465,57 +501,105 @@ export function CompanyFolderPicker({ api }: Props) {
         </div>
 
         {connectedFolders.length > 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {connectedFolders.map((folder, idx) => (
-              <div
-                key={folder.folder_id || folder.folder_path || idx}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "16px 20px",
-                  background: "#ffffff",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "10px",
-                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
-                  transition: "all 0.2s ease",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: "1rem", color: "#0f172a" }}>
-                    📁 {folder.display_name || folder.folder_path}
-                  </div>
-                  <code style={{ fontSize: "0.82rem", color: "#64748b", marginTop: "3px", display: "inline-block" }}>
-                    {folder.folder_path}
-                  </code>
-                  <div style={{ marginTop: "6px", display: "flex", gap: "12px", alignItems: "center", fontSize: "0.82rem", color: "#16a34a", fontWeight: 600 }}>
-                    <span>✓ {folder.file_count ?? 0} files</span>
-                    <span>• {folder.chunk_count ?? 0} chunks</span>
-                    <span style={{ padding: "2px 8px", background: "#dcfce7", borderRadius: "12px", fontSize: "0.75rem" }}>
-                      Ready & Indexed
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="folder-picker-btn"
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            {connectedFolders.map((folder, idx) => {
+              const targetId = folder.folder_id || folder.folder_path || "";
+              const isRemoving = disconnectingId === targetId;
+              return (
+                <div
+                  key={targetId || idx}
                   style={{
-                    background: "#fee2e2",
-                    color: "#dc2626",
-                    border: "1px solid #fca5a5",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                    padding: "7px 16px",
-                    borderRadius: "6px",
-                    cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "14px",
+                    padding: "18px 22px",
+                    background: "#f0fdf4",
+                    border: "1.5px solid #86efac",
+                    borderLeft: "6px solid #16a34a",
+                    borderRadius: "12px",
+                    boxShadow: "0 2px 8px rgba(22, 163, 74, 0.08)",
+                    transition: "all 0.2s ease",
                   }}
-                  onClick={() => folder.folder_id && handleDisconnectFolder(folder.folder_id)}
                 >
-                  Disconnect
-                </button>
-              </div>
-            ))}
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "3px 10px",
+                          background: "#dcfce7",
+                          border: "1px solid #86efac",
+                          borderRadius: "20px",
+                          color: "#166534",
+                          fontSize: "0.78rem",
+                          fontWeight: 700,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            borderRadius: "50%",
+                            background: "#16a34a",
+                            boxShadow: "0 0 0 2px rgba(22, 163, 74, 0.3)",
+                          }}
+                        />
+                        CONNECTED & ACTIVE
+                      </span>
+                      <span style={{ fontSize: "0.8rem", color: "#15803d", fontWeight: 500 }}>
+                        Searched by Nanvi AI Assistant
+                      </span>
+                    </div>
+
+                    <div style={{ fontWeight: 700, fontSize: "1.08rem", color: "#0f172a" }}>
+                      📁 {folder.display_name || folder.folder_path}
+                    </div>
+                    <code style={{ fontSize: "0.85rem", color: "#475569", marginTop: "4px", display: "inline-block", background: "#ffffff", padding: "2px 8px", borderRadius: "4px", border: "1px solid #e2e8f0" }}>
+                      {folder.folder_path}
+                    </code>
+                    <div style={{ marginTop: "8px", display: "flex", gap: "12px", alignItems: "center", fontSize: "0.84rem", color: "#166534", fontWeight: 600 }}>
+                      <span>✓ {folder.file_count ?? 0} files indexed</span>
+                      <span>•</span>
+                      <span>⚡ {folder.chunk_count ?? 0} searchable chunks</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="folder-picker-btn"
+                    style={{
+                      background: "#fee2e2",
+                      color: "#b91c1c",
+                      border: "1.5px solid #fca5a5",
+                      fontSize: "0.86rem",
+                      fontWeight: 700,
+                      padding: "9px 18px",
+                      borderRadius: "8px",
+                      cursor: isRemoving ? "wait" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      boxShadow: "0 1px 4px rgba(220, 38, 38, 0.12)",
+                      transition: "all 0.15s ease",
+                    }}
+                    onClick={() => handleDisconnectFolder(targetId)}
+                    disabled={isRemoving}
+                    title="Disconnect this folder from Nanvi Assistant"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                    {isRemoving ? "Removing..." : "Remove / Disconnect"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div

@@ -468,12 +468,14 @@ async def remove_local_folder(
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> dict[str, Any]:
     """Disconnect an approved local folder and delete its synced chunks."""
-    target_id = folder_path or folder_id or ""
-    if not target_id.strip():
+    import urllib.parse
+    raw_target = folder_path or folder_id or ""
+    target_id = urllib.parse.unquote(raw_target).strip()
+    if not target_id:
         raise HTTPException(status_code=400, detail="Folder path or folder_id is required.")
     tenant_id = getattr(user, "tenant_id", None) or "default"
     user_id = _get_user_id(user)
-    removed = service.remove_folder(tenant_id, user_id, target_id.strip())
+    service.remove_folder(tenant_id, user_id, target_id)
     return {"status": "ok", "message": f"Folder '{target_id}' disconnected."}
 
 
