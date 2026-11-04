@@ -406,6 +406,9 @@ class NanviLocalAgent:
                         logger.warning("Error indexing file %s: %s", fname, exc)
 
             logger.info("Indexed %d files (%d chunks) from %s", len(files_meta), len(all_chunks), display_name)
+            if folder_path_str in self.approved_folders:
+                self.approved_folders[folder_path_str]["file_count"] = len(files_meta)
+                self.approved_folders[folder_path_str]["chunk_count"] = len(all_chunks)
 
             # Transmit to Nanvi Cloud API in safe, bounded batches
             return self._push_sync(folder_path_str, display_name, files_meta, all_chunks)
@@ -422,7 +425,7 @@ class NanviLocalAgent:
                 },
                 method="POST",
             )
-            with urlopen(req, timeout=30) as resp:
+            with urlopen(req, timeout=45) as resp:
                 return resp.status == 200
         except HTTPError as err:
             logger.error("Cloud sync batch failed (HTTP %s): %s", err.code, err.read().decode("utf-8", errors="replace"))
@@ -439,9 +442,16 @@ class NanviLocalAgent:
             return False
 
         url = f"{self.server_url}/api/local-agent/sync"
-        BATCH_SIZE = 150  # ~120 KB per request, safe against Vercel's 4.5 MB body limit
+        BATCH_SIZE = 250  # ~200 KB per request, safe against Vercel's 4.5 MB body limit
 
-        if not chunks:
+        # Limit total chunks synced to cloud to prevent timeouts and multi-gigabyte DB transfers
+        MAX_CLOUD_CHUNKS = 2000
+        total_chunks = len(chunks)
+        sync_chunks = chunks[:MAX_CLOUD_CHUNKS]
+        if total_chunks > MAX_CLOUD_CHUNKS:
+            logger.info("Folder contains %d chunks; syncing top %d most recent chunks for fast cloud search.", total_chunks, MAX_CLOUD_CHUNKS)
+
+        if not sync_chunks:
             payload = {
                 "folder_id": folder_path,
                 "folder_path": folder_path,
@@ -455,11 +465,11 @@ class NanviLocalAgent:
                 logger.info("[OK] Successfully registered folder '%s' with %d files.", display_name, len(files))
             return ok
 
-        total_chunks = len(chunks)
-        total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
+        total_sync = len(sync_chunks)
+        total_batches = (total_sync + BATCH_SIZE - 1) // BATCH_SIZE
 
         # Batch 0: replace_all=True, registers all file metadata and the first slice of chunks
-        first_slice = chunks[:BATCH_SIZE]
+        first_slice = sync_chunks[:BATCH_SIZE]
         first_payload = {
             "folder_id": folder_path,
             "folder_path": folder_path,
@@ -475,7 +485,7 @@ class NanviLocalAgent:
         # Batches 1..N: replace_all=False, appends remaining chunks safely
         for batch_idx in range(1, total_batches):
             start = batch_idx * BATCH_SIZE
-            chunk_slice = chunks[start : start + BATCH_SIZE]
+            chunk_slice = sync_chunks[start : start + BATCH_SIZE]
             batch_payload = {
                 "folder_id": folder_path,
                 "folder_path": folder_path,
@@ -501,8 +511,8 @@ class NanviLocalAgent:
                 "folder_id": path_str,
                 "folder_path": path_str,
                 "display_name": info.get("display_name") or Path(path_str).name,
-                "file_count": 0,
-                "chunk_count": 0,
+                "file_count": info.get("file_count", 0),
+                "chunk_count": info.get("chunk_count", 0),
                 "status": "connected",
             })
 

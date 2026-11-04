@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
 
+from backend.core.config import settings
 from backend.security.dependencies import get_current_user, get_optional_current_user
 from backend.security.models import UserIdentity
 from .models import (
@@ -121,7 +122,7 @@ async def local_agent_browse_folder(
 
 
 @router.get("/document-content")
-async def get_document_content(
+def get_document_content(
     path: str = Query(..., description="File path or relative path to view"),
     download: bool = Query(False, description="Whether to download original file binary"),
     service: LocalAgentService = Depends(get_local_agent_service),
@@ -147,51 +148,68 @@ async def get_document_content(
     rel_path = "/".join(clean_parts)
 
     search_roots: list[Path] = []
-    # 1. Dynamically add active folder from CompanyDataService
+    # 0. Local repo CompanyData root
     try:
-        from backend.integrations.files.company_data_service import CompanyDataService
-        for tid in ("default", "enterprise-tenant"):
-            cds_inst = CompanyDataService.for_tenant(tid)
-            if cds_inst.root and str(cds_inst.root) and cds_inst.root.exists() and cds_inst.root.is_dir():
-                if cds_inst.root not in search_roots:
-                    search_roots.append(cds_inst.root)
-    except Exception:
-        pass
-
-    # 2. Dynamically add connected folders from LocalAgentStore
-    try:
-        for (t, u), d in service.store._data.items():
-            for f_info in d.get("folders", {}).values():
-                fp = f_info.get("folder_path")
-                if fp:
-                    p_cand = Path(fp).resolve()
-                    if p_cand.exists() and p_cand.is_dir() and p_cand not in search_roots:
-                        search_roots.append(p_cand)
+        repo_data = Path(__file__).resolve().parents[1] / "CompanyData"
+        if repo_data.exists() and repo_data.is_dir():
+            search_roots.append(repo_data)
     except Exception:
         pass
 
     target_file: Path | None = None
-    for r in search_roots:
-        if not r.exists() or not r.is_dir():
-            continue
-        c1 = (r / rel_path).resolve()
-        if c1.is_file():
-            target_file = c1
-            break
-        for f in r.rglob(filename):
-            if f.is_file():
-                target_file = f
-                break
-        if target_file:
-            break
+    try:
+        direct = Path(raw).resolve()
+        if direct.is_file():
+            target_file = direct
+    except Exception:
+        pass
 
     if not target_file:
+        # Check repo data first
+        for r in search_roots:
+            c1 = (r / rel_path).resolve()
+            if c1.is_file():
+                target_file = c1
+                break
+            c2 = (r / filename).resolve()
+            if c2.is_file():
+                target_file = c2
+                break
+
+    if not target_file:
+        # 1. Dynamically add active folder from persistence
         try:
-            direct = Path(raw).resolve()
-            if direct.is_file():
-                target_file = direct
+            from backend.integrations.files.company_data.persistence import get_persisted_folder
+            for tid in ("default", "enterprise-tenant"):
+                p_cand = get_persisted_folder(tid)
+                if p_cand and p_cand.exists() and p_cand.is_dir() and p_cand not in search_roots:
+                    search_roots.append(p_cand)
         except Exception:
             pass
+
+        # 2. Dynamically add connected folders from LocalAgentStore
+        try:
+            for (t, u), d in service.store._data.items():
+                for f_info in d.get("folders", {}).values():
+                    fp = f_info.get("folder_path")
+                    if fp:
+                        p_cand = Path(fp).resolve()
+                        if p_cand.exists() and p_cand.is_dir() and p_cand not in search_roots:
+                            search_roots.append(p_cand)
+        except Exception:
+            pass
+
+        for r in search_roots:
+            if not r.exists() or not r.is_dir():
+                continue
+            c1 = (r / rel_path).resolve()
+            if c1.is_file():
+                target_file = c1
+                break
+            c2 = (r / filename).resolve()
+            if c2.is_file():
+                target_file = c2
+                break
 
     if target_file and target_file.is_file():
         suffix = target_file.suffix.lower()
@@ -199,8 +217,8 @@ async def get_document_content(
 
         # 1. If explicit download requested, return original file attachment
         if download:
-            return FileResponse(
-                path=str(target_file),
+            return Response(
+                content=target_file.read_bytes(),
                 media_type=media_type or "application/octet-stream",
                 headers={
                     "Content-Disposition": f'attachment; filename="{target_file.name}"',
@@ -211,8 +229,8 @@ async def get_document_content(
         # 2. Ephemeral In-Memory Preview in Browser
         # Native PDF preview
         if suffix == ".pdf":
-            return FileResponse(
-                path=str(target_file),
+            return Response(
+                content=target_file.read_bytes(),
                 media_type="application/pdf",
                 headers={
                     "Content-Disposition": f'inline; filename="{target_file.name}"',
@@ -222,8 +240,8 @@ async def get_document_content(
 
         # Native Image preview
         if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
-            return FileResponse(
-                path=str(target_file),
+            return Response(
+                content=target_file.read_bytes(),
                 media_type=media_type or "image/png",
                 headers={
                     "Content-Disposition": f'inline; filename="{target_file.name}"',
@@ -327,12 +345,12 @@ async def get_document_content(
 
 
 @router.get("/document-download")
-async def download_document_endpoint(
+def download_document_endpoint(
     path: str = Query(..., description="File path to download"),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> Response:
     """Download the original document binary file."""
-    return await get_document_content(path=path, download=True, service=service)
+    return get_document_content(path=path, download=True, service=service)
 
 
 @router.get("/download")

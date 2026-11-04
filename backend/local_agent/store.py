@@ -245,12 +245,14 @@ class LocalAgentStore:
                 for f in heartbeat.folders:
                     fid = f.folder_id or f.folder_path
                     existing = folder_map.get(fid, {})
+                    file_cnt = f.file_count if f.file_count > 0 else existing.get("file_count", 0)
+                    chunk_cnt = f.chunk_count if f.chunk_count > 0 else existing.get("chunk_count", 0)
                     folder_map[fid] = {
                         "folder_id": fid,
                         "folder_path": f.folder_path,
                         "display_name": f.display_name or Path(f.folder_path).name or f.folder_path,
-                        "file_count": f.file_count,
-                        "chunk_count": existing.get("chunk_count", f.chunk_count),
+                        "file_count": file_cnt,
+                        "chunk_count": chunk_cnt,
                         "status": f.status or "connected",
                         "last_synced_at": existing.get("last_synced_at") or now_iso,
                     }
@@ -386,6 +388,11 @@ class LocalAgentStore:
                     "sheet": c.sheet,
                     "metadata": c.metadata,
                 })
+
+            # Keep chunks bounded so PostgreSQL JSONB / memory stays fast and avoids timeouts
+            MAX_STORED_CHUNKS = 3000
+            if len(retained_chunks) > MAX_STORED_CHUNKS:
+                retained_chunks = retained_chunks[-MAX_STORED_CHUNKS:]
 
             val["chunks"] = retained_chunks
             self._save_key(tenant_id, user_id, val)

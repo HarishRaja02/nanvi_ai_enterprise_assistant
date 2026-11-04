@@ -71,9 +71,16 @@ export function App() {
   const previousView = useRef<View>("Chat");
 
 
+  const isDesktop = Boolean(
+    (typeof window !== "undefined" && Boolean(window.electronAPI?.isDesktop)) ||
+    import.meta.env.VITE_APP_TARGET === "desktop"
+  );
+
   // UX-only capability set derived from backend-reported roles. Authorization stays server-side.
   const permissions = useMemo(() => permissionsFor(identity?.roles ?? []), [identity]);
   const canAccessAdmin = useMemo(() => {
+    // Admin dashboard is strictly web-only. The desktop client application is for user accounts only.
+    if (isDesktop) return false;
     if (!identity) return false;
     return (
       identity.subject === "admin" ||
@@ -82,7 +89,7 @@ export function App() {
       Boolean(identity.name && identity.name.toLowerCase().includes("system administrator")) ||
       permissions.includes("ADMIN_ACCESS")
     );
-  }, [identity, permissions]);
+  }, [identity, permissions, isDesktop]);
   const groups = useMemo(() => visibleNav(permissions, canAccessAdmin), [permissions, canAccessAdmin]);
   const allowedViews = useMemo(() => {
     const list = groups.flatMap((g) => g.items.map((i) => i.id));

@@ -204,13 +204,18 @@ def _create_agents(
                     pool_max_size=settings.database_pool_max_size,
                     timeout_ms=settings.database_statement_timeout_ms,
                 )
-                with db_repo._pool.connection() as test_conn:
+                with db_repo._pool.connection(timeout=2.0) as test_conn:
                     pass
                 logger.info(
                     "Connected DatabaseService to %s database successfully",
                     "Supabase Cloud" if settings.supabase_database_url else "Local PostgreSQL",
                 )
             except Exception as exc:
+                if db_repo is not None:
+                    try:
+                        db_repo.close()
+                    except Exception:
+                        pass
                 if settings.is_production:
                     from backend.core.exceptions import DependencyUnavailableError
                     raise DependencyUnavailableError(

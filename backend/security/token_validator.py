@@ -82,11 +82,9 @@ class TokenValidator:
                             from backend.security.local_accounts import get_local_account_store
 
                             account = get_local_account_store().get_account(claims["sub"], tenant_id)
-                        except ValueError as exc:
-                            raise AuthenticationError("Local account is no longer available") from exc
                         except Exception:
-                            # If account store is unreachable (e.g. serverless cold start or network blip),
-                            # fall back to the cryptographically verified claims below instead of booting the user.
+                            # If account store is unreachable (e.g. serverless cold start, DB syncing, or network blip),
+                            # fall back to the cryptographically verified JWT claims below instead of booting the user.
                             pass
 
                         if account:

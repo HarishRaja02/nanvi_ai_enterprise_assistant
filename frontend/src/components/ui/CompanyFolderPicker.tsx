@@ -193,6 +193,29 @@ export function CompanyFolderPicker({ api }: Props) {
   };
 
   const handleBrowseFolder = async () => {
+    // 1. Native Desktop File Picker (when running in the Desktop Application)
+    if (typeof window !== "undefined" && window.electronAPI?.selectFolder) {
+      setBrowsingFolder(true);
+      setAddFolderMsg(null);
+      try {
+        const selected = await window.electronAPI.selectFolder();
+        if (selected) {
+          setCustomLocalFolder(selected);
+          setAddingFolder(true);
+          const res = await api.addLocalFolder(selected);
+          setAddFolderMsg(res.message || `✓ Folder '${selected}' linked to Nanvi Assistant.`);
+          triggerRapidPoll();
+        }
+      } catch (err: any) {
+        setAddFolderMsg(`Error selecting folder: ${err?.message || "Failed to select folder"}`);
+      } finally {
+        setBrowsingFolder(false);
+        setAddingFolder(false);
+      }
+      return;
+    }
+
+    // 2. Web Browser Fallback (requires local agent script)
     if (!agentStatus?.is_online) {
       setMessage({
         text: "The Nanvi Assistant agent is not currently connected. Please download and double-click Nanvi_Assistant.bat first so it can launch the Windows Explorer dialog.",

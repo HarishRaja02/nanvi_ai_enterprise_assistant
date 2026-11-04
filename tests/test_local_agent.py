@@ -322,20 +322,18 @@ def test_command_queue_and_heartbeat_dispatch(local_service, mock_user):
 
 
 def test_document_content_retrieval(local_service):
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient
-    from backend.local_agent.routes import router
-
-    app = FastAPI()
-    app.include_router(router)
-    client = TestClient(app)
+    from backend.local_agent.routes import get_document_content
 
     # Test retrieving invoice_022.pdf
-    resp = client.get("/local-agent/document-content", params={"path": r"C:\CompanyData\Finance\01_Invoices_PDF\invoice_022.pdf"})
+    resp = get_document_content(
+        path=r"C:\CompanyData\Finance\01_Invoices_PDF\invoice_022.pdf",
+        download=False,
+        service=local_service,
+    )
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "application/pdf"
     assert "inline" in resp.headers["content-disposition"]
-    assert len(resp.content) > 0
+    assert len(resp.body) > 0
 
 
 def test_set_single_folder_exclusive_replacement(tmp_path):

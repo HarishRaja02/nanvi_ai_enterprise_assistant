@@ -508,12 +508,18 @@ class LocalAccountStore:
         return [dict(row) for row in rows]
 
     def get_account(self, account_id: str, tenant_id: str) -> dict[str, Any]:
+        self.initialize()
         placeholder = "%s" if self._dsn else "?"
         with self._connect() as connection:
             row = connection.execute(
                 f"SELECT id, username, role, display_name, email, department, active, created_at FROM {self._table} WHERE id = {placeholder} AND tenant_id = {placeholder}",
                 (account_id, tenant_id),
             ).fetchone()
+            if not row:
+                row = connection.execute(
+                    f"SELECT id, username, role, display_name, email, department, active, created_at FROM {self._table} WHERE (LOWER(username) = {placeholder} OR id = {placeholder}) AND tenant_id = {placeholder}",
+                    (account_id.lower(), account_id, tenant_id),
+                ).fetchone()
         if not row:
             raise ValueError("Account not found.")
         return dict(row)

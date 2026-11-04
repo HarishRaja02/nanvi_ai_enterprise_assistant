@@ -103,9 +103,9 @@ def test_09_unrestricted_sql_is_rejected_even_if_prompt_requests_it():
             validator.validate_read(sql)
 
 
-def test_10_arbitrary_filesystem_path_is_rejected():
+def test_10_arbitrary_filesystem_path_is_rejected(tmp_path):
     from backend.integrations.files.local_repository import LocalFileRepository
-    root = Path("/tmp") / f"nanvi-ai-{uuid4().hex}"
+    root = tmp_path / f"nanvi-ai-{uuid4().hex}"
     root.mkdir()
     (root / "safe.txt").write_text("safe")
     repo = LocalFileRepository(root)

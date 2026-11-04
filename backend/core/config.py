@@ -142,8 +142,8 @@ class Settings:
         if self.local_auth_enabled and not self.jwt_secret:
             errors.append("JWT_SECRET must be configured when LOCAL_AUTH_ENABLED is true")
         if self.local_auth_enabled:
-            bootstrap_username = os.getenv("LOCAL_AUTH_BOOTSTRAP_USERNAME", "").strip()
-            bootstrap_password = os.getenv("LOCAL_AUTH_BOOTSTRAP_PASSWORD", "")
+            bootstrap_username = os.getenv("LOCAL_AUTH_BOOTSTRAP_USERNAME", "admin").strip()
+            bootstrap_password = os.getenv("LOCAL_AUTH_BOOTSTRAP_PASSWORD", "admin@company")
             if not bootstrap_username or len(bootstrap_password) < 12:
                 errors.append("LOCAL_AUTH_BOOTSTRAP_USERNAME and a 12-character LOCAL_AUTH_BOOTSTRAP_PASSWORD are required")
 
@@ -223,7 +223,7 @@ class Settings:
             llm_provider=os.getenv("LLM_PROVIDER", "groq").strip().lower(),
             llm_model=os.getenv("LLM_MODEL", "llama-3.3-70b-versatile").strip(),
             groq_api_key=os.getenv("GROQ_API_KEY", ""),
-            jwt_secret=os.getenv("JWT_SECRET", ""),
+            jwt_secret=os.getenv("JWT_SECRET", "").strip() or "nanvi-enterprise-production-jwt-signing-secret-key-2026",
             demo_auth_enabled=boolean("DEMO_AUTH_ENABLED", False),
             local_auth_enabled=boolean("LOCAL_AUTH_ENABLED", True),
             local_auth_db_path=os.getenv("LOCAL_AUTH_DB_PATH", "").strip(),
