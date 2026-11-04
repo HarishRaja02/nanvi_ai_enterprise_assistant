@@ -357,6 +357,19 @@ def test_set_single_folder_exclusive_replacement(tmp_path):
     assert len(agent.approved_folders) == 1
 
 
+def test_download_agent_package_bat_and_zip():
+    from backend.local_agent.packager import generate_agent_bat, generate_agent_zip
+
+    bat_code = generate_agent_bat("https://example.com", "token-123", "User")
+    assert "@echo off" in bat_code
+    assert "Nanvi Assistant - Local File Agent" in bat_code
+    assert len(bat_code) > 1000
+
+    zip_bytes = generate_agent_zip("https://example.com", "token-123", "User")
+    assert isinstance(zip_bytes, bytes)
+    assert len(zip_bytes) > 500
+
+
 def test_folder_sync_replace_all_purges_old_folders(local_service):
     tenant_id = "tenant-switch"
     user_id = "usr-switch"

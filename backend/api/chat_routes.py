@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import threading
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
@@ -51,15 +52,12 @@ ALLOWED_EXTENSIONS = {
     ".yaml", ".yml",
 }
 
-def get_chat_service() -> ChatService:
-    return _chat_service_instance
+_chat_service_instance: ChatService | None = None
+_chat_service_lock = threading.Lock()
 
 
 def _init_chat_service() -> ChatService:
-    """Create the singleton ChatService using the bootstrap module.
-
-    Lazy-initialized at module import so startup errors are visible immediately.
-    """
+    """Create the singleton ChatService using the bootstrap module."""
     try:
         from backend.bootstrap import create_chat_service
         return create_chat_service()
@@ -68,7 +66,13 @@ def _init_chat_service() -> ChatService:
         raise
 
 
-_chat_service_instance = _init_chat_service()
+def get_chat_service() -> ChatService:
+    global _chat_service_instance
+    if _chat_service_instance is None:
+        with _chat_service_lock:
+            if _chat_service_instance is None:
+                _chat_service_instance = _init_chat_service()
+    return _chat_service_instance
 
 def current_attributes(identity: UserIdentity = Depends(get_current_user)) -> UserAttributes:
     if not identity.tenant_id or not identity.roles:

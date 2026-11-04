@@ -262,9 +262,19 @@ export class NanviApiClient {
   constructor(options: ApiClientOptions = {}) {
     const rawEnvBase = (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) || "";
     const envBase = (typeof rawEnvBase === "string" ? rawEnvBase : "").trim();
-    let defaultBase = "/api";
+    const isDesktopOrigin = typeof window !== "undefined" && (
+      window.location.protocol === "file:" ||
+      Boolean((window as any).electronAPI?.isDesktop)
+    );
+    let defaultBase = isDesktopOrigin ? "http://127.0.0.1:8000/api" : "/api";
     if (envBase) {
       defaultBase = envBase.endsWith("/api") ? envBase : `${envBase.replace(/\/$/, "")}/api`;
+    }
+    if (isDesktopOrigin && typeof localStorage !== "undefined") {
+      const customUrl = localStorage.getItem("nanvi_custom_server_url");
+      if (customUrl) {
+        defaultBase = customUrl.endsWith("/api") ? customUrl : `${customUrl.replace(/\/$/, "")}/api`;
+      }
     }
     this.baseUrl = (options.baseUrl ?? defaultBase).replace(/\/$/, "");
     this.getAccessToken = options.getAccessToken;
@@ -280,7 +290,7 @@ export class NanviApiClient {
 
     let response: Response;
     try {
-      response = await fetch(`${this.baseUrl}${path}`, { ...init, headers, credentials: "same-origin" });
+      response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
     } catch {
       const fallback = getDemoFallbackResponse<T>(path, init);
       if (fallback !== undefined) return fallback;

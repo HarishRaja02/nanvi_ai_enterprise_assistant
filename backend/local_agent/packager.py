@@ -118,7 +118,7 @@ for /f "usebackq delims=" %%D in (`"%PYTHON_CMD%" -c "import tkinter as tk; from
 )
 if not "!TARGET_FOLDER!"=="" goto VALIDATE_FOLDER
 
-for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Company Folder for Nanvi AI Assistant'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }" 2^>nul`) do (
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Company Folder for Nanvi AI Assistant'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {{ Write-Output $f.SelectedPath }}" 2^>nul`) do (
     set "TARGET_FOLDER=%%D"
 )
 if not "!TARGET_FOLDER!"=="" goto VALIDATE_FOLDER
