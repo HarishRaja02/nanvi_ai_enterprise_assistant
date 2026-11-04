@@ -270,7 +270,7 @@ def _sanitize_database_url(url: str) -> str:
     match = re.match(r"^(postgres(?:ql)?://)([^:]+):(.*)@([^@]+)$", url)
     if match:
         scheme, user, password_raw, host_and_rest = match.groups()
-        if any(c in password_raw for c in "+?#") or ("%" in password_raw and not re.search(r"%[0-9a-fA-F]{2}", password_raw)):
+        if any(c in password_raw for c in "+?#@&,") or ("%" in password_raw and not re.search(r"%[0-9a-fA-F]{2}", password_raw)):
             encoded_pw = urllib.parse.quote_plus(password_raw)
             return f"{scheme}{user}:{encoded_pw}@{host_and_rest}"
     return url

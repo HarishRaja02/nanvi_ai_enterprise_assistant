@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import hmac
 import os
@@ -109,14 +110,19 @@ class LocalAccountStore:
     def _table(self) -> str:
         return "public.nanvi_local_accounts" if self._dsn else "local_accounts"
 
+    @contextmanager
     def _connect(self):
         if self._dsn:
             try:
                 if self._pool is not None:
-                    return self._pool.connection(timeout=3)
+                    with self._pool.connection(timeout=3) as conn:
+                        yield conn
+                    return
                 import psycopg
                 from psycopg.rows import dict_row
-                return psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=3)
+                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=3) as conn:
+                    yield conn
+                return
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("Could not connect to PostgreSQL/Supabase (%s). Using local SQLite/memory fallback.", exc)
@@ -128,23 +134,33 @@ class LocalAccountStore:
                         pass
                     self._pool = None
 
+        conn = None
         try:
             self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-            connection = sqlite3.connect(self._sqlite_path, timeout=10)
+            conn = sqlite3.connect(self._sqlite_path, timeout=10)
         except Exception as exc:
             import logging
             logging.getLogger(__name__).warning("SQLite store at %s failed (%s); using in-memory store.", self._sqlite_path, exc)
             if self._memory_conn is None:
                 self._memory_conn = sqlite3.connect(":memory:", check_same_thread=False)
                 self._memory_conn.row_factory = sqlite3.Row
-            return self._memory_conn
+            conn = self._memory_conn
 
-        connection.row_factory = sqlite3.Row
+        conn.row_factory = sqlite3.Row
         try:
-            connection.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA journal_mode=WAL")
         except Exception:
             pass
-        return connection
+
+        try:
+            with conn:
+                yield conn
+        finally:
+            if conn is not self._memory_conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def initialize(self) -> None:
         with self._initialize_lock:
