@@ -754,3 +754,113 @@ async def voice_synthesize(
         # Resilient fallback MPEG-1 Layer 3 audio frames for uninterrupted voice playback
         fallback_frame = b"\xff\xfb\x90\x00" + (b"\x00" * 410)
         return Response(content=fallback_frame * 3, media_type="audio/mpeg")
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+
+
+@router.websocket("/live")
+async def voice_live_websocket(websocket: WebSocket):
+    """FastAPI WebSocket endpoint for Nanvi RTC live voice sessions.
+    Supports chunked delivery, smart pause-and-arbitrate interruption,
+    and multiple providers (nanvi enterprise, mock, groq, gemini).
+    """
+    import json
+    from backend.nanvi_rtc.session import AgentSession
+    from backend.nanvi_rtc.providers.registry import registry
+    from backend.nanvi_rtc.types import new_id
+
+    await websocket.accept()
+
+    class FastApiWsSink:
+        def __init__(self, ws: WebSocket):
+            self.ws = ws
+
+        async def send_chunk(self, *, response_id: str, generation_id: str, index: int, text: str, audio=None):
+            try:
+                await self.ws.send_json({
+                    "type": "speak",
+                    "response_id": response_id,
+                    "generation_id": generation_id,
+                    "index": index,
+                    "text": text,
+                })
+            except Exception:
+                pass
+
+        async def stop(self, generation_id: str):
+            try:
+                await self.ws.send_json({"type": "stop", "generation_id": generation_id})
+            except Exception:
+                pass
+
+        async def pause(self, generation_id: str):
+            try:
+                await self.ws.send_json({"type": "pause", "generation_id": generation_id})
+            except Exception:
+                pass
+
+        async def emit(self, event: dict):
+            try:
+                await self.ws.send_json(event)
+            except Exception:
+                pass
+
+    sink = FastApiWsSink(websocket)
+    provider_name = "nanvi"
+    try:
+        llm = registry.create("llm", provider_name)
+    except Exception:
+        provider_name = "mock"
+        llm = registry.create("llm", "mock")
+
+    session = AgentSession(new_id(), llm, sink)
+    await websocket.send_json({
+        "type": "ready",
+        "provider": provider_name,
+        "providers": registry.names("llm"),
+    })
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                m = json.loads(raw)
+            except Exception:
+                continue
+            t = m.get("type")
+            if t == "user_text":
+                await session.handle_user_text(m.get("text", ""))
+            elif t == "pause":
+                await session.pause("client")
+            elif t == "resume":
+                await session.resume_paused("client")
+            elif t == "interrupt":
+                await session.interrupt("client")
+            elif t == "chunk_ack":
+                await session.on_chunk_ack(m["response_id"], m["generation_id"], int(m["index"]))
+            elif t == "set_provider":
+                try:
+                    session.set_llm(registry.create("llm", m["name"]))
+                    await websocket.send_json({"type": "provider", "provider": m["name"]})
+                except Exception as e:
+                    await websocket.send_json({"type": "error", "where": "provider", "message": str(e)})
+    except WebSocketDisconnect:
+        await session.interrupt("disconnect")
+    except Exception:
+        await session.interrupt("disconnect")
+
+
+@router.get("/live/demo", response_class=HTMLResponse)
+def get_live_voice_demo():
+    """Serves the standalone browser live voice interface connected to /api/voice/live."""
+    from pathlib import Path
+    demo_path = Path(__file__).resolve().parent.parent / "nanvi_rtc" / "web" / "demo" / "agent.html"
+    if demo_path.exists():
+        content = demo_path.read_text(encoding="utf-8")
+        # Ensure default ws URL points to /api/voice/live
+        content = content.replace("':8765'", "':8000/api/voice/live'")
+        return HTMLResponse(content=content)
+    return HTMLResponse("<h3>Nanvi RTC Demo not found</h3>", status_code=404)
+

@@ -244,6 +244,22 @@ export function App() {
 
   const openSource = useCallback((source: SourceView) => setOpenedSource(source), []);
 
+  useEffect(() => {
+    const onPreviewFile = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.path) {
+        setOpenedSource({
+          id: detail.path,
+          title: detail.name || detail.path,
+          location: detail.full_path || detail.path,
+          sourceType: "local",
+        });
+      }
+    };
+    window.addEventListener("nanvi:preview-file", onPreviewFile);
+    return () => window.removeEventListener("nanvi:preview-file", onPreviewFile);
+  }, []);
+
   const downloadReport = useCallback(
     async (reportId: string) => {
       if (!permissions.includes("REPORT_DOWNLOAD")) {

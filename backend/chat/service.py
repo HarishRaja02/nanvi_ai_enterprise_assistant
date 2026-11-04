@@ -567,25 +567,44 @@ class ChatService:
             logger.warning("Could not auto-update conversation context: %s", exc)
 
         cand_file_results = None
-        if self._is_file_search_query(effective_query):
-            cand_files = []
-            seen_cand_paths = set()
-            for s in source_map.values():
-                loc = str(getattr(s, "location", "") or getattr(s, "uri", "") or "").strip()
-                title = str(getattr(s, "display_name", "") or getattr(s, "title", "") or "").strip()
-                if loc and loc not in seen_cand_paths and ("\\" in loc or "/" in loc or "." in title):
-                    seen_cand_paths.add(loc)
-                    cand_files.append({
-                        "name": title or Path(loc).name,
-                        "path": loc,
-                        "full_path": loc,
-                        "display_path": title or loc,
-                        "type": Path(title or loc).suffix.lstrip("."),
-                        "open_url": loc,
-                        "source": "knowledge",
-                    })
-            if cand_files:
-                cand_file_results = tuple(cand_files)
+        cand_files = []
+        seen_cand_paths = set()
+
+        for s in source_map.values():
+            loc = str(getattr(s, "location", "") or getattr(s, "uri", "") or "").strip()
+            title = str(getattr(s, "display_name", "") or getattr(s, "title", "") or "").strip()
+            fn = Path(title or loc).name
+            if loc and loc not in seen_cand_paths and ("\\" in loc or "/" in loc or "." in fn):
+                seen_cand_paths.add(loc)
+                cand_files.append({
+                    "name": fn,
+                    "path": loc,
+                    "full_path": loc,
+                    "display_path": title or loc,
+                    "type": Path(fn).suffix.lstrip(".") or "file",
+                    "open_url": loc,
+                    "source": "knowledge",
+                })
+
+        # Also extract any bracketed file citations in answer text: [folder / file.ext (location)]
+        file_matches = re.findall(r"\[(?:(.*?)\s*/\s*)?(.+?\.(?:pdf|docx|xlsx|csv|txt|md|pptx))(?:\s*\(([^\)]+)\))?\]", answer)
+        for folder, fn, loc in file_matches:
+            full_loc = loc.strip() if loc else (f"{folder.strip()}/{fn.strip()}" if folder else fn.strip())
+            clean_fn = fn.strip()
+            if clean_fn and full_loc not in seen_cand_paths:
+                seen_cand_paths.add(full_loc)
+                cand_files.append({
+                    "name": clean_fn,
+                    "path": full_loc,
+                    "full_path": full_loc,
+                    "display_path": full_loc,
+                    "type": Path(clean_fn).suffix.lstrip(".") or "file",
+                    "open_url": full_loc,
+                    "source": "knowledge",
+                })
+
+        if cand_files:
+            cand_file_results = tuple(cand_files)
 
         data_source = "synthetic" if any(getattr(r, "data_source", "live") == "synthetic" for r in responses) else "live"
         return ChatResponse(conversation_id, answer, tuple(source_map.values()),
@@ -1170,10 +1189,21 @@ class ChatService:
         if cls._is_conversational_query(q):
             return False
 
-        # Exclude summarization, explanation, reading, and deep comprehension questions
-        # (These should route to KnowledgeAgent to retrieve and comprehend the content)
-        if any(w in q for w in ("summarize", "summary of", "explain", "describe", "what is inside", "what is in", "contents of", "what does", "read", "tell me about", "what is", "who is")):
-            return False
+        # Check if user explicitly asked for file search action (e.g. find invoice, search files, list contracts)
+        has_file_search_action = bool(re.search(
+            r"\b(find|search|show|get|list|locate|where\s+is|look\s+for|give\s+me)\b.*"
+            r"\b(file|files|invoice|invoices|document|documents|contract|contracts|spreadsheet|sheet|sheets|receipt|receipts|pdf|csv|excel)\b",
+            q,
+        )) or bool(re.search(
+            r"\b(file|files|invoice|invoices|contract|contracts|spreadsheet|sheet|sheets|receipt|receipts)\b.*"
+            r"\b(find|search|show|get|list|locate|where\s+is|look\s+for)\b",
+            q,
+        ))
+
+        if not has_file_search_action:
+            # Exclude summarization, explanation, and deep comprehension questions
+            if re.search(r"\b(summarize|summary of|explain|describe|what is inside|what is in|contents of|what does|tell me about)\b", q):
+                return False
 
         # [LEGACY] has_action = bool(re.search(r"\b(find|search|show|get|list|look\s+for|where\s+is|where\s+are|locate|give\s+me|fetch)\b", q))
         # [LEGACY] has_file_target = bool(re.search(r"\b(file|files|document|documents|pdf|docx|xlsx|spreadsheet|sheet|invoice|invoices|contract|contracts|resume|resumes|policy|handbook)\b", q))

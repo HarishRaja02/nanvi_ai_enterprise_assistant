@@ -1,0 +1,30 @@
+:root{--bg:#f6f7f9;--fg:#15181d;--mut:#5b6573;--line:#d9dee5;--card:#fff;--acc:#1f5fbf;--ok:#1a7f4b;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#12151a;--fg:#e8ebf0;--mut:#9aa5b4;--line:#2a313b;--card:#1a1f26;--acc:#6ea2f2;--ok:#58c58a;--bad:#f08a82}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+nav{display:flex;gap:18px;margin-bottom:22px;font-size:15px}
+nav a{color:var(--mut);text-decoration:none;padding-bottom:2px}
+nav a[aria-current]{color:var(--fg);border-bottom:2px solid var(--acc)}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+p.lead{color:var(--mut);margin:0 0 22px;max-width:60ch}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;color:inherit}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;min-width:0}
+input{flex:1 1 160px}
+button{background:var(--acc);color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:default}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+ul.peers{list-style:none;margin:0;padding:0}
+ul.peers li{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid var(--line)}
+ul.peers li:first-child{border-top:0}
+.status{color:var(--mut);font-size:14px}
+.log{height:300px;overflow:auto;display:flex;flex-direction:column;gap:8px}
+.msg{padding:8px 11px;border-radius:8px;max-width:85%;background:var(--bg);border:1px solid var(--line)}
+.msg.user{align-self:flex-end;background:var(--acc);color:#fff;border-color:transparent}
+.msg.sys{align-self:center;font-size:13px;color:var(--mut);background:none;border:0}
+.heard{color:var(--fg)} .unheard{color:var(--mut);text-decoration:line-through}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mut);margin-right:6px}
+.dot.on{background:var(--ok)}

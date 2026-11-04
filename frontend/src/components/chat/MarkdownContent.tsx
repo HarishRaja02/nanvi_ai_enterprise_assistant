@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { renderMarkdown } from "../../lib/markdown";
 import { copyText } from "../../lib/clipboard";
+import { FileText, Copy, Check, Eye, ExternalLink } from "lucide-react";
 import { useToast } from "../ui/Toast";
 import { InteractiveTable, type TableMetadata } from "./InteractiveTable";
 
@@ -85,6 +86,32 @@ function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
     }
   };
 
+  const handlePreview = () => {
+    window.dispatchEvent(
+      new CustomEvent("nanvi:preview-file", {
+        detail: {
+          name: document.filename,
+          path: filePath,
+          full_path: filePath,
+          display_path: filePath,
+        },
+      })
+    );
+  };
+
+  const handleOpen = async () => {
+    await copyText(filePath);
+    notify(`Opening ${document.filename}...`, "success");
+    try {
+      await fetch(`/api/local-agent/open-file`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_path: filePath }),
+      });
+    } catch {}
+    handlePreview();
+  };
+
   return (
     <div className="file-results-table-wrapper" style={{ margin: "8px 0" }}>
       <table className="file-results-table">
@@ -98,21 +125,57 @@ function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
         <tbody>
           <tr className="file-results-row">
             <td className="cell-name">
-              <span className="file-name-text">{document.filename}</span>
+              <div
+                className="file-name-wrapper"
+                style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px" }}
+                onClick={handlePreview}
+                title="Click to view document in browser memory"
+              >
+                <FileText className="file-icon" size={16} />
+                <span className="file-name-text">{document.filename}</span>
+              </div>
             </td>
             <td className="cell-path">
-              <code className="file-path-code" onClick={handleCopy} style={{ cursor: "pointer" }} title="Click to copy path">
-                {filePath}
-              </code>
+              <div
+                className="file-path-interactive"
+                onClick={handleCopy}
+                style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                title="Click to copy path"
+              >
+                <code className="file-path-code">{filePath}</code>
+                <Copy size={13} className="file-copy-icon-subtle" />
+              </div>
             </td>
             <td className="cell-action">
-              <button
-                type="button"
-                className={`file-copy-btn ${copied ? "is-copied" : ""}`}
-                onClick={handleCopy}
-              >
-                {copied ? "Copied!" : "Copy Path"}
-              </button>
+              <div style={{ display: "flex", gap: "6px", justifyContent: "flex-end", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className={`file-copy-btn ${copied ? "is-copied" : ""}`}
+                  onClick={handleCopy}
+                  title="Copy exact file path to clipboard"
+                >
+                  {copied ? <Check size={14} className="btn-icon" /> : <Copy size={14} className="btn-icon" />}
+                  <span>{copied ? "Copied!" : "Copy Path"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="file-preview-btn"
+                  onClick={handlePreview}
+                  title={`Preview ${document.filename} in browser memory`}
+                >
+                  <Eye size={14} className="btn-icon" />
+                  <span>Preview</span>
+                </button>
+                <button
+                  type="button"
+                  className="file-open-btn"
+                  onClick={handleOpen}
+                  title={`Open ${document.filename} in desktop application and browser memory`}
+                >
+                  <ExternalLink size={14} className="btn-icon" />
+                  <span>Open</span>
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>

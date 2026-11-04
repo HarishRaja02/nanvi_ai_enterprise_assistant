@@ -15,7 +15,7 @@ import { copyText } from "../../lib/clipboard";
 import { formatTime, humanize, initials } from "../../lib/format";
 import type { ContextMetric } from "../../lib/contextIntelligence";
 import type { SourceView } from "../../lib/sources";
-import type { Message } from "../../types";
+import type { Message, FileResultItem } from "../../types";
 import type { NanviApiClient, UserIdentity } from "../../api";
 
 type Props = {
@@ -187,8 +187,64 @@ function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onR
     }
   };
 
+  // Derive effective file results from structured payload, message sources, or bracketed file citations
+  const effectiveFileResults: FileResultItem[] = useMemo(() => {
+    if (message.fileResults && message.fileResults.length > 0) {
+      return message.fileResults;
+    }
+    const derived: FileResultItem[] = [];
+    const seen = new Set<string>();
+
+    // 1. Check sources for files
+    if (message.sources && message.sources.length > 0) {
+      for (const s of message.sources) {
+        const title = s.title || s.displayName || "";
+        const loc = s.location || s.uri || "";
+        const fn = title.split(/[\\/]/).pop() || title;
+        if (loc && (loc.includes("\\") || loc.includes("/") || fn.includes("."))) {
+          if (fn && !seen.has(fn.toLowerCase())) {
+            seen.add(fn.toLowerCase());
+            derived.push({
+              name: fn,
+              path: loc,
+              full_path: loc,
+              display_path: loc,
+              type: fn.split(".").pop() || "file",
+              open_url: loc,
+              source: "knowledge",
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Check message text for file header citations: [folder / filename.ext (location)]
+    const regex = /\[(?:(.*?)\s*\/\s*)?(.+?\.(?:pdf|docx|xlsx|csv|txt|md|pptx))(?:\s*\(([^\)]+)\))?\]/gi;
+    let m;
+    while ((m = regex.exec(message.text || "")) !== null) {
+      const folder = m[1]?.trim();
+      const filename = m[2]?.trim();
+      const loc = m[3]?.trim();
+      const full = loc || (folder ? `${folder}/${filename}` : filename);
+      if (filename && !seen.has(filename.toLowerCase())) {
+        seen.add(filename.toLowerCase());
+        derived.push({
+          name: filename,
+          path: full,
+          full_path: full,
+          display_path: full,
+          type: filename.split(".").pop() || "file",
+          open_url: full,
+          source: "knowledge",
+        });
+      }
+    }
+
+    return derived;
+  }, [message.fileResults, message.sources, message.text]);
+
   return (
-    <article className="msg msg-assistant" aria-label="Answer from Nanvi">
+    <article className="msg msg-assistant"  aria-label="Answer from Nanvi">
       <AssistantHead time={message.createdAt} capability={message.capability} dataSource={message.dataSource} />
 
       {/* Render Bento Metrics Strip if key figures are detected */}
@@ -203,15 +259,15 @@ function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onR
         />
       )}
 
-      {/* Render Simplified File Results Table */}
-      {message.fileResults && message.fileResults.length > 0 ? (
+      {/* Render Simplified File Results Table with Preview, Open, Copy buttons */}
+      {effectiveFileResults && effectiveFileResults.length > 0 ? (
         <div className="file-search-result-block">
           {message.text && (
             <div className="file-search-summary" style={{ marginBottom: "12px", fontWeight: 500 }}>
-              <MarkdownContent text={message.text.split("\n\n|")[0].replace(/^\|.*$/gm, "").trim()} />
+              <MarkdownContent text={message.text.split("\n\n|")[0].replace(/\[(?:.*?\/)?(.+?\.[a-z0-9]+)(?:\s*\([^\)]+\))?\][\s\S]*?(?=\n\n|$)/gi, "").replace(/^\|.*$/gm, "").trim()} />
             </div>
           )}
-          <FileResultsTable files={message.fileResults} api={api} />
+          <FileResultsTable files={effectiveFileResults} api={api} onOpen={onOpenSource ? (f) => onOpenSource({ id: f.name, title: f.name, location: f.path, sourceType: "local" }) : undefined} />
         </div>
       ) : (
         /* Render Markdown & Interactive Tables */
@@ -219,7 +275,7 @@ function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onR
       )}
 
       {/* Render Interactive Source Cards only when no fileResults table is displayed */}
-      {message.sources && message.sources.length > 0 && !message.fileResults?.length && (
+      {message.sources && message.sources.length > 0 && !effectiveFileResults?.length && (
         <SourceList sources={message.sources} onOpen={onOpenSource} />
       )}
 

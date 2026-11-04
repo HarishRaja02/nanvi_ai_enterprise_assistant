@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nanvi RTC · Rooms</title><link rel="stylesheet" href="style.css"></head>
+<body><main>
+<nav><a href="index.html" aria-current="page">Audio room</a><a href="agent.html">Voice agent</a></nav>
+<h1>Audio room</h1>
+<p class="lead">Open this page in two browser tabs, join the same room, and talk. Audio is routed through the Go SFU. No AI service is involved.</p>
+<div class="panel"><div class="row">
+<input id="room" value="demo" aria-label="Room" maxlength="64">
+<input id="name" placeholder="Your name" aria-label="Your name" maxlength="64">
+<button id="join">Join room</button><button id="leave" class="ghost" disabled>Leave</button>
+</div><p class="status" id="status" role="status">Not connected.</p></div>
+<div class="panel"><strong>In this room</strong><ul class="peers" id="peers"><li class="status">Nobody yet.</li></ul></div>
+<div id="audio"></div>
+<script>
+const $=id=>document.getElementById(id);
+let ws,pc,stream,myId,ping,peers=new Map();
+const status=t=>$('status').textContent=t;
+const render=()=>{$('peers').innerHTML=[...peers].length?[...peers].map(([id,n])=>`<li><span>${(n||'Guest').replace(/[<&]/g,'')}</span><span class="status">${id===myId?'you':'connected'}</span></li>`).join(''):'<li class="status">Nobody yet.</li>'};
+const send=m=>ws&&ws.readyState===1&&ws.send(JSON.stringify(m));
+async function join(){
+  $('join').disabled=true;
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}
+  catch(e){status('Microphone blocked. Allow access and try again.');$('join').disabled=false;return}
+  pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  pc.onicecandidate=e=>e.candidate&&send({type:'candidate',candidate:e.candidate.toJSON()});
+  pc.onconnectionstatechange=()=>status('Connection: '+pc.connectionState);
+  pc.ontrack=e=>{const s=e.streams[0];if(!s||document.getElementById('a-'+s.id))return;
+    const a=document.createElement('audio');a.id='a-'+s.id;a.autoplay=true;a.srcObject=s;$('audio').appendChild(a);
+    s.onremovetrack=()=>a.remove()};
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onopen=()=>{send({type:'join',room:$('room').value.trim(),name:$('name').value.trim()});ping=setInterval(()=>send({type:'ping'}),30000)};
+  ws.onclose=()=>{status('Disconnected.');cleanup()};
+  ws.onmessage=async ev=>{const m=JSON.parse(ev.data);
+    if(m.type==='joined'){myId=m.peer_id;peers=new Map([[myId,$('name').value.trim()],...m.peers.map(p=>[p.id,p.name])]);render();
+      const o=await pc.createOffer();await pc.setLocalDescription(o);send({type:'offer',sdp:o.sdp});$('leave').disabled=false}
+    else if(m.type==='answer'){await pc.setRemoteDescription({type:'answer',sdp:m.sdp})}
+    else if(m.type==='offer'){await pc.setRemoteDescription({type:'offer',sdp:m.sdp});const a=await pc.createAnswer();await pc.setLocalDescription(a);send({type:'answer',sdp:a.sdp})}
+    else if(m.type==='candidate'){try{await pc.addIceCandidate(m.candidate)}catch{}}
+    else if(m.type==='peer-joined'){peers.set(m.peer_id,m.name);render()}
+    else if(m.type==='peer-left'){peers.delete(m.peer_id);document.querySelectorAll('audio').forEach(a=>{if(!a.srcObject||!a.srcObject.active)a.remove()});render()}
+    else if(m.type==='error'){status('Error: '+m.error);}};
+}
+function cleanup(){clearInterval(ping);stream&&stream.getTracks().forEach(t=>t.stop());pc&&pc.close();pc=ws=stream=null;peers.clear();render();$('audio').innerHTML='';$('join').disabled=false;$('leave').disabled=true}
+$('join').onclick=join;$('leave').onclick=()=>{ws&&ws.close()};
+</script></main></body></html>
