@@ -20,23 +20,53 @@ function isBackendReachable(port = 8000) {
   });
 }
 
-function findPythonAndProject() {
-  const candidateDirs = [
-    path.resolve(__dirname, '../../'),
-    path.resolve(process.cwd()),
-    path.resolve(process.cwd(), '../'),
-    path.resolve(process.resourcesPath, '../../../../'),
+function findProjectRoot() {
+  const seeds = [
+    process.cwd(),
+    __dirname,
+    process.resourcesPath || '',
+    path.resolve(__dirname, '../../../../..'),
+    path.resolve(__dirname, '../../../..'),
+    path.resolve(__dirname, '../../..'),
     'C:\\Users\\haris\\Desktop\\nanvi_ai_enterprise_assistant',
-  ];
+  ].filter(Boolean);
 
-  for (const dir of candidateDirs) {
-    const venvPython = path.join(dir, 'venv', 'Scripts', 'python.exe');
-    const mainPy = path.join(dir, 'backend', 'main.py');
-    if (fs.existsSync(venvPython) && fs.existsSync(mainPy)) {
-      return { pythonExe: venvPython, projectDir: dir };
+  for (const seed of seeds) {
+    let curr = path.resolve(seed);
+    for (let i = 0; i < 8; i++) {
+      if (fs.existsSync(path.join(curr, 'backend', 'main.py'))) {
+        return curr;
+      }
+      const parent = path.dirname(curr);
+      if (parent === curr) break;
+      curr = parent;
     }
   }
   return null;
+}
+
+function findPythonAndProject() {
+  const projectDir = findProjectRoot();
+  if (!projectDir) return null;
+
+  const pythonCandidates = [
+    path.join(projectDir, 'venv', 'Scripts', 'python.exe'),
+    path.join(projectDir, '.venv', 'Scripts', 'python.exe'),
+    path.join(projectDir, 'venv', 'bin', 'python'),
+    'python.exe',
+    'python',
+  ];
+
+  for (const py of pythonCandidates) {
+    if (py.includes(path.sep)) {
+      if (fs.existsSync(py)) {
+        return { pythonExe: py, projectDir };
+      }
+    } else {
+      return { pythonExe: py, projectDir };
+    }
+  }
+  return { pythonExe: 'python', projectDir };
 }
 
 async function ensureBackendStarted() {
@@ -52,6 +82,11 @@ async function ensureBackendStarted() {
       ['-m', 'uvicorn', 'backend.main:app', '--host', '127.0.0.1', '--port', '8000'],
       {
         cwd: found.projectDir,
+        env: {
+          ...process.env,
+          PYTHONPATH: found.projectDir,
+          PYTHONUNBUFFERED: '1',
+        },
         detached: false,
         stdio: 'ignore',
         windowsHide: true,
@@ -62,10 +97,13 @@ async function ensureBackendStarted() {
       console.error('Failed to spawn backend:', err);
     });
 
-    // Wait up to 6 seconds for backend to become reachable
-    for (let i = 0; i < 12; i++) {
+    // Wait up to 25 seconds for backend to become reachable
+    for (let i = 0; i < 50; i++) {
       await new Promise((r) => setTimeout(r, 500));
-      if (await isBackendReachable()) break;
+      if (await isBackendReachable()) {
+        console.log(`Backend connected successfully in ${(i + 1) * 500}ms.`);
+        break;
+      }
     }
   } catch (err) {
     console.error('Error starting backend:', err);
@@ -141,6 +179,32 @@ ipcMain.handle('app:openExternal', (_event, url) => {
   }
 });
 
+ipcMain.handle('shell:openPath', async (_event, filePath) => {
+  if (!filePath) return { error: 'Empty file path' };
+  try {
+    const normPath = String(filePath).replace(/^file:\/\/\/?/, '');
+    const err = await shell.openPath(normPath);
+    if (err) {
+      console.warn('shell.openPath error:', err);
+      return { error: err };
+    }
+    return { success: true };
+  } catch (ex) {
+    return { error: ex.message };
+  }
+});
+
+ipcMain.handle('shell:showItemInFolder', async (_event, filePath) => {
+  if (!filePath) return false;
+  try {
+    const normPath = String(filePath).replace(/^file:\/\/\/?/, '');
+    shell.showItemInFolder(normPath);
+    return true;
+  } catch (_) {
+    return false;
+  }
+});
+
 // App Lifecycle
 app.whenReady().then(async () => {
   await ensureBackendStarted();
@@ -154,9 +218,16 @@ app.whenReady().then(async () => {
 });
 
 app.on('will-quit', () => {
-  if (backendProcess) {
+  if (backendProcess && backendProcess.pid) {
     try {
-      backendProcess.kill();
+      if (process.platform === 'win32') {
+        spawn('taskkill', ['/F', '/PID', String(backendProcess.pid), '/T'], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+      } else {
+        backendProcess.kill();
+      }
     } catch (_) {}
     backendProcess = null;
   }

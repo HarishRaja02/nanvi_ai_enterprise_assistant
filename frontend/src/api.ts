@@ -288,10 +288,26 @@ export class NanviApiClient {
     if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     if (token) headers.set("Authorization", `Bearer ${token}`);
 
-    let response: Response;
-    try {
-      response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
-    } catch {
+    const isDesktopOrigin = typeof window !== "undefined" && (
+      window.location.protocol === "file:" ||
+      Boolean((window as any).electronAPI?.isDesktop)
+    );
+
+    let response: Response | undefined;
+    const maxAttempts = isDesktopOrigin ? 3 : 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        response = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+        break;
+      } catch {
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+    }
+
+    if (!response) {
       const fallback = getDemoFallbackResponse<T>(path, init);
       if (fallback !== undefined) return fallback;
       throw new ApiError("Nanvi is unreachable. Check your connection and try again.", 0);

@@ -75,15 +75,32 @@ async def local_agent_open_file(
     user: UserIdentity | None = Depends(get_optional_current_user),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> dict[str, Any]:
-    """Queue an open_file command to the user's connected Windows PC agent."""
+    """Queue an open_file command to the user's connected Windows PC agent, or open directly if running on local machine."""
     raw_path = body.file_path.strip()
     if raw_path.startswith("file:///"):
         raw_path = raw_path[8:]
 
+    from pathlib import Path
+    import os
+
+    # 1. If running locally and file exists on host, launch it directly in Windows default app
+    p = Path(raw_path)
+    if p.exists() and hasattr(os, "startfile"):
+        try:
+            os.startfile(str(p.resolve()))
+            return {
+                "status": "ok",
+                "opened": str(p.resolve()),
+                "message": f"Opened {p.name} on your computer",
+                "local": True,
+            }
+        except Exception as exc:
+            logger.warning("os.startfile failed on local machine: %s", exc)
+
+    # 2. Remote agent fallback: queue command for connected PC agent
     t_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
     u_id = _get_user_id(user) if user else "default"
 
-    from pathlib import Path
     cmd_id = service.queue_command(t_id, u_id, "open_file", {"file_path": raw_path})
     if u_id != "default":
         try:
@@ -125,6 +142,7 @@ async def local_agent_browse_folder(
 def get_document_content(
     path: str = Query(..., description="File path or relative path to view"),
     download: bool = Query(False, description="Whether to download original file binary"),
+    user: UserIdentity | None = Depends(get_optional_current_user),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> Response:
     """Serve the document for ephemeral in-memory browser preview (PDF, HTML preview, images) or download."""
@@ -295,28 +313,68 @@ def get_document_content(
             },
         )
 
-    # If file is not directly present on disk, check indexed chunks in LocalAgentStore
+    # If file is not directly present on disk, check indexed chunks in LocalAgentStore across all keys
     try:
-        t_id = "enterprise-tenant"
-        u_id = "default"
-        val = service.store._load_key(t_id, u_id)
-        chunks = val.get("chunks", [])
-        if not chunks:
+        import html
+        u_id = _get_user_id(user) if user else "default"
+        t_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
+        all_chunks: list[dict[str, Any]] = []
+
+        # 1. Current user chunks
+        u_val = service.store._load_key(t_id, u_id)
+        all_chunks.extend(u_val.get("chunks", []))
+
+        # 2. Default tenant chunks
+        if not all_chunks:
+            def_val = service.store._load_key(t_id, "default")
+            all_chunks.extend(def_val.get("chunks", []))
+
+        # 3. Any in-memory chunks in store
+        if not all_chunks:
             for k, d in getattr(service.store, "_data", {}).items():
                 if d.get("chunks"):
-                    chunks = d.get("chunks")
-                    break
+                    all_chunks.extend(d["chunks"])
+
+        # 4. PostgreSQL query if DSN is configured
+        if not all_chunks and service.store._dsn:
+            try:
+                import psycopg
+                from psycopg.rows import dict_row
+                with psycopg.connect(service.store._dsn, autocommit=True, connect_timeout=3, row_factory=dict_row) as conn:
+                    rows = conn.execute("SELECT data FROM public.nanvi_local_agent_store WHERE (data->>'chunks') IS NOT NULL").fetchall()
+                    for r in rows:
+                        row_chunks = (r.get("data") or {}).get("chunks", [])
+                        if row_chunks:
+                            all_chunks.extend(row_chunks)
+            except Exception as pg_exc:
+                logger.debug("PostgreSQL document chunks load error: %s", pg_exc)
+
         fn_low = filename.lower()
         matching = [
-            c for c in chunks
-            if c.get("filename", "").lower() == fn_low or fn_low in c.get("relative_path", "").lower()
+            c for c in all_chunks
+            if c.get("filename", "").lower() == fn_low
+            or fn_low in str(c.get("relative_path", "")).lower()
+            or fn_low in str(c.get("folder_path", "")).lower()
         ]
+
         if matching:
             matching.sort(key=lambda c: c.get("chunk_index", 0))
             joined_text = "\n\n".join(c.get("text", "") for c in matching)
+            file_ext = filename.split(".")[-1].lower() if "." in filename else "txt"
+
+            if download:
+                return Response(
+                    content=joined_text.encode("utf-8"),
+                    media_type="text/csv" if file_ext == "csv" else "text/plain; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{filename}"',
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                    },
+                )
+
             try:
                 doc_model = Document(
-                    source=source_for(filename, rel_path or filename, filename.split(".")[-1] if "." in filename else "txt"),
+                    source=source_for(filename, rel_path or filename, file_ext),
                     metadata=metadata_for(len(joined_text)),
                     text=joined_text,
                 )
@@ -341,7 +399,41 @@ def get_document_content(
     except Exception as exc:
         logger.debug("Could not read chunks for document-content: %s", exc)
 
-    raise HTTPException(status_code=404, detail=f"Document '{filename}' could not be found.")
+    # 5. Clean, informative fallback card if content is exclusively on user's PC (200 OK, never 404)
+    import html
+    fallback_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{html.escape(filename)} - Nanvi AI</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; padding: 36px 20px; color: #0f172a; display: flex; justify-content: center; }}
+    .card {{ background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 12px; max-width: 640px; width: 100%; padding: 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }}
+    .badge {{ display: inline-flex; align-items: center; gap: 6px; background: #ecfdf5; border: 1px solid #86efac; color: #166534; padding: 4px 12px; border-radius: 20px; font-weight: 700; font-size: 12px; margin-bottom: 16px; }}
+    h2 {{ font-size: 20px; color: #0f172a; margin-bottom: 12px; font-weight: 700; }}
+    .path-box {{ background: #f1f5f9; border: 1px solid #cbd5e1; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #0369a1; word-break: break-all; font-family: monospace; margin: 12px 0 20px; }}
+    p {{ color: #475569; font-size: 14.5px; line-height: 1.6; margin-bottom: 14px; }}
+    .note {{ background: #eff6ff; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; font-size: 13.5px; color: #1e40af; margin-top: 18px; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <span style="width:7px;height:7px;border-radius:50%;background:#16a34a;display:inline-block"></span>
+      Windows PC Local File
+    </div>
+    <h2>📄 {html.escape(filename)}</h2>
+    <p>This file is stored on your connected Windows computer:</p>
+    <div class="path-box">{html.escape(path)}</div>
+    <p>To inspect or edit the original document, use <strong>Open in Desktop App</strong> to open it directly in your native Windows application (Excel, Notepad, or Acrobat).</p>
+    <div class="note">
+      💡 <strong>Tip:</strong> The exact file path has also been automatically copied to your Windows clipboard.
+    </div>
+  </div>
+</body>
+</html>"""
+    return Response(content=fallback_html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/document-download")

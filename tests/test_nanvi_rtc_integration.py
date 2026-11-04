@@ -82,6 +82,17 @@ def test_interruption_arbitrator_classification():
     assert InterruptionArbitrator.classify("Can you check the Q3 report instead?") == InterruptionDecision.CUT_AND_RESPOND
     assert InterruptionArbitrator.classify("stop") == InterruptionDecision.CUT_AND_RESPOND
 
+    # Laptop speaker echo suppression -> RESUME (treated as false interrupt)
+    agent_speech = "Our total enterprise revenue for the second quarter reached fifty thousand dollars."
+    speaker_bleed = "total enterprise revenue for the second quarter"
+    assert InterruptionArbitrator.is_echo(speaker_bleed, agent_speech) is True
+    assert InterruptionArbitrator.classify(speaker_bleed, agent_text=agent_speech) == InterruptionDecision.RESUME
+
+    # Real user question spoken while agent is speaking does NOT trigger echo
+    real_user_question = "What about our tax expenses?"
+    assert InterruptionArbitrator.is_echo(real_user_question, agent_speech) is False
+    assert InterruptionArbitrator.classify(real_user_question, agent_text=agent_speech) == InterruptionDecision.CUT_AND_RESPOND
+
 
 @pytest.mark.anyio
 async def test_false_interrupt_backchannel_resumes_paused_agent(mock_sink):

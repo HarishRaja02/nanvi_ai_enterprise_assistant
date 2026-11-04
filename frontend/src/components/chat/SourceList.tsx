@@ -5,11 +5,12 @@ import { SourceTile } from "./SourceTile";
 import { copyText } from "../../lib/clipboard";
 import { useToast } from "../ui/Toast";
 import type { SourceView } from "../../lib/sources";
+import type { NanviApiClient } from "../../api";
 
-type Props = { sources: SourceView[]; onOpen: (source: SourceView) => void };
+type Props = { sources: SourceView[]; onOpen: (source: SourceView) => void; api?: NanviApiClient };
 
 /** Interactive source cards for verified document provenance */
-export function SourceList({ sources, onOpen }: Props) {
+export function SourceList({ sources, onOpen, api }: Props) {
   const notify = useToast();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [sourcesVisible, setSourcesVisible] = useState(true);
@@ -25,6 +26,24 @@ export function SourceList({ sources, onOpen }: Props) {
       notify("Source reference copied.", "success");
       setTimeout(() => setCopiedId(null), 1500);
     }
+  };
+
+  const handleOpenFile = async (s: SourceView) => {
+    const path = s.location || s.title;
+    try {
+      await navigator.clipboard.writeText(path);
+    } catch {}
+
+    if (typeof window !== "undefined" && (window as any).electronAPI?.openPath) {
+      (window as any).electronAPI.openPath(path);
+    }
+
+    if (api && typeof api.openFile === "function") {
+      api.openFile(path).catch(() => {});
+    }
+
+    notify(`Opening ${s.title} on your computer...`, "success");
+    onOpen(s);
   };
 
   return (
@@ -87,8 +106,8 @@ export function SourceList({ sources, onOpen }: Props) {
               <button
                 type="button"
                 className="source-action-btn secondary"
-                onClick={() => onOpen(s)}
-                title={`Inspect citation location in ${s.title}`}
+                onClick={() => handleOpenFile(s)}
+                title={`Open ${s.title} on your computer and view citation`}
               >
                 <ExternalLink size={12} aria-hidden="true" />
                 <span>Open File</span>

@@ -83,7 +83,12 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
         setBlobUrl(objUrl);
         setBlobMime(result.mimeType);
       } else {
-        const res = await fetch(`/api/local-agent/document-content?path=${encodeURIComponent(exactPath)}`);
+        const isDesktopOrigin = typeof window !== "undefined" && (
+          window.location.protocol === "file:" ||
+          Boolean((window as any).electronAPI?.isDesktop)
+        );
+        const base = isDesktopOrigin ? "http://127.0.0.1:8000/api" : "/api";
+        const res = await fetch(`${base}/local-agent/document-content?path=${encodeURIComponent(exactPath)}`);
         if (!res.ok) throw new Error("Could not load document into browser memory");
         const blob = await res.blob();
         const objUrl = URL.createObjectURL(blob);
@@ -118,11 +123,6 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
       return;
     }
 
-    if (onOpen) {
-      onOpen(file);
-      return;
-    }
-
     // Always copy the exact path to clipboard immediately so the user is never stuck
     try {
       await navigator.clipboard.writeText(exactPath);
@@ -133,16 +133,29 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     setOpeningIdx(idx);
 
     try {
-      // 1. Dispatch remote open command to local agent in background
-      if (api && typeof api.openFile === "function") {
-        api.openFile(exactPath).catch(() => {});
+      // 1. If running in Electron Desktop App, open file directly via native OS shell
+      if (typeof window !== "undefined" && (window as any).electronAPI?.openPath) {
+        const res = await (window as any).electronAPI.openPath(exactPath);
+        if (!res?.error) {
+          notify(`Opened ${file.name} in your default application`, "success");
+          return;
+        }
       }
 
-      // 2. Open interactive ephemeral in-memory document preview in browser
+      // 2. Dispatch open command to backend / local agent (triggers os.startfile on host)
+      if (api && typeof api.openFile === "function") {
+        const res = await api.openFile(exactPath);
+        notify(res?.message || `Opened ${file.name} on your computer`, "success");
+        return;
+      }
+
+      // 3. Fallback: open in-browser memory preview
       notify(`Opening ${file.name} in secure browser memory...`, "success");
       await openPreview(file);
     } catch {
-      // openPreview catches internally, but guard against any unexpected exception
+      // If opening in local app failed, open the interactive browser preview
+      notify(`Viewing ${file.name} in browser preview...`, "info");
+      await openPreview(file);
     } finally {
       setOpeningIdx(null);
     }
@@ -321,16 +334,36 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                   size="sm"
                   onClick={async () => {
                     const p = getExactPath(previewFile);
+                    if (typeof window !== "undefined" && (window as any).electronAPI?.openPath) {
+                      const res = await (window as any).electronAPI.openPath(p);
+                      if (!res?.error) {
+                        notify(`Opened ${previewFile.name} on your computer`, "success");
+                        return;
+                      }
+                    }
                     if (api && typeof api.openFile === "function") {
-                      notify(`Sending open command to Nanvi Windows Agent...`, "success");
+                      notify(`Opening ${previewFile.name} on your computer...`, "success");
                       await api.openFile(p);
                     }
                   }}
-                  title="Open directly in Windows desktop application (WPS Office / Acrobat / Excel)"
+                  title="Open directly in Windows desktop application (Excel, WPS, Notepad, Acrobat)"
                 >
                   <ExternalLink className="w-4 h-4 mr-1" />
                   Open in Desktop App
                 </Button>
+                {typeof window !== "undefined" && (window as any).electronAPI?.showItemInFolder && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      (window as any).electronAPI.showItemInFolder(getExactPath(previewFile));
+                      notify(`Revealed in Windows Explorer`, "success");
+                    }}
+                    title="Reveal file in Windows Explorer folder"
+                  >
+                    Reveal in Explorer
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   size="sm"

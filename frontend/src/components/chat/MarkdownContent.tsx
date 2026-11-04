@@ -103,6 +103,9 @@ function DocumentResultCard({ document }: { document: DocumentExcerptData }) {
     await copyText(filePath);
     notify(`Opening ${document.filename}...`, "success");
     try {
+      if (typeof window !== "undefined" && (window as any).electronAPI?.openPath) {
+        await (window as any).electronAPI.openPath(filePath);
+      }
       await fetch(`/api/local-agent/open-file`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

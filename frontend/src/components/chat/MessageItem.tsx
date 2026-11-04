@@ -267,7 +267,7 @@ function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onR
               <MarkdownContent text={message.text.split("\n\n|")[0].replace(/\[(?:.*?\/)?(.+?\.[a-z0-9]+)(?:\s*\([^\)]+\))?\][\s\S]*?(?=\n\n|$)/gi, "").replace(/^\|.*$/gm, "").trim()} />
             </div>
           )}
-          <FileResultsTable files={effectiveFileResults} api={api} onOpen={onOpenSource ? (f) => onOpenSource({ id: f.name, title: f.name, location: f.path, sourceType: "local" }) : undefined} />
+          <FileResultsTable files={effectiveFileResults} api={api} />
         </div>
       ) : (
         /* Render Markdown & Interactive Tables */
@@ -276,7 +276,7 @@ function MessageItemBase({ message, api, identity, onOpenSource, onDownload, onR
 
       {/* Render Interactive Source Cards only when no fileResults table is displayed */}
       {message.sources && message.sources.length > 0 && !effectiveFileResults?.length && (
-        <SourceList sources={message.sources} onOpen={onOpenSource} />
+        <SourceList sources={message.sources} onOpen={onOpenSource} api={api} />
       )}
 
       {/* Render Backend Trace Disclosure */}
