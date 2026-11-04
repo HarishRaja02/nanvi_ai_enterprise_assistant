@@ -136,11 +136,11 @@ export function Composer({
       onDrop={handleDrop}
       noValidate
     >
-      {/* Hidden file input for RAG document ingestion */}
+      {/* Hidden file input for RAG document ingestion - supports all enterprise formats */}
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.docx,.xlsx,.csv,.txt,.md"
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.xltx,.csv,.tsv,.txt,.text,.md,.markdown,.log,.rtf,.json,.jsonl,.xml,.html,.htm,.ppt,.pptx,.yaml,.yml"
         style={{ display: "none" }}
         onChange={handleFileSelect}
         aria-label="Upload document to RAG"

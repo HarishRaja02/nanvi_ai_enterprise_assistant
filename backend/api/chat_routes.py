@@ -37,7 +37,19 @@ class UploadDocumentBody(BaseModel):
     content_base64: str = Field(min_length=1)
     conversation_id: str | None = Field(default=None)
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md"}
+ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".doc", ".docx",
+    ".xls", ".xlsx", ".xlsm", ".xltx",
+    ".csv", ".tsv",
+    ".txt", ".text", ".md", ".markdown", ".log",
+    ".rtf",
+    ".json", ".jsonl",
+    ".xml",
+    ".html", ".htm",
+    ".ppt", ".pptx",
+    ".yaml", ".yml",
+}
 
 def get_chat_service() -> ChatService:
     return _chat_service_instance

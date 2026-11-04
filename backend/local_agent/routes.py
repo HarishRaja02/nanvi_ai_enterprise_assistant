@@ -101,11 +101,16 @@ async def local_agent_open_file(
 @router.get("/document-content")
 async def get_document_content(
     path: str = Query(..., description="File path or relative path to view"),
+    download: bool = Query(False, description="Whether to download original file binary"),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> Response:
-    """Serve the raw document binary (PDF, image, text) for ephemeral in-memory browser preview."""
+    """Serve the document for ephemeral in-memory browser preview (PDF, HTML preview, images) or download."""
     from pathlib import Path
     import mimetypes
+    from backend.integrations.files.company_data.extraction import create_default_document_service
+    from backend.documents.preview_renderer import render_document_to_html
+    from backend.documents.parsers.common import source_for, metadata_for
+    from backend.documents.models import Document
 
     raw = path.strip()
     if raw.startswith("file:///"):
@@ -169,11 +174,74 @@ async def get_document_content(
     if target_file and target_file.is_file():
         suffix = target_file.suffix.lower()
         media_type = mimetypes.guess_type(target_file.name)[0]
+
+        # 1. If explicit download requested, return original file attachment
+        if download:
+            return FileResponse(
+                path=str(target_file),
+                media_type=media_type or "application/octet-stream",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{target_file.name}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+
+        # 2. Ephemeral In-Memory Preview in Browser
+        # Native PDF preview
         if suffix == ".pdf":
-            media_type = "application/pdf"
-        elif suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
-            media_type = media_type or "image/png"
-        elif suffix in (".txt", ".log", ".csv", ".json", ".md", ".py"):
+            return FileResponse(
+                path=str(target_file),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_file.name}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+
+        # Native Image preview
+        if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+            return FileResponse(
+                path=str(target_file),
+                media_type=media_type or "image/png",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_file.name}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+
+        # Raw HTML
+        if suffix in (".html", ".htm"):
+            return FileResponse(
+                path=str(target_file),
+                media_type="text/html; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_file.name}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+
+        # Rich In-Memory Preview for Word, Excel, CSV, TSV, PPT, Text, JSON, XML, RTF
+        try:
+            doc_service = create_default_document_service()
+            file_bytes = target_file.read_bytes()
+            doc_model = doc_service.parse_bytes(
+                filename=target_file.name,
+                relative_path=rel_path or target_file.name,
+                data=file_bytes,
+            )
+            html_preview = render_document_to_html(doc_model)
+            return Response(
+                content=html_preview,
+                media_type="text/html; charset=utf-8",
+                headers={
+                    "Content-Disposition": f'inline; filename="{target_file.name}.html"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+        except Exception as parse_err:
+            logger.debug("Could not render HTML preview for %s (%s), falling back to raw", target_file.name, parse_err)
+
+        if suffix in (".txt", ".log", ".csv", ".json", ".md", ".py"):
             media_type = media_type or "text/plain; charset=utf-8"
         else:
             media_type = media_type or "application/octet-stream"
@@ -206,18 +274,43 @@ async def get_document_content(
         if matching:
             matching.sort(key=lambda c: c.get("chunk_index", 0))
             joined_text = "\n\n".join(c.get("text", "") for c in matching)
-            return Response(
-                content=joined_text,
-                media_type="text/plain; charset=utf-8",
-                headers={
-                    "Content-Disposition": f'inline; filename="{filename}.txt"',
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                },
-            )
+            try:
+                doc_model = Document(
+                    source=source_for(filename, rel_path or filename, filename.split(".")[-1] if "." in filename else "txt"),
+                    metadata=metadata_for(len(joined_text)),
+                    text=joined_text,
+                )
+                html_preview = render_document_to_html(doc_model)
+                return Response(
+                    content=html_preview,
+                    media_type="text/html; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f'inline; filename="{filename}.html"',
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                    },
+                )
+            except Exception:
+                return Response(
+                    content=joined_text,
+                    media_type="text/plain; charset=utf-8",
+                    headers={
+                        "Content-Disposition": f'inline; filename="{filename}.txt"',
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                    },
+                )
     except Exception as exc:
         logger.debug("Could not read chunks for document-content: %s", exc)
 
     raise HTTPException(status_code=404, detail=f"Document '{filename}' could not be found.")
+
+
+@router.get("/document-download")
+async def download_document_endpoint(
+    path: str = Query(..., description="File path to download"),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> Response:
+    """Download the original document binary file."""
+    return await get_document_content(path=path, download=True, service=service)
 
 
 @router.get("/download")

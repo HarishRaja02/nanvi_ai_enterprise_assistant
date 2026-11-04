@@ -148,6 +148,35 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
     }
   };
 
+  const handleDownloadCopy = async () => {
+    if (!previewFile) return;
+    const exactPath = getExactPath(previewFile);
+    try {
+      const url = `/api/local-agent/document-content?path=${encodeURIComponent(exactPath)}&download=true`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = previewFile.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
+      notify(`Downloaded ${previewFile.name}`, "success");
+    } catch {
+      if (blobUrl) {
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = previewFile.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    }
+  };
+
   const isPdf = (file: FileResultItem, mime?: string | null) => {
     return (mime && mime.includes("pdf")) || file.name.toLowerCase().endsWith(".pdf") || getExactPath(file).toLowerCase().endsWith(".pdf");
   };
@@ -276,18 +305,15 @@ export function FileResultsTable({ files, api, onOpen }: Props) {
                   {copiedModal ? <Check className="w-4 h-4 mr-1 text-green-600" /> : <Copy className="w-4 h-4 mr-1" />}
                   {copiedModal ? "Copied!" : "Copy File Path"}
                 </Button>
-                {blobUrl && (
-                  <a
-                    href={blobUrl}
-                    download={previewFile.name}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <Button variant="secondary" size="sm" title="Save a copy to your computer">
-                      <Download className="w-4 h-4 mr-1" />
-                      Download Copy
-                    </Button>
-                  </a>
-                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleDownloadCopy}
+                  title="Save original copy to your computer"
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  Download Copy
+                </Button>
               </div>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 <Button

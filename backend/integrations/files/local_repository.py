@@ -10,7 +10,17 @@ from backend.integrations.files.models import FileMetadata, FileRecord
 from backend.integrations.files.repository import FileRepository
 
 DEFAULT_ALLOWED_EXTENSIONS = frozenset({
-    ".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md", ".pptx",
+    ".pdf",
+    ".doc", ".docx",
+    ".xls", ".xlsx", ".xlsm", ".xltx",
+    ".csv", ".tsv",
+    ".txt", ".text", ".md", ".markdown", ".log",
+    ".rtf",
+    ".json", ".jsonl",
+    ".xml",
+    ".html", ".htm",
+    ".ppt", ".pptx",
+    ".yaml", ".yml",
 })
 
 

@@ -535,12 +535,12 @@ def execute_file_search(
 
                     if not content_str:
                         ext = p.suffix.casefold()
-                        if ext in (".txt", ".csv", ".json", ".md", ".py"):
+                        if ext in (".txt", ".csv", ".tsv", ".json", ".jsonl", ".md", ".py", ".html", ".htm", ".log", ".yaml", ".yml", ".ini", ".conf"):
                             try:
                                 content_str = p.read_text(encoding="utf-8", errors="ignore")[:50000].casefold()
                             except Exception:
                                 pass
-                        elif ext in (".pdf", ".docx", ".xlsx", ".pptx"):
+                        elif ext in (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".xlsm", ".pptx", ".ppt", ".rtf", ".xml"):
                             try:
                                 doc = cds._doc_service.parse_bytes(
                                     filename=p.name,

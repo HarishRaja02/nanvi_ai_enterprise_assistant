@@ -5,7 +5,19 @@ import logging
 import re
 from typing import Any, Callable
 
-from backend.documents.parsers import CSVParser, ExcelParser, PDFParser, PPTXParser, TextParser, WordParser
+from backend.documents.parsers import (
+    CSVParser,
+    ExcelParser,
+    HTMLParser,
+    JSONParser,
+    PDFParser,
+    PPTXParser,
+    RTFParser,
+    TSVParser,
+    TextParser,
+    WordParser,
+    XMLParser,
+)
 from backend.documents.service import DocumentProcessingService
 from backend.security.authorization import UserAttributes
 from backend.sources.models import SourceReference, SourceType
@@ -20,8 +32,13 @@ def create_default_document_service() -> DocumentProcessingService:
         WordParser(),
         ExcelParser(),
         CSVParser(),
+        TSVParser(),
         PPTXParser(),
         TextParser(),
+        RTFParser(),
+        HTMLParser(),
+        JSONParser(),
+        XMLParser(),
     ])
 
 

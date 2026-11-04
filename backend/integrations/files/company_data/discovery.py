@@ -69,7 +69,19 @@ def discover_files(base_root: Path) -> list[tuple[str, str, str, Path]]:
             if name.startswith(".") or name.startswith("~$"):
                 continue
             ext = Path(name).suffix.casefold()
-            if ext not in {".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md", ".pptx"}:
+            if ext not in {
+                ".pdf",
+                ".doc", ".docx",
+                ".xls", ".xlsx", ".xlsm", ".xltx",
+                ".csv", ".tsv",
+                ".txt", ".text", ".md", ".markdown", ".log",
+                ".rtf",
+                ".json", ".jsonl",
+                ".xml",
+                ".html", ".htm",
+                ".ppt", ".pptx",
+                ".yaml", ".yml",
+            }:
                 continue
 
             full_path = Path(current_root) / name

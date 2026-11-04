@@ -11,7 +11,7 @@ class DocumentProcessingError(ValueError): pass
 
 class DocumentProcessingService:
     """Processes bytes obtained from FileService; it never resolves filesystem paths."""
-    ZIP_FORMATS = frozenset({".docx", ".xlsx", ".pptx"})
+    ZIP_FORMATS = frozenset({".docx", ".xlsx", ".pptx", ".xlsm", ".xltx", ".xltm"})
     MAX_ZIP_ENTRIES = 2000
     MAX_ZIP_UNCOMPRESSED = 50 * 1024 * 1024
     MAX_COMPRESSION_RATIO = 100
@@ -25,7 +25,7 @@ class DocumentProcessingService:
         parser = next((p for p in self._parsers if p.supports(filename)), None)
         if parser is None:
             raise UnsupportedDocumentTypeError(f"Unsupported document type: {suffix or '<none>'}")
-        if suffix in self.ZIP_FORMATS:
+        if (suffix in self.ZIP_FORMATS or (suffix in (".doc", ".xls", ".ppt") and data.startswith(b"PK\x03\x04"))):
             self._validate_ooxml_archive(data)
         try:
             return parser.parse_bytes(filename=filename, relative_path=relative_path, data=data, modified_at=modified_at)
