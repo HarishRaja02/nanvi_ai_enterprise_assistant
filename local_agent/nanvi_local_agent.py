@@ -80,6 +80,7 @@ class NanviLocalAgent:
         self.file_hashes: dict[str, str] = {}
         self.running = False
         self._sync_lock = threading.Lock()
+        self._failed_requested_folders: set[str] = set()
         self._load_config()
 
     # -----------------------------------------------------------------------
@@ -282,8 +283,8 @@ class NanviLocalAgent:
 
         return ""
 
-    def chunk_text(self, text: str, rel_path: str, filename: str, folder_name: str, mtime_iso: str) -> list[dict[str, Any]]:
-        """Split document text into overlapping chunks for RAG."""
+    def chunk_text(self, text: str, rel_path: str, filename: str, folder_name: str, mtime_iso: str, max_chunks: int = 50) -> list[dict[str, Any]]:
+        """Split document text into overlapping chunks for RAG (capped at max_chunks to keep sync fast & lightweight)."""
         clean = re.sub(r"\r\n", "\n", text).strip()
         if not clean:
             return []
@@ -293,7 +294,7 @@ class NanviLocalAgent:
         idx = 0
         total_len = len(clean)
 
-        while start < total_len:
+        while start < total_len and len(chunks) < max_chunks:
             end = min(start + CHUNK_SIZE_CHARS, total_len)
             # Try to break at newline or space
             if end < total_len:
@@ -331,13 +332,13 @@ class NanviLocalAgent:
     # Scanning & Syncing
     # -----------------------------------------------------------------------
 
-    def index_and_sync_folder(self, folder_path_str: str) -> None:
+    def index_and_sync_folder(self, folder_path_str: str) -> bool:
         """Scan one approved folder, index documents, and sync to Nanvi Cloud API."""
         with self._sync_lock:
             folder_path = Path(folder_path_str)
             if not folder_path.exists() or not folder_path.is_dir():
                 logger.warning("Folder no longer exists: %s", folder_path)
-                return
+                return False
 
             display_name = self.approved_folders.get(folder_path_str, {}).get("display_name") or folder_path.name
 
@@ -369,7 +370,7 @@ class NanviLocalAgent:
 
                         mtime_iso = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()
                         file_text = self._extract_text(file_p)
-                        chunks = self.chunk_text(file_text, rel_path, fname, display_name, mtime_iso)
+                        chunks = self.chunk_text(file_text, rel_path, fname, display_name, mtime_iso, max_chunks=50)
 
                         all_chunks.extend(chunks)
                         files_meta.append({
@@ -386,24 +387,11 @@ class NanviLocalAgent:
 
             logger.info("Indexed %d files (%d chunks) from %s", len(files_meta), len(all_chunks), display_name)
 
-            # Transmit to Nanvi Cloud API
-            self._push_sync(folder_path_str, display_name, files_meta, all_chunks)
+            # Transmit to Nanvi Cloud API in safe, bounded batches
+            return self._push_sync(folder_path_str, display_name, files_meta, all_chunks)
 
-    def _push_sync(self, folder_path: str, display_name: str, files: list[dict], chunks: list[dict]) -> bool:
-        """Send folder chunks and metadata to the Nanvi cloud backend."""
-        if not self.server_url or not self.token:
-            logger.warning("Cannot sync: server_url or token missing.")
-            return False
-
-        url = f"{self.server_url}/api/local-agent/sync"
-        payload = {
-            "folder_id": folder_path,
-            "folder_path": folder_path,
-            "display_name": display_name,
-            "files": files,
-            "chunks": chunks,
-            "replace_all": True,
-        }
+    def _send_sync_request(self, url: str, payload: dict[str, Any]) -> bool:
+        """Helper to post a sync batch to the cloud backend."""
         try:
             req = Request(
                 url,
@@ -415,16 +403,71 @@ class NanviLocalAgent:
                 method="POST",
             )
             with urlopen(req, timeout=30) as resp:
-                if resp.status == 200:
-                    logger.info("[OK] Successfully synced '%s' to Nanvi Cloud.", display_name)
-                    return True
+                return resp.status == 200
         except HTTPError as err:
-            logger.error("Cloud sync failed (HTTP %s): %s", err.code, err.read().decode("utf-8", errors="replace"))
+            logger.error("Cloud sync batch failed (HTTP %s): %s", err.code, err.read().decode("utf-8", errors="replace"))
         except URLError as err:
             logger.error("Cloud sync connection error: %s", err.reason)
         except Exception as exc:
             logger.error("Unexpected sync error: %s", exc)
         return False
+
+    def _push_sync(self, folder_path: str, display_name: str, files: list[dict], chunks: list[dict]) -> bool:
+        """Send folder chunks and metadata to the Nanvi cloud backend in safe batches to stay well under cloud limits."""
+        if not self.server_url or not self.token:
+            logger.warning("Cannot sync: server_url or token missing.")
+            return False
+
+        url = f"{self.server_url}/api/local-agent/sync"
+        BATCH_SIZE = 150  # ~120 KB per request, safe against Vercel's 4.5 MB body limit
+
+        if not chunks:
+            payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": files,
+                "chunks": [],
+                "replace_all": True,
+            }
+            ok = self._send_sync_request(url, payload)
+            if ok:
+                logger.info("[OK] Successfully registered folder '%s' with %d files.", display_name, len(files))
+            return ok
+
+        total_chunks = len(chunks)
+        total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
+
+        # Batch 0: replace_all=True, registers all file metadata and the first slice of chunks
+        first_slice = chunks[:BATCH_SIZE]
+        first_payload = {
+            "folder_id": folder_path,
+            "folder_path": folder_path,
+            "display_name": display_name,
+            "files": files,
+            "chunks": first_slice,
+            "replace_all": True,
+        }
+        if not self._send_sync_request(url, first_payload):
+            logger.error("Initial cloud sync batch failed.")
+            return False
+
+        # Batches 1..N: replace_all=False, appends remaining chunks safely
+        for batch_idx in range(1, total_batches):
+            start = batch_idx * BATCH_SIZE
+            chunk_slice = chunks[start : start + BATCH_SIZE]
+            batch_payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": [],
+                "chunks": chunk_slice,
+                "replace_all": False,
+            }
+            self._send_sync_request(url, batch_payload)
+
+        logger.info("[OK] Successfully synced %d files (%d chunks) for '%s' to Nanvi Cloud.", len(files), total_chunks, display_name)
+        return True
 
     def send_heartbeat(self) -> bool:
         """Notify cloud backend that this agent is online and report connected folders."""
@@ -464,15 +507,43 @@ class NanviLocalAgent:
                         data = json.loads(raw)
                         requested = data.get("requested_folders", [])
                         for rf in requested:
-                            clean_rf = str(rf).strip()
-                            if clean_rf and clean_rf not in self.approved_folders:
-                                logger.info(">>> New folder requested from Web UI: %s", clean_rf)
-                                try:
-                                    self.add_folder(clean_rf)
-                                    print(f"\n[Nanvi Web] Automatically connected folder: {clean_rf}")
-                                    print("nanvi-agent> ", end="", flush=True)
-                                except Exception as err:
-                                    logger.warning("Could not add folder '%s': %s", clean_rf, err)
+                            raw_rf = str(rf).strip()
+                            clean_rf = raw_rf
+                            for prefix in ("add ", "Add ", "ADD ", "connect ", "Connect "):
+                                if clean_rf.startswith(prefix):
+                                    clean_rf = clean_rf[len(prefix):].strip()
+                            clean_rf = clean_rf.strip("\"'")
+                            clean_rf = os.path.expandvars(os.path.expanduser(clean_rf))
+
+                            if not clean_rf or clean_rf in self._failed_requested_folders:
+                                continue
+
+                            p = Path(clean_rf)
+                            if not p.is_absolute():
+                                for cand in (Path.home() / clean_rf, Path.home() / "Downloads" / clean_rf, Path.home() / "Documents" / clean_rf, Path.cwd() / clean_rf):
+                                    if cand.exists() and cand.is_dir():
+                                        p = cand
+                                        clean_rf = str(p)
+                                        break
+
+                            resolved_str = str(p.resolve()) if p.exists() else clean_rf
+                            if resolved_str in self.approved_folders:
+                                continue
+
+                            if not p.exists() or not p.is_dir():
+                                self._failed_requested_folders.add(raw_rf)
+                                self._failed_requested_folders.add(clean_rf)
+                                logger.info("Requested folder does not exist: %s (ignoring)", clean_rf)
+                                continue
+
+                            logger.info(">>> Connecting folder requested from Web UI: %s", resolved_str)
+                            try:
+                                self.add_folder(resolved_str)
+                                print(f"\n[Nanvi Web] Automatically connected folder: {resolved_str}")
+                                print("nanvi-agent> ", end="", flush=True)
+                            except Exception as err:
+                                self._failed_requested_folders.add(clean_rf)
+                                logger.warning("Could not add folder '%s': %s", resolved_str, err)
                         commands = data.get("commands", [])
                         for cmd in commands:
                             if cmd.get("command") == "open_file":
@@ -717,8 +788,11 @@ def main() -> None:
                     p = agent.set_single_folder(f)
                     print(f"[OK] Exclusively connected company folder: {p}")
                     print(f"[*] Scanning and indexing files from {p}...")
-                    agent.index_and_sync_folder(str(p))
-                    print(f"[OK] Synced to Nanvi AI Assistant backend successfully.")
+                    ok = agent.index_and_sync_folder(str(p))
+                    if ok:
+                        print(f"[OK] Synced {p} to Nanvi AI Assistant cloud successfully.")
+                    else:
+                        print(f"[!] Initial sync completed locally. Background sync is connecting to cloud.")
                 else:
                     agent.add_folder(f)
             except Exception as exc:

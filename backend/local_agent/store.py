@@ -271,8 +271,23 @@ class LocalAgentStore:
                 except Exception as exc:
                     logger.debug("Could not pop default commands: %s", exc)
 
-            self._save_key(tenant_id, user_id, val)
             requested_folders = list(val.get("requested_folders", []))
+            if requested_folders:
+                val["requested_folders"] = []
+            if tenant_id != "default":
+                try:
+                    def_val = self._load_key(tenant_id, "default")
+                    def_reqs = list(def_val.get("requested_folders", []))
+                    if def_reqs:
+                        for dr in def_reqs:
+                            if dr not in requested_folders:
+                                requested_folders.append(dr)
+                        def_val["requested_folders"] = []
+                        self._save_key(tenant_id, "default", def_val)
+                except Exception:
+                    pass
+
+            self._save_key(tenant_id, user_id, val)
             return requested_folders, cmds
 
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> None:
@@ -335,19 +350,26 @@ class LocalAgentStore:
 
             # 1. Update folder registry
             folders = val.setdefault("folders", {})
+            prev_folder = folders.get(fid, {})
+            prev_file_count = prev_folder.get("file_count", 0)
+            prev_chunk_count = prev_folder.get("chunk_count", 0) if not payload.replace_all else 0
+
+            file_count = len(payload.files) if payload.files else prev_file_count
+            chunk_count = prev_chunk_count + len(payload.chunks)
+
             folders[fid] = {
                 "folder_id": fid,
                 "folder_path": payload.folder_path,
                 "display_name": payload.display_name or Path(payload.folder_path).name or fid,
-                "file_count": len(payload.files) if payload.files else len({c.relative_path for c in payload.chunks}),
-                "chunk_count": len(payload.chunks),
+                "file_count": file_count,
+                "chunk_count": chunk_count,
                 "status": "synced",
                 "last_synced_at": now_iso,
             }
 
-            # 2. Replace chunks belonging to this folder
+            # 2. Replace or append chunks belonging to this folder
             existing_chunks = val.get("chunks", []) if not payload.replace_all else []
-            retained_chunks = [c for c in existing_chunks if c.get("folder_id") != fid]
+            retained_chunks = [c for c in existing_chunks if c.get("folder_id") != fid] if payload.replace_all else list(existing_chunks)
 
             for c in payload.chunks:
                 retained_chunks.append({
@@ -367,7 +389,7 @@ class LocalAgentStore:
 
             val["chunks"] = retained_chunks
             self._save_key(tenant_id, user_id, val)
-            logger.info("Synced %d chunks for local folder '%s' (user %s)", len(payload.chunks), fid, user_id)
+            logger.info("Synced %d chunks for local folder '%s' (user %s, total chunks: %d, files: %d)", len(payload.chunks), fid, user_id, chunk_count, file_count)
 
     def remove_folder(self, tenant_id: str, user_id: str, folder_id: str) -> bool:
         """Remove a connected folder and its chunks."""

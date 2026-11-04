@@ -25,7 +25,7 @@ def generate_agent_bat(server_url: str, pairing_token: str, display_name: str = 
     b64_lines = "\n".join(f"echo {b64_code[i : i + 64]}" for i in range(0, len(b64_code), 64))
 
     clean_server = server_url.rstrip("/")
-    clean_display = display_name.replace('"', '\\"')
+    clean_display = display_name.replace('"', '').replace("'", "")
 
     bat_script = f"""@echo off
 title Nanvi Assistant - Local File Agent

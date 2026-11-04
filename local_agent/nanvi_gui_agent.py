@@ -27,11 +27,18 @@ from urllib.request import Request, urlopen
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-# Setup logging
+# Setup logging (writes to console and file)
+_log_dir = Path.home() / "AppData" / "Local" / "NanviAgent"
+_log_dir.mkdir(parents=True, exist_ok=True)
+_log_file = _log_dir / "agent.log"
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler(str(_log_file), encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
 )
 logger = logging.getLogger("NanviLocalAgent")
 
@@ -101,6 +108,7 @@ class NanviLocalAgent:
         self._sync_lock = threading.Lock()
         self.status_callback = None
         self.folder_callback = None
+        self._last_opened_time = 0.0
         self._load_config()
 
     def _load_config(self) -> None:
@@ -351,14 +359,52 @@ class NanviLocalAgent:
 
     def _send_sync_payload(self, folder_path: str, display_name: str, files: list, chunks: list) -> bool:
         url = f"{self.server_url}/api/local-agent/sync"
-        payload = {
+        BATCH_SIZE = 150
+
+        if not chunks:
+            payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": files,
+                "chunks": [],
+                "replace_all": True,
+            }
+            return self._post_single_sync(url, payload, display_name, len(files), 0)
+
+        total_chunks = len(chunks)
+        total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
+
+        # Batch 0
+        first_payload = {
             "folder_id": folder_path,
             "folder_path": folder_path,
             "display_name": display_name,
             "files": files,
-            "chunks": chunks,
+            "chunks": chunks[:BATCH_SIZE],
             "replace_all": True,
         }
+        if not self._post_single_sync(url, first_payload, display_name, len(files), total_chunks):
+            return False
+
+        # Batches 1..N
+        for b_idx in range(1, total_batches):
+            chunk_slice = chunks[b_idx * BATCH_SIZE : (b_idx + 1) * BATCH_SIZE]
+            batch_payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": [],
+                "chunks": chunk_slice,
+                "replace_all": False,
+            }
+            self._post_single_sync(url, batch_payload, display_name, 0, 0, silent=True)
+
+        if self.status_callback:
+            self.status_callback(f"✓ '{display_name}' synced ({len(files)} files, {total_chunks} chunks)")
+        return True
+
+    def _post_single_sync(self, url: str, payload: dict, display_name: str, files_count: int, chunks_count: int, silent: bool = False) -> bool:
         try:
             req = Request(
                 url,
@@ -371,12 +417,12 @@ class NanviLocalAgent:
             )
             with urlopen(req, timeout=30) as resp:
                 ok = resp.status == 200
-                if ok and self.status_callback:
-                    self.status_callback(f"✓ '{display_name}' synced ({len(files)} files, {len(chunks)} chunks)")
+                if ok and not silent and self.status_callback:
+                    self.status_callback(f"✓ '{display_name}' registered ({files_count} files, {chunks_count} chunks)")
                 return ok
         except Exception as exc:
             logger.warning("Sync failed: %s", exc)
-            if self.status_callback:
+            if not silent and self.status_callback:
                 self.status_callback(f"Sync error: {exc}")
             return False
 
@@ -425,31 +471,15 @@ class NanviLocalAgent:
                                             self.status_callback(f"✓ Added folder: {Path(clean_rf).name}")
                                 except Exception as exc:
                                     logger.warning("Could not add folder '%s': %s", clean_rf, exc)
+                        # Execute any remote commands queued by the cloud (e.g. open_file)
                         commands = data.get("commands", [])
                         for cmd in commands:
-                            if cmd.get("command") == "open_file":
-                                payload_data = cmd.get("payload", {})
-                                raw_p = payload_data.get("file_path") or cmd.get("path") or ""
-                                if raw_p:
-                                    try:
-                                        target_path = Path(raw_p)
-                                        if not target_path.exists():
-                                            for af in self.approved_folders.keys():
-                                                cand = Path(af) / target_path.name
-                                                if cand.exists():
-                                                    target_path = cand
-                                                    break
-                                                matches = list(Path(af).rglob(target_path.name))
-                                                if matches:
-                                                    target_path = matches[0]
-                                                    break
-                                        if target_path.exists():
-                                            os.startfile(str(target_path.resolve()))
-                                            logger.info("Opened file on local PC: %s", target_path)
-                                            if self.status_callback:
-                                                self.status_callback(f"✓ Opened: {target_path.name}")
-                                    except Exception as exc:
-                                        logger.warning("Could not open file: %s", exc)
+                            c_type = cmd.get("command")
+                            payload_data = cmd.get("payload", {})
+                            if c_type == "open_file":
+                                fp = payload_data.get("file_path", "")
+                                if fp:
+                                    self._execute_open_file(fp)
                     except Exception:
                         pass
                     return True
@@ -457,15 +487,78 @@ class NanviLocalAgent:
         except Exception:
             return False
 
+    def _execute_open_file(self, file_path: str) -> None:
+        """Safely open a file in the user's default Windows application."""
+        clean = sanitize_folder_path(file_path)
+        if not clean:
+            return
+        if clean.startswith("file:///"):
+            clean = clean[8:]
+
+        p = Path(clean).expanduser().resolve()
+
+        if not p.exists() or not p.is_file():
+            found = False
+            # Search inside approved folders
+            for folder_str in list(self.approved_folders.keys()):
+                folder_p = Path(folder_str)
+                cand = (folder_p / clean).resolve()
+                if cand.is_file():
+                    p = cand
+                    found = True
+                    break
+                matches = list(folder_p.rglob(Path(clean).name))
+                if matches and matches[0].is_file():
+                    p = matches[0]
+                    found = True
+                    break
+            if not found:
+                # Search approved folder subdirectories
+                pass
+
+        if p.exists() and p.is_file():
+            logger.info("Opening local file requested by Nanvi Cloud: %s", p)
+            self._last_opened_time = time.time()
+            opened = False
+            try:
+                import os
+                if hasattr(os, "startfile"):
+                    try:
+                        os.startfile(str(p))
+                        opened = True
+                    except Exception as sf_err:
+                        logger.warning("os.startfile failed (%s), trying cmd start...", sf_err)
+
+                if not opened:
+                    import subprocess
+                    subprocess.Popen(["cmd", "/c", "start", '""', str(p)], shell=True)
+                    opened = True
+
+                if self.status_callback:
+                    self.status_callback(f"✓ Opened: {p.name}")
+            except Exception as exc:
+                logger.warning("Failed to open file %s: %s", p, exc)
+                try:
+                    import subprocess
+                    subprocess.Popen(["explorer.exe", f"/select,{str(p)}"])
+                except Exception:
+                    pass
+        else:
+            logger.warning("Requested file not found on computer: %s", clean)
+            self._last_opened_time = time.time()
+            if self.status_callback:
+                self.status_callback(f"⚠️ File not found: {Path(clean).name}")
+
     def _heartbeat_loop(self) -> None:
         while self.running:
             ok = self.send_heartbeat()
-            if self.status_callback:
+            # Only revert to generic status if 6 seconds have passed since last open notification
+            if self.status_callback and (time.time() - self._last_opened_time > 6):
                 if ok:
                     self.status_callback("● Connected to Nanvi AI Assistant")
                 else:
                     self.status_callback("○ Reconnecting to Nanvi Cloud...")
-            time.sleep(3)
+            time.sleep(2)
 
     def start(self) -> None:
         self.running = True

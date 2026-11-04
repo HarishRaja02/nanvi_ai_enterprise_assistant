@@ -359,14 +359,52 @@ class NanviLocalAgent:
 
     def _send_sync_payload(self, folder_path: str, display_name: str, files: list, chunks: list) -> bool:
         url = f"{self.server_url}/api/local-agent/sync"
-        payload = {
+        BATCH_SIZE = 150
+
+        if not chunks:
+            payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": files,
+                "chunks": [],
+                "replace_all": True,
+            }
+            return self._post_single_sync(url, payload, display_name, len(files), 0)
+
+        total_chunks = len(chunks)
+        total_batches = (total_chunks + BATCH_SIZE - 1) // BATCH_SIZE
+
+        # Batch 0
+        first_payload = {
             "folder_id": folder_path,
             "folder_path": folder_path,
             "display_name": display_name,
             "files": files,
-            "chunks": chunks,
+            "chunks": chunks[:BATCH_SIZE],
             "replace_all": True,
         }
+        if not self._post_single_sync(url, first_payload, display_name, len(files), total_chunks):
+            return False
+
+        # Batches 1..N
+        for b_idx in range(1, total_batches):
+            chunk_slice = chunks[b_idx * BATCH_SIZE : (b_idx + 1) * BATCH_SIZE]
+            batch_payload = {
+                "folder_id": folder_path,
+                "folder_path": folder_path,
+                "display_name": display_name,
+                "files": [],
+                "chunks": chunk_slice,
+                "replace_all": False,
+            }
+            self._post_single_sync(url, batch_payload, display_name, 0, 0, silent=True)
+
+        if self.status_callback:
+            self.status_callback(f"✓ '{display_name}' synced ({len(files)} files, {total_chunks} chunks)")
+        return True
+
+    def _post_single_sync(self, url: str, payload: dict, display_name: str, files_count: int, chunks_count: int, silent: bool = False) -> bool:
         try:
             req = Request(
                 url,
@@ -379,12 +417,12 @@ class NanviLocalAgent:
             )
             with urlopen(req, timeout=30) as resp:
                 ok = resp.status == 200
-                if ok and self.status_callback:
-                    self.status_callback(f"✓ '{display_name}' synced ({len(files)} files, {len(chunks)} chunks)")
+                if ok and not silent and self.status_callback:
+                    self.status_callback(f"✓ '{display_name}' registered ({files_count} files, {chunks_count} chunks)")
                 return ok
         except Exception as exc:
             logger.warning("Sync failed: %s", exc)
-            if self.status_callback:
+            if not silent and self.status_callback:
                 self.status_callback(f"Sync error: {exc}")
             return False
 
