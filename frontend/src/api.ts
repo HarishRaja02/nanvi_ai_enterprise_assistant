@@ -601,6 +601,20 @@ if (!response.ok) {
     });
   }
 
+  refineSpokenQuery(query: string, conversationId?: string) {
+    return this.request<{
+      status: "success" | "clarify";
+      original_query: string;
+      refined_query: string;
+      is_corrected: boolean;
+      clarification?: string | null;
+      suggestions?: string[];
+    }>("/voice/refine-query", {
+      method: "POST",
+      body: JSON.stringify({ query, conversation_id: conversationId }),
+    });
+  }
+
   getRealtimeVoiceStatus() {
     return this.request<RealtimeVoiceStatus>("/voice/realtime/status");
   }

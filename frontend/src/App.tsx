@@ -426,7 +426,7 @@ export function App() {
                 onOpenSource={openSource}
                 onDownload={(id) => void downloadReport(id)}
                 onNewConversation={newConversation}
-                onOpenVoiceMode={() => setVoiceModeOpen(true)}
+                onOpenVoiceMode={undefined}
                 onSelectSource={chat.selectSource}
               />
             )}

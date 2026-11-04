@@ -111,3 +111,37 @@ def test_voice_synthesize_empty_text_rejected(client: TestClient, auth_headers: 
     )
     assert response.status_code in {400, 422}
 
+
+def test_refine_voice_query_corrects_phonetic_mistakes(client: TestClient):
+    response = client.post(
+        "/api/voice/refine-query",
+        json={"query": "sri ganes redymix find in voice"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "Sri Ganesh ReadyMix" in data["refined_query"]
+    assert "invoice" in data["refined_query"].lower()
+    assert data["is_corrected"] is True
+
+
+def test_refine_voice_query_clarifies_on_unclear_or_empty_speech(client: TestClient):
+    # Empty query
+    resp_empty = client.post(
+        "/api/voice/refine-query",
+        json={"query": "    "},
+    )
+    assert resp_empty.status_code == 200
+    assert resp_empty.json()["status"] == "clarify"
+    assert len(resp_empty.json()["suggestions"]) > 0
+
+    # Unclear query / filler only
+    resp_filler = client.post(
+        "/api/voice/refine-query",
+        json={"query": "uh um hmm"},
+    )
+    assert resp_filler.status_code == 200
+    assert resp_filler.json()["status"] == "clarify"
+    assert "clarification" in resp_filler.json()
+
+

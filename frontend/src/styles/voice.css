@@ -922,6 +922,124 @@
   color: var(--primary-500);
 }
 
+/* Hands-free Voice Input in Composer */
+.composer-voice-trigger-btn.is-listening {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: #ef4444 !important;
+  color: #dc2626 !important;
+  animation: pulse-listening 1.5s infinite ease-in-out;
+}
+
+.composer-voice-trigger-btn.is-refining {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border-color: #10b981 !important;
+  color: #059669 !important;
+}
+
+.voice-pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: #ef4444;
+  display: inline-block;
+  animation: blink-dot 1s infinite alternate;
+}
+
+@keyframes pulse-listening {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+@keyframes blink-dot {
+  from { opacity: 0.3; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1.1); }
+}
+
+/* Voice Clarification Banner above Composer */
+.composer-voice-clarification {
+  margin-bottom: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid rgba(14, 165, 233, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.composer-clarification-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+}
+
+.clarification-sparkle-icon {
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
+.clarification-close-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #64748b);
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.composer-clarification-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.clarification-chip {
+  background: var(--bg-hover, #f1f5f9);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #0369a1;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clarification-chip:hover {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  transform: translateY(-1px);
+}
+
+.clarification-retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.clarification-retry-btn:hover {
+  background: #dc2626;
+  color: #ffffff;
+}
+
 /* ── Live VU Equalizer Audio Bars ───────────────────────────── */
 .voice-audio-bars {
   display: flex;

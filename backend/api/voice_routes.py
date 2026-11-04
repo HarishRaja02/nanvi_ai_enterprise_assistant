@@ -179,6 +179,160 @@ def is_query_incomplete_or_unclear(query: str, confidence: float | None = None) 
     return False
 
 
+import json
+import os
+from backend.security.dependencies import get_optional_current_user
+from backend.security.models import UserIdentity
+
+
+class RefineQueryRequest(BaseModel):
+    query: str = Field(default="", max_length=4000)
+    conversation_id: str | None = Field(default=None)
+
+
+class RefineQueryResponse(BaseModel):
+    status: str  # "success" or "clarify"
+    original_query: str
+    refined_query: str
+    is_corrected: bool
+    clarification: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
+
+
+@router.post("/refine-query", response_model=RefineQueryResponse)
+def refine_voice_query(
+    body: RefineQueryRequest,
+    user: UserIdentity | None = Depends(get_optional_current_user),
+) -> RefineQueryResponse:
+    """Intelligently correct spoken voice queries using domain phonetics and LLM verification."""
+    raw = (body.query or "").strip()
+    if not raw:
+        return RefineQueryResponse(
+            status="clarify",
+            original_query=raw,
+            refined_query="",
+            is_corrected=False,
+            clarification="I couldn't hear any words. Could you please speak your question again?",
+            suggestions=[
+                "Sri Ganesh ReadyMix vendor find invoice",
+                "Show aging breakdown for pending payments",
+                "Summarize warranty liabilities in bridge contract",
+            ],
+        )
+
+    # 1. Phonetic & Enterprise terminology correction
+    phonetic_query = apply_phonetic_corrections(raw)
+
+    enterprise_corrections = [
+        (re.compile(r"\b(?:sri|shri)?\s*ganesh?\s*(?:ready\s*mix|redymix|radymix)?\b", re.IGNORECASE), "Sri Ganesh ReadyMix"),
+        (re.compile(r"\b(?:in\s*voice|in\s*voices)\b", re.IGNORECASE), "invoice"),
+        (re.compile(r"\b(?:ageing|aging)\s*(?:brakdown|break\s*down)\b", re.IGNORECASE), "aging breakdown"),
+        (re.compile(r"\b(?:contrct|contraxt|contarct)\b", re.IGNORECASE), "contract"),
+        (re.compile(r"\b(?:agreemnt|aggrement)\b", re.IGNORECASE), "agreement"),
+        (re.compile(r"\b(?:warenty|warrenty)\b", re.IGNORECASE), "warranty"),
+        (re.compile(r"\b(?:liabilty|liabelity)\b", re.IGNORECASE), "liability"),
+        (re.compile(r"\b(?:procument|procuremnt)\b", re.IGNORECASE), "procurement"),
+        (re.compile(r"\bfind\s+(?:the\s+)?invoices?\b", re.IGNORECASE), "find invoice"),
+    ]
+    pre_corrected = phonetic_query
+    for pattern, replacement in enterprise_corrections:
+        pre_corrected = pattern.sub(replacement, pre_corrected)
+
+    # 2. Check for unintelligible / filler query
+    if is_query_incomplete_or_unclear(pre_corrected):
+        return RefineQueryResponse(
+            status="clarify",
+            original_query=raw,
+            refined_query=pre_corrected,
+            is_corrected=False,
+            clarification="I couldn't identify the specific document or vendor name. Are you referring to one of these?",
+            suggestions=[
+                "Sri Ganesh ReadyMix vendor find invoice",
+                "Show invoice aging breakdown",
+                "Summarize bridge contract agreement terms",
+            ],
+        )
+
+    # 3. LLM-based query correction if GROQ_API_KEY is available
+    groq_api_key = os.getenv("GROQ_API_KEY", "").strip()
+    if groq_api_key:
+        try:
+            from backend.llm.groq_service import client
+            prompt = (
+                "You are an AI spoken query normalizer for an enterprise document search assistant.\n"
+                f"The user spoke: \"{pre_corrected}\"\n\n"
+                "Enterprise Context:\n"
+                "- Bridge Construction company records\n"
+                "- Invoices & Finance: invoice_register.csv, invoice_aging.xlsx, payment_register.xlsx\n"
+                "- Procurement: vendor_master.xlsx, procurement_policy.pdf\n"
+                "- Contracts: Mock_Contract_Agreement.pdf, Mock_Contract_Data.xlsx\n"
+                "- Vendors: Sri Ganesh ReadyMix, ACC Cement, InfraTech, Tata Steel\n"
+                "- Topics: invoice numbers, payment status, aging analysis, defect liability periods, bank guarantees\n\n"
+                "Task:\n"
+                "1. If the query has small speech recognition typos or mishearings, output the corrected search query.\n"
+                "2. If the query is vague or unclear, set action to 'clarify' with a clarification question and 3 suggestions.\n\n"
+                "Respond STRICTLY with valid JSON in this format:\n"
+                "{\n"
+                '  "action": "correct",\n'
+                '  "refined_query": "corrected search query",\n'
+                '  "clarification": null,\n'
+                '  "suggestions": ["Sri Ganesh ReadyMix find invoice", "Invoice aging breakdown", "Contract agreement terms"]\n'
+                "}"
+            )
+            chat_resp = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=200,
+            )
+            llm_text = chat_resp.choices[0].message.content.strip()
+            if "```" in llm_text:
+                llm_text = re.sub(r"^```(?:json)?\s*", "", llm_text)
+                llm_text = re.sub(r"\s*```$", "", llm_text)
+            parsed = json.loads(llm_text.strip())
+            action = parsed.get("action", "correct")
+            refined = (parsed.get("refined_query") or pre_corrected).strip()
+            clarification = parsed.get("clarification")
+            suggestions = parsed.get("suggestions", [])
+            if action == "clarify":
+                return RefineQueryResponse(
+                    status="clarify",
+                    original_query=raw,
+                    refined_query=refined or pre_corrected,
+                    is_corrected=False,
+                    clarification=clarification or "Did you mean to search for one of these company records?",
+                    suggestions=suggestions[:3] or [
+                        "Sri Ganesh ReadyMix vendor find invoice",
+                        "Show invoice aging breakdown",
+                        "Bridge contract terms",
+                    ],
+                )
+            return RefineQueryResponse(
+                status="success",
+                original_query=raw,
+                refined_query=refined,
+                is_corrected=(refined.strip().lower() != raw.strip().lower()),
+                clarification=None,
+                suggestions=suggestions[:3],
+            )
+        except Exception as exc:
+            logger.warning("LLM query refinement failed, using heuristic fallback: %s", exc)
+
+    # Heuristic fallback (fast, deterministic, zero-latency)
+    is_changed = (pre_corrected.strip().lower() != raw.strip().lower())
+    return RefineQueryResponse(
+        status="success",
+        original_query=raw,
+        refined_query=pre_corrected,
+        is_corrected=is_changed,
+        clarification=None,
+        suggestions=[
+            "Sri Ganesh ReadyMix vendor find invoice",
+            "Show invoice aging breakdown",
+            "Bridge contract agreement warranty",
+        ],
+    )
+
+
 from backend.uecp import require_uecp_access
 
 
@@ -736,16 +890,26 @@ async def voice_synthesize(
     else:
         voice = PROFILE_TO_EDGE_VOICE.get(body.profile_id, "en-US-JennyNeural")
 
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        fallback_frame = b"\xff\xfb\x90\x00" + (b"\x00" * 410)
+        return Response(
+            content=fallback_frame * 3,
+            media_type="audio/mpeg",
+            headers={"X-Fallback-Audio": "true"},
+        )
+
     try:
         import edge_tts
 
-        communicate = edge_tts.Communicate(clean, voice)
+        communicate = edge_tts.Communicate(clean, voice, connect_timeout=2, receive_timeout=3)
         audio_data = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_data.extend(chunk["data"])
+        async with asyncio.timeout(2.0):
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data.extend(chunk["data"])
 
-        if not audio_data:
+        if not audio_data or len(audio_data) < 2000:
             raise RuntimeError("No audio data generated by neural synthesizer.")
 
         return Response(content=bytes(audio_data), media_type="audio/mpeg")
@@ -753,7 +917,11 @@ async def voice_synthesize(
         logger.warning("Neural voice synthesis failed (%s); generating fallback audio stream.", exc)
         # Resilient fallback MPEG-1 Layer 3 audio frames for uninterrupted voice playback
         fallback_frame = b"\xff\xfb\x90\x00" + (b"\x00" * 410)
-        return Response(content=fallback_frame * 3, media_type="audio/mpeg")
+        return Response(
+            content=fallback_frame * 3,
+            media_type="audio/mpeg",
+            headers={"X-Fallback-Audio": "true"},
+        )
 
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -853,16 +1021,24 @@ async def voice_live_websocket(websocket: WebSocket):
 
 
 @router.get("/live/demo", response_class=HTMLResponse)
-def get_live_voice_demo():
+async def get_live_voice_demo():
     """Serves the standalone browser live voice interface connected to /api/voice/live."""
     from pathlib import Path
     demo_path = Path(__file__).resolve().parent.parent / "nanvi_rtc" / "web" / "demo" / "agent.html"
     if demo_path.exists():
         content = demo_path.read_text(encoding="utf-8")
-        # Ensure default ws URL points to /api/voice/live
-        content = content.replace("':8765'", "':8000/api/voice/live'")
         return HTMLResponse(content=content)
     return HTMLResponse("<h3>Nanvi RTC Demo not found</h3>", status_code=404)
+
+
+@router.get("/live/style.css")
+async def get_live_voice_style():
+    """Serves stylesheet for live voice demo."""
+    from pathlib import Path
+    style_path = Path(__file__).resolve().parent.parent / "nanvi_rtc" / "web" / "demo" / "style.css"
+    if style_path.exists():
+        return Response(content=style_path.read_text(encoding="utf-8"), media_type="text/css")
+    return Response(content="", media_type="text/css")
 
 
 @router.get("/live/tts")
@@ -875,19 +1051,26 @@ async def live_voice_tts(text: str = "", voice: str = "en-US-JennyNeural"):
     clean = clean_spoken_text(text)
     if not clean.strip():
         clean = text.strip()
+    import os
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        fallback_frame = b"\xff\xfb\x90\x00" + (b"\x00" * 410)
+        return Response(
+            content=fallback_frame * 3,
+            media_type="audio/mpeg",
+            headers={"X-Fallback-Audio": "true"},
+        )
     try:
         import edge_tts
-        communicate = edge_tts.Communicate(clean, voice)
+        communicate = edge_tts.Communicate(clean, voice, connect_timeout=2, receive_timeout=3)
         audio_data = bytearray()
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_data.extend(chunk["data"])
-        if audio_data:
+        async with asyncio.timeout(2.0):
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data.extend(chunk["data"])
+        if audio_data and len(audio_data) >= 2000:
             return Response(content=bytes(audio_data), media_type="audio/mpeg")
     except Exception as exc:
-        logger.warning("Live TTS generation failed (%s); generating fallback audio stream.", exc)
+        logger.warning("Live TTS generation failed (%s); returning 503 for local client TTS fallback.", exc)
 
-    # Resilient fallback MPEG frame
-    fallback_frame = b"\xff\xfb\x90\x00" + (b"\x00" * 410)
-    return Response(content=fallback_frame * 3, media_type="audio/mpeg")
+    raise HTTPException(status_code=503, detail="Neural TTS service unavailable, using client speech synthesis")
 

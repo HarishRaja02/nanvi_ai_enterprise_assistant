@@ -1,5 +1,5 @@
 import { FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, X } from "lucide-react";
+import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, Sparkles, X } from "lucide-react";
 import type { NanviApiClient } from "../../api";
 
 const MAX_LENGTH = 4000;
@@ -31,8 +31,197 @@ export function Composer({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Hands-free Voice Input & Query Refinement State
+  const [isListening, setIsListening] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+  const [clarification, setClarification] = useState<{
+    message: string;
+    suggestions: string[];
+  } | null>(null);
+
   const ref = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<any>(null);
+  const accumulatedTranscriptRef = useRef<string>("");
+
+  // Clean up speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  const stopListening = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  };
+
+  const handleFinishSpeaking = async (rawSpokenText: string) => {
+    stopListening();
+    const spoken = rawSpokenText.trim();
+    if (!spoken) return;
+
+    setIsRefining(true);
+    try {
+      let refinedText = spoken;
+      let shouldClarify = false;
+      let clarificationMsg: string | null = null;
+      let suggestionsList: string[] = [];
+
+      if (api?.refineSpokenQuery) {
+        try {
+          const res = await api.refineSpokenQuery(spoken);
+          if (res.status === "clarify") {
+            shouldClarify = true;
+            clarificationMsg =
+              res.clarification ||
+              "I couldn't identify the specific document or vendor name. Are you referring to one of these?";
+            suggestionsList = res.suggestions || [];
+          } else if (res.refined_query) {
+            refinedText = res.refined_query;
+          }
+        } catch (apiErr) {
+          console.warn("Refine query API call failed, using raw spoken text:", apiErr);
+        }
+      }
+
+      if (shouldClarify) {
+        setClarification({
+          message:
+            clarificationMsg || "Are you referring to one of these documents or vendors?",
+          suggestions:
+            suggestionsList.length > 0
+              ? suggestionsList
+              : [
+                  "Sri Ganesh ReadyMix vendor find invoice",
+                  "Show invoice aging breakdown",
+                  "Summarize bridge contract agreement terms",
+                ],
+        });
+        setIsRefining(false);
+        return;
+      }
+
+      // Populate corrected query into textarea
+      setValue(refinedText);
+      setIsRefining(false);
+
+      // Auto-send query hands-free without requiring the user to click anything!
+      if (refinedText && !busy) {
+        const sent = await onSend(refinedText, ragEnabled, attachedFile?.name);
+        if (sent) {
+          setValue("");
+          setAttachedFile(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          if (ref.current) ref.current.style.height = "auto";
+        }
+      }
+    } catch (err) {
+      console.warn("Error processing refined voice query:", err);
+      setIsRefining(false);
+    }
+  };
+
+  const startListening = () => {
+    setClarification(null);
+    const SpeechClass =
+      typeof window !== "undefined"
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+
+    if (!SpeechClass) {
+      setIsListening(true);
+      return;
+    }
+
+    try {
+      stopListening();
+      const recognition = new SpeechClass();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang =
+        typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-IN";
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        accumulatedTranscriptRef.current = "";
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = 0; i < event.results.length; ++i) {
+          const item = event.results[i][0];
+          const transcript = item?.transcript || "";
+          if (event.results[i].isFinal) {
+            final = final ? `${final} ${transcript}` : transcript;
+          } else {
+            interim = interim ? `${interim} ${transcript}` : transcript;
+          }
+        }
+        const currentFull = (final ? `${final} ${interim}` : interim).trim();
+        if (currentFull) {
+          accumulatedTranscriptRef.current = currentFull;
+          setValue(currentFull);
+
+          // Hands-free auto-detect end of speech: 1400ms of silence triggers query refinement & send
+          if (silenceTimerRef.current) {
+            clearTimeout(silenceTimerRef.current);
+          }
+          silenceTimerRef.current = setTimeout(() => {
+            void handleFinishSpeaking(accumulatedTranscriptRef.current);
+          }, 1400);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        if (event.error === "no-speech") return;
+        stopListening();
+      };
+
+      recognition.onend = () => {
+        if (isListening && !isRefining) {
+          setIsListening(false);
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.warn("Speech recognition initialization error:", err);
+      setIsListening(false);
+    }
+  };
+
+  const handleVoiceClick = () => {
+    onOpenVoiceMode?.();
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
 
   // Auto-resize: starts compact (1 line), grows up to MAX_HEIGHT as text increases
   useLayoutEffect(() => {
@@ -179,6 +368,49 @@ export function Composer({
         </div>
       )}
 
+      {/* Spoken Query Clarification Banner if speech was unclear or ambiguous */}
+      {clarification && (
+        <div className="composer-voice-clarification" role="status">
+          <div className="composer-clarification-header">
+            <Sparkles size={14} className="clarification-sparkle-icon" />
+            <span>{clarification.message}</span>
+            <button
+              type="button"
+              className="clarification-close-btn"
+              onClick={() => setClarification(null)}
+              aria-label="Dismiss clarification"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className="composer-clarification-suggestions">
+            {clarification.suggestions.map((suggestion, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className="clarification-chip"
+                onClick={async () => {
+                  setClarification(null);
+                  setValue(suggestion);
+                  await onSend(suggestion, ragEnabled, attachedFile?.name);
+                  setValue("");
+                }}
+              >
+                {suggestion}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="clarification-retry-btn"
+              onClick={startListening}
+            >
+              <Mic size={12} />
+              <span>Speak again</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Auto-resizing Textarea: starts compact, expands when query grows */}
       <div className="composer-input-row">
         <label className="sr-only" htmlFor="nanvi-query">Ask Nanvi</label>
@@ -189,7 +421,13 @@ export function Composer({
           maxLength={MAX_LENGTH}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask Nanvi across company documents, data & email..."
+          placeholder={
+            isListening
+              ? "🎙 Listening to your voice... Speak naturally (auto-sends on pause)"
+              : isRefining
+              ? "✨ Refining and verifying query with AI..."
+              : "Ask Nanvi across company documents, data & email..."
+          }
           rows={1}
         />
       </div>
@@ -245,18 +483,36 @@ export function Composer({
             )}
           </button>
 
-          {onOpenVoiceMode && (
-            <button
-              type="button"
-              className="composer-voice-trigger-btn"
-              onClick={onOpenVoiceMode}
-              title="Voice Assistant Mode"
-              aria-label="Open Voice Assistant Mode"
-            >
-              <Mic size={14} className="composer-voice-mic-icon" aria-hidden="true" />
-              <span>Voice</span>
-            </button>
-          )}
+          <button
+            type="button"
+            className={`composer-voice-trigger-btn ${isListening ? "is-listening" : ""} ${isRefining ? "is-refining" : ""}`}
+            onClick={handleVoiceClick}
+            title={
+              isListening
+                ? "Listening... (Pause speaking to send hands-free)"
+                : isRefining
+                ? "Refining query with AI..."
+                : "Voice Input (Speak naturally to type hands-free)"
+            }
+            aria-label="Open Voice Assistant Mode"
+          >
+            {isListening ? (
+              <>
+                <span className="voice-pulse-dot" aria-hidden="true" />
+                <span>Listening...</span>
+              </>
+            ) : isRefining ? (
+              <>
+                <Sparkles size={13} className="spin" aria-hidden="true" />
+                <span>Refining...</span>
+              </>
+            ) : (
+              <>
+                <Mic size={14} className="composer-voice-mic-icon" aria-hidden="true" />
+                <span>Voice</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
