@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
@@ -507,11 +508,13 @@ async def download_agent_package(
 
     if format == "exe":
         import os
+        from pathlib import Path
         from starlette.responses import FileResponse, RedirectResponse
 
         desktop_download_url = os.environ.get("DESKTOP_DOWNLOAD_URL", "").strip()
-        if desktop_download_url:
-            return RedirectResponse(url=desktop_download_url, status_code=302)
+        if not desktop_download_url and (os.environ.get("VERCEL") or settings.is_production):
+            # Production default: direct high-speed CDN download from GitHub Releases
+            desktop_download_url = "https://github.com/HarishRaja02/nanvi_ai_enterprise_assistant/releases/download/v0.1.0/Nanvi.AI.Assistant-Setup-0.1.0.exe"
 
         candidate_exes = [
             Path(__file__).resolve().parents[2] / "frontend" / "release" / "Nanvi AI Assistant-Setup-0.1.0.exe",
@@ -530,6 +533,9 @@ async def download_agent_package(
                         "Cache-Control": "public, max-age=3600",
                     },
                 )
+
+        if desktop_download_url:
+            return RedirectResponse(url=desktop_download_url, status_code=302)
 
         bat_content = generate_agent_bat(server_url, pairing_token, display_name)
         return Response(
