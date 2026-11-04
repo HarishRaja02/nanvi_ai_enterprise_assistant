@@ -21,6 +21,8 @@ from typing import Sequence
 
 logger = logging.getLogger(__name__)
 
+from backend.core.config import settings
+
 from .models import ChatMessage, ChatRequest, ChatResponse, ConversationSummary
 from .stores import (
     ConversationStore,
@@ -297,9 +299,17 @@ class ChatService:
         if deictic_query != query:
             effective_query = deictic_query
 
+        caps = self._capabilities_for_query(effective_query)
+        is_multi_source = len(caps) > 1
+        is_test_answerer = (
+            isinstance(self._answerer, DeterministicTestAnswerer)
+            or "Test" in type(self._answerer).__name__
+            or getattr(settings, "is_testing", False)
+        )
+
         # Direct email query check (e.g. "recent email", "top 5 recent email")
         # Returns concrete email results immediately without prompting questions
-        if self._is_direct_email_query(effective_query):
+        if not is_multi_source and self._is_direct_email_query(effective_query):
             answer, files, sources = self._handle_direct_email_query(user, effective_query)
             self._store.append(conversation_id, ChatMessage("assistant", answer, datetime.now(timezone.utc)))
             return ChatResponse(
@@ -317,7 +327,7 @@ class ChatService:
         from backend.chat.intent_router import intent_router, ChatIntent
         intent_decision = intent_router.classify(effective_query, prior_history)
 
-        if intent_decision.intent == ChatIntent.CONVERSATION and not isinstance(self._answerer, DeterministicTestAnswerer):
+        if intent_decision.intent == ChatIntent.CONVERSATION and Capability.WEB_SEARCH not in caps and not is_test_answerer:
             answer = self._generate_chatgpt_conversational_reply(
                 query=effective_query,
                 prior_history=prior_history,
@@ -337,7 +347,6 @@ class ChatService:
             )
 
         # Check if this is an explicit report export/generation query (e.g. export to pdf, download as word)
-        caps = self._capabilities_for_query(effective_query)
         is_pure_report = (Capability.REPORT in caps and any(w in effective_query.casefold() for w in ("export", "download as", "generate report", "create report")))
 
         direct_source = self._extract_source_from_query(effective_query)
@@ -347,7 +356,7 @@ class ChatService:
             effective_query,
         ).strip(" :,-'\"?.")
 
-        if direct_source and not is_pure_report:
+        if direct_source and not is_pure_report and not is_multi_source:
             clean_q = clean_search_q or effective_query
             from backend.chat.file_search import execute_file_search
             answer, files, sources = execute_file_search(user, clean_q, direct_source, max_results=10)
@@ -362,7 +371,7 @@ class ChatService:
                 file_results=tuple(files),
             )
 
-        if not is_pure_report and self._is_file_search_query(effective_query):
+        if not is_pure_report and not is_multi_source and Capability.DATA_ANALYSIS not in caps and Capability.WEB_SEARCH not in caps and self._is_file_search_query(effective_query):
             search_target = self._extract_file_search_target(effective_query)
             if not search_target:
                 # User expressed intent ("i need to find the file" / "i need one file") without specifying target yet
@@ -601,7 +610,7 @@ class ChatService:
                 "invoice", "invoices", "vendor", "vendors", "receipt", "receipts", "bill", "bills",
                 "cloudnova", "po", "purchase order",
                 "nda", "mutual nda", "non-disclosure",
-                "local folder", "local files", "local folder",
+                "local folder", "local files", "folder", "folders", "my folder", "selected folder",
                 "google drive", "drive", "gdrive",
             )),
             (Capability.GOOGLE_DRIVE, (

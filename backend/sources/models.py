@@ -34,6 +34,10 @@ class SourceReference:
     mime_type: str | None = None
     href: str | None = None
 
+    def __post_init__(self) -> None:
+        if self.href is None and self.reference_id:
+            object.__setattr__(self, "href", f"/api/sources/{self.reference_id}")
+
     def to_frontend_dict(self) -> dict:
         return {
             "reference_id": self.reference_id,

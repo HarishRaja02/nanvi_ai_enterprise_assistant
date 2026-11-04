@@ -22,6 +22,11 @@ def classify_retrieval_intent(query: str) -> QueryIntent:
         "show all documents", "files in companydata", "files in company data",
         "what files are present", "see files", "available files", "file list",
         "browse files", "list documents", "show documents", "all files",
+        "what files are in my folder", "files in my folder", "files in folder",
+        "what is in my folder", "what documents are in my folder", "show my files",
+        "list my files", "list folder", "show folder", "what files do we have",
+        "show connected files", "connected files", "local files", "list local files",
+        "what is in the folder", "contents of my folder", "contents of folder",
     )
     if any(p in q_lower for p in listing_patterns):
         return QueryIntent.DIRECTORY_LISTING

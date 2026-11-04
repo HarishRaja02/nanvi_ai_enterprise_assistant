@@ -71,9 +71,10 @@ class SecureFileReportStorage(ReportStorage):
             return None
         try:
             import psycopg
-            return psycopg.connect(self._dsn, connect_timeout=3)
+            return psycopg.connect(self._dsn, connect_timeout=1)
         except Exception as exc:
             logger.debug("Database connection skipped in report storage: %s", exc)
+            self._dsn = None
             return None
 
     def _ensure_db_schema(self) -> None:

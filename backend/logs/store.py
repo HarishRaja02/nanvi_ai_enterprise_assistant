@@ -73,9 +73,14 @@ class UserLogStore:
                 logger.warning("Could not initialize connection pool for user logs (%s); fallback to direct connect.", exc)
                 self._pool = None
 
+    def _table_name(self, conn: Any = None) -> str:
+        if conn is not None and isinstance(conn, sqlite3.Connection):
+            return "user_query_logs"
+        return "public.user_query_logs" if (self._pool or self._dsn) else "user_query_logs"
+
     @property
     def _table(self) -> str:
-        return "public.user_query_logs" if (self._pool or self._dsn) else "user_query_logs"
+        return self._table_name()
 
     @contextmanager
     def _connect(self):
@@ -86,17 +91,19 @@ class UserLogStore:
                 return
             except Exception as exc:
                 logger.warning("Pooled PostgreSQL query failed (%s); trying direct connection.", exc)
+                self._pool = None
 
         if self._dsn:
             try:
                 import psycopg
                 from psycopg.rows import dict_row
-                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=4) as conn:
+                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=1) as conn:
                     yield conn
                 return
             except Exception as exc:
                 logger.warning("PostgreSQL user logs connection failed (%s); falling back to local SQLite.", exc)
                 self._dsn = ""
+                self._pool = None
 
         try:
             self._sqlite_path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,10 +134,11 @@ class UserLogStore:
                 return
             try:
                 with self._connect() as conn:
-                    if self._dsn:
+                    tbl = self._table_name(conn)
+                    if self._dsn and not isinstance(conn, sqlite3.Connection):
                         conn.execute(
                             f"""
-                            CREATE TABLE IF NOT EXISTS {self._table} (
+                            CREATE TABLE IF NOT EXISTS {tbl} (
                                 id TEXT PRIMARY KEY,
                                 user_id TEXT NOT NULL,
                                 user_name TEXT,
@@ -143,16 +151,16 @@ class UserLogStore:
                                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                                 log_date VARCHAR(10) NOT NULL
                             );
-                            CREATE INDEX IF NOT EXISTS idx_uql_date ON {self._table}(log_date);
-                            CREATE INDEX IF NOT EXISTS idx_uql_created_at ON {self._table}(created_at DESC);
-                            CREATE INDEX IF NOT EXISTS idx_uql_user ON {self._table}(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_uql_date ON {tbl}(log_date);
+                            CREATE INDEX IF NOT EXISTS idx_uql_created_at ON {tbl}(created_at DESC);
+                            CREATE INDEX IF NOT EXISTS idx_uql_user ON {tbl}(user_id);
                             """
                         )
                         conn.commit()
                     else:
                         conn.executescript(
                             f"""
-                            CREATE TABLE IF NOT EXISTS {self._table} (
+                            CREATE TABLE IF NOT EXISTS {tbl} (
                                 id TEXT PRIMARY KEY,
                                 user_id TEXT NOT NULL,
                                 user_name TEXT,
@@ -165,9 +173,9 @@ class UserLogStore:
                                 created_at TEXT NOT NULL,
                                 log_date TEXT NOT NULL
                             );
-                            CREATE INDEX IF NOT EXISTS idx_uql_date ON {self._table}(log_date);
-                            CREATE INDEX IF NOT EXISTS idx_uql_created_at ON {self._table}(created_at DESC);
-                            CREATE INDEX IF NOT EXISTS idx_uql_user ON {self._table}(user_id);
+                            CREATE INDEX IF NOT EXISTS idx_uql_date ON {tbl}(log_date);
+                            CREATE INDEX IF NOT EXISTS idx_uql_created_at ON {tbl}(created_at DESC);
+                            CREATE INDEX IF NOT EXISTS idx_uql_user ON {tbl}(user_id);
                             """
                         )
                 self._initialized = True
@@ -195,10 +203,11 @@ class UserLogStore:
 
         try:
             with self._connect() as conn:
-                if self._dsn:
+                tbl = self._table_name(conn)
+                if self._dsn and not isinstance(conn, sqlite3.Connection):
                     conn.execute(
                         f"""
-                        INSERT INTO {self._table} (
+                        INSERT INTO {tbl} (
                             id, user_id, user_name, user_role, tenant_id,
                             query, answer, capability, model, created_at, log_date
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -221,7 +230,7 @@ class UserLogStore:
                 else:
                     conn.execute(
                         f"""
-                        INSERT INTO {self._table} (
+                        INSERT INTO {tbl} (
                             id, user_id, user_name, user_role, tenant_id,
                             query, answer, capability, model, created_at, log_date
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -264,8 +273,9 @@ class UserLogStore:
 
         try:
             with self._connect() as conn:
+                tbl = self._table_name(conn)
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT DISTINCT log_date FROM {self._table}")
+                cursor.execute(f"SELECT DISTINCT log_date FROM {tbl}")
                 rows = cursor.fetchall()
                 for row in rows:
                     val = row["log_date"] if isinstance(row, dict) or hasattr(row, "keys") else row[0]
@@ -335,9 +345,11 @@ class UserLogStore:
 
         try:
             with self._connect() as conn:
+                tbl = self._table_name(conn)
+                is_pg = bool(self._dsn) and not isinstance(conn, sqlite3.Connection)
                 cursor = conn.cursor()
                 # 1. Total count
-                count_query = f"SELECT COUNT(*) AS total_count FROM {self._table} {where_clause}"
+                count_query = f"SELECT COUNT(*) AS total_count FROM {tbl} {where_clause}"
                 cursor.execute(count_query, params)
                 c_row = cursor.fetchone()
                 total = 0
@@ -349,11 +361,11 @@ class UserLogStore:
 
                 # 2. Page of records
                 order_limit = "ORDER BY created_at DESC"
-                if self._dsn:
-                    fetch_query = f"SELECT * FROM {self._table} {where_clause} {order_limit} LIMIT %s OFFSET %s"
+                if is_pg:
+                    fetch_query = f"SELECT * FROM {tbl} {where_clause} {order_limit} LIMIT %s OFFSET %s"
                     cursor.execute(fetch_query, [*params, limit, offset])
                 else:
-                    fetch_query = f"SELECT * FROM {self._table} {where_clause} {order_limit} LIMIT ? OFFSET ?"
+                    fetch_query = f"SELECT * FROM {tbl} {where_clause} {order_limit} LIMIT ? OFFSET ?"
                     cursor.execute(fetch_query, [*params, limit, offset])
 
                 rows = cursor.fetchall()

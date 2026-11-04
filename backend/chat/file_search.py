@@ -66,7 +66,8 @@ def _classify_query(query: str) -> tuple[bool, str, list[str], list[str], str]:
         "specific", "data", "info", "information", "detail", "details", "about",
         "called", "named", "to", "of", "and", "or", "a", "an", "as", "at", "it",
         "this", "that", "these", "those", "related", "realted", "associated",
-        "regarding", "pertaining", "concerning", "linked"
+        "regarding", "pertaining", "concerning", "linked",
+        "folder", "folders", "my", "mine", "local", "pc", "computer", "connected", "approved", "directory", "directories"
     }
 
     # Category classification
@@ -398,6 +399,8 @@ def execute_file_search(
                         hits = local_svc.search_local_chunks(t_id, u_id, specific_phrase, top_k=max_results * 2)
                     if not hits and primary_tokens:
                         hits = local_svc.search_local_chunks(t_id, u_id, " ".join(primary_tokens), top_k=max_results * 2)
+                    if not hits and any(k in clean_q.lower() for k in ("folder", "local", "file", "document", "what")):
+                        agent_files = local_svc.get_all_local_files(t_id, u_id)
 
                     seen_agent_files = set()
                     for h in hits:

@@ -459,19 +459,22 @@ async def add_local_folder(
     return service.request_folder(tenant_id, user_id, body.folder_path.strip())
 
 
-@router.delete("/folders/{folder_id}")
+@router.delete("/folders")
+@router.delete("/folders/{folder_id:path}")
 async def remove_local_folder(
-    folder_id: str,
+    folder_id: str | None = None,
+    folder_path: str | None = Query(None),
     user: UserIdentity = Depends(get_current_user),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> dict[str, Any]:
     """Disconnect an approved local folder and delete its synced chunks."""
+    target_id = folder_path or folder_id or ""
+    if not target_id.strip():
+        raise HTTPException(status_code=400, detail="Folder path or folder_id is required.")
     tenant_id = getattr(user, "tenant_id", None) or "default"
     user_id = _get_user_id(user)
-    removed = service.remove_folder(tenant_id, user_id, folder_id)
-    if not removed:
-        raise HTTPException(status_code=404, detail="Connected folder not found.")
-    return {"status": "ok", "message": f"Folder '{folder_id}' disconnected."}
+    removed = service.remove_folder(tenant_id, user_id, target_id.strip())
+    return {"status": "ok", "message": f"Folder '{target_id}' disconnected."}
 
 
 @router.post("/search", response_model=LocalSearchResponse)

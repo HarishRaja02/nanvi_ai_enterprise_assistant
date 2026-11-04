@@ -1,19 +1,19 @@
-import httpx
+from fastapi.testclient import TestClient
+from backend.main import app
 
 def test_chat_searches_gmail_and_files():
-    t_resp = httpx.post(
-        "http://127.0.0.1:8000/api/dev/token",
+    client = TestClient(app)
+    t_resp = client.post(
+        "/api/dev/token",
         json={"role": "CEO", "department": "Executive"},
-        timeout=10.0,
     )
     assert t_resp.status_code == 200
     token = t_resp.json()["access_token"]
 
-    chat_resp = httpx.post(
-        "http://127.0.0.1:8000/api/chat",
+    chat_resp = client.post(
+        "/api/chat",
         headers={"Authorization": f"Bearer {token}"},
         json={"query": "What is the status of Project Phoenix and what did Rahul send in email?"},
-        timeout=60.0,
     )
     assert chat_resp.status_code == 200
     data = chat_resp.json()

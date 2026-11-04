@@ -187,10 +187,16 @@ class NanviLocalAgent:
     def remove_folder(self, folder_path: str) -> bool:
         """Revoke approval for a local folder."""
         target = str(Path(folder_path).expanduser().resolve())
-        if target in self.approved_folders:
-            del self.approved_folders[target]
+        target_norm = target.replace("\\", "/").rstrip("/").lower()
+        matched_key = None
+        for af_key in list(self.approved_folders.keys()):
+            if af_key == target or af_key.replace("\\", "/").rstrip("/").lower() == target_norm:
+                matched_key = af_key
+                break
+        if matched_key:
+            del self.approved_folders[matched_key]
             self._save_config()
-            logger.info("Removed folder: %s", target)
+            logger.info("Removed folder: %s", matched_key)
             return True
         return False
 
@@ -608,6 +614,16 @@ class NanviLocalAgent:
                                         print("nanvi-agent> ", end="", flush=True)
                                 except Exception as err:
                                     logger.warning("Error opening folder picker: %s", err)
+                            elif cmd.get("command") == "remove_folder":
+                                payload_data = cmd.get("payload", {})
+                                rem_p = payload_data.get("folder_path") or payload_data.get("folder_id") or ""
+                                if rem_p:
+                                    try:
+                                        self.remove_folder(rem_p)
+                                        print(f"\n[Nanvi Web] Disconnected folder: {rem_p}")
+                                        print("nanvi-agent> ", end="", flush=True)
+                                    except Exception as exc:
+                                        logger.warning("Could not remove folder '%s': %s", rem_p, exc)
                     except Exception as parse_err:
                         logger.debug("Heartbeat response parse error: %s", parse_err)
                     return True

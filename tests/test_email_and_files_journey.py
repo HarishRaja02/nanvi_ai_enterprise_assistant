@@ -39,20 +39,14 @@ def test_chennai_files_and_date_refinement():
     service = create_chat_service()
 
     # Step 1: User asks "check chennai realted files?"
-    # Must ask for source ONCE
+    # Immediately searches primary storage (Local Storage) without asking repetitive questions
     r1 = service.ask(user, ChatRequest(query="check chennai realted files?", conversation_id="conv-chennai-flow"))
-    assert "Which source would you like me to search?" in r1.answer
+    assert "Which source would you like me to search?" not in r1.answer
     assert "Local Storage" in r1.answer
+    assert "| File Name | File Path | Action |" in r1.answer
 
-    # Step 2: User answers source: "local"
-    # Must immediately provide the files without asking another question
-    r2 = service.ask(user, ChatRequest(query="local", conversation_id="conv-chennai-flow"))
+    # Step 2: User provides timeframe: "files modified on Oct 5"
+    # Must filter the files for that date without asking "Which source would you like me to search?"
+    r2 = service.ask(user, ChatRequest(query="files modified on Oct 5", conversation_id="conv-chennai-flow"))
     assert "Which source would you like me to search?" not in r2.answer
     assert "| File Name | File Path | Action |" in r2.answer
-    assert "Looking for a specific timeframe?" in r2.answer
-
-    # Step 3: User answers timeframe: "files modified on Oct 5"
-    # Must filter the files for that date without asking "Which source would you like me to search?"
-    r3 = service.ask(user, ChatRequest(query="files modified on Oct 5", conversation_id="conv-chennai-flow"))
-    assert "Which source would you like me to search?" not in r3.answer
-    assert "| File Name | File Path | Action |" in r3.answer

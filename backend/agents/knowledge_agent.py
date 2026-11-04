@@ -46,7 +46,7 @@ class KnowledgeAgent(Agent):
             if company_data is not None:
                 try:
                     res = company_data.search_files(request.user, request.query)
-                    if res.answer_content:
+                    if res.sources and "couldn't find" not in str(res.answer_content).lower():
                         return AgentResponse(self.capability, res.answer_content, tuple(res.sources), deterministic=True)
                 except Exception as exc:
                     logger.warning("CompanyData file search failed, falling back: %s", exc)
@@ -84,6 +84,25 @@ class KnowledgeAgent(Agent):
                 query=request.query,
                 top_k=5,
             )
+
+            # If specific query produced 0 chunk hits, check if user has local files
+            if not local_hits:
+                local_files = local_svc.get_all_local_files(t_id, u_id)
+                if local_files:
+                    q_lower = request.query.lower()
+                    # If user is asking for folder listing or available documents
+                    if any(w in q_lower for w in ("folder", "my file", "my document", "what do i have", "what is in", "contents", "all file", "show files")):
+                        from backend.chat.file_search import execute_file_search
+                        ans, files, sources = execute_file_search(request.user, request.query, "local", max_results=10)
+                        if files:
+                            return AgentResponse(self.capability, ans, tuple(sources), deterministic=True)
+                    # For general content inquiries / summarization, pull top content chunks from local files
+                    local_hits = local_svc.search_local_chunks(
+                        tenant_id=t_id,
+                        user_id=u_id,
+                        query="",
+                        top_k=5,
+                    )
         except Exception as exc:
             logger.debug("Local agent search check error: %s", exc)
 
@@ -149,7 +168,7 @@ class KnowledgeAgent(Agent):
                 tuple(clean_sources),
                 deterministic=True,
             )
-        elif company_data_res and company_data_res.answer_content:
+        elif company_data_res and company_data_res.answer_content and company_data_res.sources and "couldn't find" not in str(company_data_res.answer_content).lower():
             return AgentResponse(
                 self.capability,
                 company_data_res.answer_content,

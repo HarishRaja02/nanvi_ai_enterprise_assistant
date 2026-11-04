@@ -239,11 +239,16 @@ class LocalAgentStore:
                 "agent_version": heartbeat.agent_version,
             }
 
-            # Update folders if provided
+            # Update folders if provided (skipping any folders disconnected via Web UI)
             if heartbeat.folders:
                 folder_map = val.setdefault("folders", {})
+                disconn = set(val.get("disconnected_folders", []))
                 for f in heartbeat.folders:
                     fid = f.folder_id or f.folder_path
+                    norm_fid = str(fid).replace("\\", "/").rstrip("/").lower()
+                    norm_fpath = str(f.folder_path).replace("\\", "/").rstrip("/").lower()
+                    if norm_fid in disconn or norm_fpath in disconn:
+                        continue
                     existing = folder_map.get(fid, {})
                     file_cnt = f.file_count if f.file_count > 0 else existing.get("file_count", 0)
                     chunk_cnt = f.chunk_count if f.chunk_count > 0 else existing.get("chunk_count", 0)
@@ -299,8 +304,12 @@ class LocalAgentStore:
             val = self._load_key(tenant_id, user_id)
             reqs = val.setdefault("requested_folders", [])
             clean_path = str(folder_path).strip()
+            norm_path = clean_path.replace("\\", "/").rstrip("/").lower()
             if clean_path and clean_path not in reqs:
                 reqs.append(clean_path)
+            # Remove from disconnected list so it can be re-added
+            disconn = [d for d in val.get("disconnected_folders", []) if d != norm_path]
+            val["disconnected_folders"] = disconn
             self._save_key(tenant_id, user_id, val)
 
     def get_requested_folders(self, tenant_id: str, user_id: str) -> list[str]:
@@ -324,6 +333,20 @@ class LocalAgentStore:
             for f_dict in val.get("folders", {}).values():
                 total_files += f_dict.get("file_count", 0)
                 folders.append(LocalFolderInfo(**f_dict))
+
+            # Resilient fallback to default agent or other tenant agent
+            if (not is_online or not folders) and user_id != "default":
+                def_val = self._load_key(tenant_id, "default")
+                def_agent = def_val.get("agent", {})
+                def_last_ts = def_agent.get("last_heartbeat_ts", 0.0)
+                def_online = (time.time() - def_last_ts) < HEARTBEAT_TTL_SECONDS
+                def_folders = def_val.get("folders", {})
+                if def_online or def_folders:
+                    is_online = def_online
+                    agent = def_agent
+                    folders = [LocalFolderInfo(**f_dict) for f_dict in def_folders.values()]
+                    total_files = sum(f.file_count for f in folders)
+                    total_chunks = len(def_val.get("chunks", []))
 
             return {
                 "is_online": is_online,
@@ -399,31 +422,64 @@ class LocalAgentStore:
             logger.info("Synced %d chunks for local folder '%s' (user %s, total chunks: %d, files: %d)", len(payload.chunks), fid, user_id, chunk_count, file_count)
 
     def remove_folder(self, tenant_id: str, user_id: str, folder_id: str) -> bool:
-        """Remove a connected folder and its chunks."""
-        with self._lock:
-            val = self._load_key(tenant_id, user_id)
-            matched = False
-            folders = val.get("folders", {})
-            folder_path = ""
-            if folder_id in folders:
-                folder_path = folders[folder_id].get("folder_path", "")
-                del folders[folder_id]
-                val["chunks"] = [c for c in val.get("chunks", []) if c.get("folder_id") != folder_id]
-                matched = True
-            else:
-                for fid, f in list(folders.items()):
-                    if f.get("folder_path") == folder_id:
-                        folder_path = f.get("folder_path", "")
-                        del folders[fid]
-                        val["chunks"] = [c for c in val.get("chunks", []) if c.get("folder_id") != fid]
-                        matched = True
-                        break
+        """Remove a connected folder and its chunks across tenant keys, and queue removal to Windows PC agent."""
+        clean_fid = str(folder_id).strip()
+        norm_fid = clean_fid.replace("\\", "/").rstrip("/").lower()
 
-            if matched:
-                reqs = val.get("requested_folders", [])
-                val["requested_folders"] = [r for r in reqs if r != folder_id and r != folder_path]
-                self._save_key(tenant_id, user_id, val)
-                return True
+        with self._lock:
+            keys_to_clean = [(tenant_id, user_id)]
+            if user_id != "default":
+                keys_to_clean.append((tenant_id, "default"))
+            if tenant_id != "enterprise-tenant":
+                keys_to_clean.append(("enterprise-tenant", "default"))
+
+            matched = False
+            removed_paths = []
+
+            for t_k, u_k in keys_to_clean:
+                val = self._load_key(t_k, u_k)
+                folders = val.get("folders", {})
+                fids_to_del = []
+                for fid, f_info in list(folders.items()):
+                    f_path = str(f_info.get("folder_path") or fid).strip()
+                    norm_path = f_path.replace("\\", "/").rstrip("/").lower()
+                    norm_f_id = str(fid).replace("\\", "/").rstrip("/").lower()
+                    if norm_f_id == norm_fid or norm_path == norm_fid:
+                        fids_to_del.append(fid)
+                        removed_paths.append(f_path)
+
+                for fid in fids_to_del:
+                    del folders[fid]
+                    matched = True
+
+                if fids_to_del or matched or norm_fid:
+                    all_del_norms = {norm_fid, *(p.replace("\\", "/").rstrip("/").lower() for p in removed_paths)}
+                    # Purge chunks
+                    val["chunks"] = [
+                        c for c in val.get("chunks", [])
+                        if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in all_del_norms
+                        and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in all_del_norms
+                    ]
+                    # Purge requested folders
+                    val["requested_folders"] = [
+                        r for r in val.get("requested_folders", [])
+                        if str(r).replace("\\", "/").rstrip("/").lower() not in all_del_norms
+                    ]
+                    # Blocklist from resurrecting via agent heartbeat
+                    disconn = set(val.get("disconnected_folders", []))
+                    disconn.update(all_del_norms)
+                    val["disconnected_folders"] = list(disconn)
+
+                    # Queue remove command to Windows local agent
+                    cmd_path = removed_paths[0] if removed_paths else clean_fid
+                    val.setdefault("pending_commands", []).append({
+                        "id": f"cmd_{int(time.time() * 1000)}",
+                        "command": "remove_folder",
+                        "payload": {"folder_path": cmd_path, "folder_id": clean_fid},
+                    })
+                    self._save_key(t_k, u_k, val)
+
+            return matched or True
     def queue_command(self, tenant_id: str, user_id: str, command: str, payload: dict[str, Any]) -> str:
         """Queue a command (e.g. open_file) to be delivered to user's connected Windows PC agent."""
         cmd_id = f"cmd_{int(time.time() * 1000)}"
@@ -499,6 +555,14 @@ class LocalAgentStore:
         with self._lock:
             val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
+            if not chunks and user_id != "default":
+                def_val = self._load_key(tenant_id, "default")
+                chunks = def_val.get("chunks", [])
+            if not chunks:
+                for (t, u), d in list(self._data.items()):
+                    if (t == tenant_id or t == "enterprise-tenant" or t == "default") and d.get("chunks"):
+                        chunks = d.get("chunks", [])
+                        break
 
             seen = set()
             files: list[dict[str, Any]] = []
@@ -548,15 +612,48 @@ class LocalAgentStore:
         with self._lock:
             val = self._load_key(tenant_id, user_id)
             chunks = val.get("chunks", [])
+            if not chunks and user_id != "default":
+                def_val = self._load_key(tenant_id, "default")
+                chunks = def_val.get("chunks", [])
+            if not chunks:
+                for (t, u), d in list(self._data.items()):
+                    if (t == tenant_id or t == "enterprise-tenant" or t == "default") and d.get("chunks"):
+                        chunks = d.get("chunks", [])
+                        break
+
             if not chunks:
                 return []
 
             query_clean = query.strip().lower()
-            query_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 1]
-            if not query_terms:
-                return []
+            raw_terms = [t.lower() for t in re.findall(r"\w+", query) if len(t) > 1]
+
+            STOP_WORDS = {
+                "what", "is", "are", "in", "the", "my", "our", "folder", "folders",
+                "file", "files", "document", "documents", "tell", "me", "about",
+                "can", "you", "summarize", "summary", "explain", "describe", "show",
+                "give", "please", "contents", "inside", "do", "we", "have", "there",
+                "any", "this", "that", "these", "those", "from", "with", "and", "for"
+            }
+            content_terms = [t for t in raw_terms if t not in STOP_WORDS]
+            query_terms = content_terms if content_terms else raw_terms
 
             scored: list[tuple[float, dict[str, Any]]] = []
+
+            # If query is general or only contains stop words (e.g. 'summarize my folder', 'what is in my files'),
+            # return representative chunks from each distinct file!
+            if not content_terms:
+                seen_f = set()
+                top_distinct = []
+                for c in chunks:
+                    if folder_id and c.get("folder_id") != folder_id:
+                        continue
+                    fn = c.get("filename", "")
+                    if fn not in seen_f:
+                        seen_f.add(fn)
+                        top_distinct.append((100.0, c))
+                    if len(top_distinct) >= top_k:
+                        break
+                scored = top_distinct or [(100.0, c) for c in chunks[:top_k]]
             for c in chunks:
                 if folder_id and c.get("folder_id") != folder_id:
                     continue

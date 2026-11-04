@@ -138,12 +138,120 @@ class LocalAgentService:
         return self.store.queue_command(tenant_id, user_id, command, payload)
 
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> dict[str, Any]:
-        """User from Web UI requested a folder to be indexed by their local agent."""
+        """User from Web UI or Desktop requested a folder to be indexed by their local agent."""
         cleaned = sanitize_folder_path(folder_path)
         if not cleaned:
             raise HTTPException(status_code=400, detail="Please provide a valid folder path.")
         self.store.request_folder(tenant_id, user_id, cleaned)
+
+        # Check if the folder physically exists on the local machine (Desktop App / Local Server)
+        try:
+            expanded = Path(os.path.expandvars(os.path.expanduser(cleaned))).resolve()
+            if expanded.exists() and expanded.is_dir():
+                threading.Thread(
+                    target=self._index_local_directory,
+                    args=(tenant_id, user_id, expanded),
+                    daemon=True,
+                ).start()
+                return {"status": "ok", "message": f"✓ Folder '{expanded}' found on this computer. Local indexing started!"}
+        except Exception as e:
+            logger.debug("Could not resolve local folder %s: %s", cleaned, e)
+
         return {"status": "ok", "message": f"✓ Folder '{cleaned}' added for indexing."}
+
+    def _index_local_directory(self, tenant_id: str, user_id: str, folder_path: Path) -> None:
+        """Immediately index a locally accessible directory into LocalAgentStore."""
+        import hashlib
+        from .client_agent import (
+            SUPPORTED_EXTENSIONS,
+            BLOCKED_EXTENSIONS,
+            IGNORED_DIR_NAMES,
+            NanviLocalAgent,
+        )
+        from .models import FolderSyncPayload, LocalFileRecord, LocalChunkRecord, LocalAgentHeartbeat
+
+        try:
+            folder_str = str(folder_path)
+            display_name = folder_path.name or folder_str
+            files_meta: list[LocalFileRecord] = []
+            all_chunks: list[LocalChunkRecord] = []
+            dummy_agent = NanviLocalAgent.__new__(NanviLocalAgent)
+
+            for root, dirs, files in os.walk(folder_path):
+                dirs[:] = [
+                    d for d in dirs
+                    if not d.startswith(".") and not d.startswith("$") and d.casefold() not in IGNORED_DIR_NAMES
+                ]
+                for fname in files:
+                    if fname.startswith(".") or fname.startswith("~$"):
+                        continue
+                    file_p = Path(root) / fname
+                    ext = file_p.suffix.casefold()
+                    if ext in BLOCKED_EXTENSIONS or ext not in SUPPORTED_EXTENSIONS:
+                        continue
+
+                    try:
+                        stat = file_p.stat()
+                        if stat.st_size > 50 * 1024 * 1024:
+                            continue
+
+                        text = dummy_agent._extract_text(file_p)
+                        if not text.strip():
+                            continue
+
+                        rel_path = str(file_p.relative_to(folder_path)).replace("\\", "/")
+                        mtime_iso = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat()
+                        raw_chunks = dummy_agent.chunk_text(text, rel_path, fname, display_name, mtime_iso, max_chunks=100)
+
+                        chunk_records = [
+                            LocalChunkRecord(
+                                chunk_id=c["chunk_id"],
+                                relative_path=c["relative_path"],
+                                filename=c["filename"],
+                                folder_name=c["folder_name"],
+                                chunk_index=c["chunk_index"],
+                                text=c["text"],
+                                char_count=c["char_count"],
+                                modified_at=c["modified_at"],
+                                page=c.get("page"),
+                                sheet=c.get("sheet"),
+                                metadata=c.get("metadata", {}),
+                            )
+                            for c in raw_chunks
+                        ]
+                        all_chunks.extend(chunk_records)
+
+                        files_meta.append(LocalFileRecord(
+                            relative_path=rel_path,
+                            filename=fname,
+                            folder_name=display_name,
+                            file_type=ext.lstrip("."),
+                            size_bytes=stat.st_size,
+                            chunk_count=len(chunk_records),
+                            modified_at=mtime_iso,
+                        ))
+                    except Exception as exc:
+                        logger.warning("Error indexing local file %s: %s", fname, exc)
+
+            payload = FolderSyncPayload(
+                folder_id=folder_str,
+                folder_path=folder_str,
+                display_name=display_name,
+                files=files_meta,
+                chunks=all_chunks,
+                replace_all=False,
+            )
+            self.sync_folder(tenant_id, user_id, payload)
+            # Record local desktop heartbeat so agent status is marked online
+            hb = LocalAgentHeartbeat(
+                agent_version="desktop-direct-1.0.0",
+                platform=sys.platform,
+                hostname=socket.gethostname(),
+            )
+            self.store.record_heartbeat_and_pop_commands(tenant_id, user_id, hb)
+            logger.info("Successfully indexed local folder %s: %d files, %d chunks", folder_str, len(files_meta), len(all_chunks))
+        except Exception as exc:
+            logger.error("Failed to index local folder %s: %s", folder_path, exc)
 
     def sync_folder(self, tenant_id: str, user_id: str, payload: FolderSyncPayload) -> dict[str, Any]:
         """Store synced chunks from an authorized local folder."""

@@ -41,15 +41,19 @@ async def dependency_unavailable_handler(request: Request, exc: DependencyUnavai
         headers={"Retry-After": "30"},
     )
 
-if settings.cors_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=list(settings.cors_origins),
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Request-ID"],
-    )
+cors_origins = list(settings.cors_origins) if settings.cors_origins else ["http://localhost:5173", "http://127.0.0.1:5173"]
+if "null" not in cors_origins:
+    cors_origins.append("null")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_origin_regex=r"^(http://(localhost|127\.0\.0\.1)(:\d+)?|null|file://.*|https://.*\.vercel\.app)$",
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+)
 
 if settings.is_production and settings.redis_url:
     _rate_limiter = RedisFixedWindowRateLimiter(

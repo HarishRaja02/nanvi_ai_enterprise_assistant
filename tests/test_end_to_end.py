@@ -185,8 +185,9 @@ def test_01_login_valid_and_02_invalid():
 
 def test_03_04_authenticated_unauthenticated(client):
     assert client.get("/api/auth/me").status_code == 200
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_current_user, None)
     assert client.get("/api/auth/me").status_code == 401
+    app.dependency_overrides[get_current_user] = lambda: UserIdentity("u-test", "issuer", "u@test.invalid", "Test User", "tenant-test", "Projects", frozenset({Role.EMPLOYEE}))
 
 def test_05_06_authorized_unauthorized(runtime):
     assert runtime.auth.authorize(USER, Permission.FILE_READ, __import__('backend.security.authorization', fromlist=['Resource']).Resource("project.txt","company_file","tenant-test")).allowed

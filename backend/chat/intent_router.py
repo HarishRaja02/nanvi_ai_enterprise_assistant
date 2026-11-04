@@ -80,6 +80,9 @@ class IntentRouter:
         r"\b(?:in|from|on)\s+(?:local\s+storage|local\s+files?|local\s+folder|internal\s+repository|internal\s+storage|repository|database|local\s+database|db|emails?|inbox|gmail|google\s+drive|gdrive|cloud(?:\s+storage)?)\b",
         # Storage keywords
         r"\b(?:local\s+storage|internal\s+repository|internal\s+storage|google\s+drive|gdrive|database\s+record|db\s+records?|c:\\)\b",
+        # Folder queries
+        r"\b(?:what\s+files|what\s+documents|what\s+is\s+in|what\s+is\s+inside|files\s+in|documents\s+in|contents\s+of)\s+(?:my\s+|the\s+)?(?:folder|folders|directory)\b",
+        r"\b(?:my\s+folder|connected\s+folder|selected\s+folder|local\s+folder|approved\s+folder)\b",
         # Explicit file actions
         r"\b(?:check|find|search|locate|look\s+for|where\s+is|fetch)\s+(?:the\s+)?(?:file|files|document|documents|pdf|sheet|spreadsheet|invoice|invoices|contract|contracts|resume|resumes|emails?|records)\b",
         r"\b(?:list|show|browse)\s+(?:all\s+)?(?:files|documents|folders?|invoices|contracts|records|emails?)\b",
@@ -90,6 +93,16 @@ class IntentRouter:
         r"\b(?:export|download|generate)\s+(?:report|document|schedule|as\s+pdf|as\s+excel|as\s+word|as\s+docx)\b",
         # SQL and DB execution
         r"\b(?:sql|query\s+database|select\s+\*|table\s+rows?|database\s+table)\b",
+    )
+
+    _ENTERPRISE_KEYWORDS_PATTERN = (
+        r"\b("
+        r"project|projects|invoice|invoices|inv|contract|contracts|customer|customers|"
+        r"employee|employees|database|record|records|ledger|file|files|document|documents|"
+        r"balance|salary|salaries|email|emails|gmail|inbox|mail|message|messages|nda|pur|emp|po|prj|"
+        r"sales|revenue|profit|cost|margin|analysis|analytics|total|sum|average|metric|metrics|kpi|"
+        r"vendor|vendors|billing|bill|bills|receipt|receipts|report|reports|atlas|chennai"
+        r")\b"
     )
 
     @classmethod
@@ -140,7 +153,7 @@ class IntentRouter:
             )
 
         # 5. Check if query asks for specific business entities combined with search/list/find verbs
-        has_action_verb = bool(re.search(r"\b(check|find|search|show|get|list|look\s+for|locate|where\s+is|fetch|pull|read|display)\b", q_lower))
+        has_action_verb = bool(re.search(r"\b(check|find|search|show|get|list|look\s+for|locate|where\s+is|fetch|pull|read|display|give\s+me|give)\b", q_lower))
         has_file_noun = bool(re.search(r"\b(file|files|document|documents|pdf|docx|xlsx|csv|attachment|folder|directory|email|emails|mail|mails|message|messages|inbox)\b", q_lower))
         if has_action_verb and has_file_noun:
             return IntentDecision(
@@ -151,7 +164,7 @@ class IntentRouter:
             )
 
         # 6. Check if user is asking for general conversational assistance or advice (ChatGPT style)
-        if any(q_lower.startswith(prefix) for prefix in cls._CONVERSATIONAL_PROMPTS):
+        if any(q_lower.startswith(prefix) for prefix in cls._CONVERSATIONAL_PROMPTS) and not re.search(cls._ENTERPRISE_KEYWORDS_PATTERN, q_lower):
             return IntentDecision(
                 ChatIntent.CONVERSATION,
                 confidence=0.88,
@@ -160,7 +173,14 @@ class IntentRouter:
             )
 
         # 7. Check if query is conversational general Q&A (e.g. "what is artificial intelligence", "can you tell me a story")
-        if not re.search(r"\b(project|projects|invoice|invoices|inv|contract|contracts|customer|customers|employee|employees|database|record|records|ledger|file|files|document|documents|balance|salary|email|emails|gmail|inbox|mail|message|messages|nda|pur|emp|po|prj)\b", q_lower):
+        if not re.search(cls._ENTERPRISE_KEYWORDS_PATTERN, q_lower):
+            # No enterprise data keywords present
+            return IntentDecision(
+                ChatIntent.CONVERSATION,
+                confidence=0.80,
+                reason="General conversation without enterprise data or file targets",
+                suggested_action="chatgpt_conversational_response",
+            )
             # No enterprise data keywords present
             return IntentDecision(
                 ChatIntent.CONVERSATION,

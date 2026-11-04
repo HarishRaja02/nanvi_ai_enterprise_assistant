@@ -841,9 +841,10 @@ if (!response.ok) {
   }
 
   removeLocalFolder(folderId: string) {
-    return this.request<{ status: string; message: string }>(`/local-agent/folders/${encodeURIComponent(folderId)}`, {
-      method: "DELETE",
-    });
+    return this.request<{ status: string; message: string }>(
+      `/local-agent/folders?folder_path=${encodeURIComponent(folderId)}`,
+      { method: "DELETE" }
+    );
   }
 
   testSearchLocalAgent(query: string) {
