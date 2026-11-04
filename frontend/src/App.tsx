@@ -6,6 +6,7 @@ import { HelpPanel } from "./components/layout/HelpPanel";
 import { CommandPalette } from "./components/layout/CommandPalette";
 import { ChatView } from "./components/chat/ChatView";
 import { SourceDialog } from "./components/chat/SourceDialog";
+import { LandingPage } from "./components/landing/LandingPage";
 import { useToast } from "./components/ui/Toast";
 import { EnterpriseLoginGateway } from "./login/App";
 import { SessionSplash } from "./features/auth/SessionSplash";
@@ -67,6 +68,15 @@ export function App() {
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
   const [voiceModeOpen, setVoiceModeOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(() => {
+    if (typeof window !== "undefined") {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get("view") === "login") return true;
+      if (p.has("token")) return true;
+      if (Boolean((window as any).electronAPI?.isDesktop)) return true;
+    }
+    return false;
+  });
   const mainRef = useRef<HTMLElement>(null);
   const previousView = useRef<View>("Chat");
 
@@ -289,11 +299,34 @@ export function App() {
   }
 
   if (!identity) {
+    if (!showLogin) {
+      return (
+        <LandingPage
+          onLaunchWebApp={() => {
+            setShowLogin(true);
+            if (window.history && window.history.pushState) {
+              const url = new URL(window.location.href);
+              url.searchParams.set("view", "login");
+              window.history.pushState({}, "", url.toString());
+            }
+          }}
+        />
+      );
+    }
+
     return (
       <EnterpriseLoginGateway
         error={session.authError}
         onLogin={session.signIn}
         loading={session.signingIn}
+        onBackToLanding={() => {
+          setShowLogin(false);
+          if (window.history && window.history.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("view");
+            window.history.replaceState({}, "", url.toString());
+          }
+        }}
       />
     );
   }

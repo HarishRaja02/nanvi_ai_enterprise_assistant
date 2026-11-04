@@ -191,10 +191,12 @@ if not exist "%NANVI_DIR%\\nanvi_local_agent.py" (
     exit /b 1
 )
 
-:: 6. Launch agent in the current terminal window with live status
+:: 6. Launch assistant in browser and run local agent in terminal
 echo Starting local indexing and real-time synchronization...
+echo Opening Nanvi AI Assistant in your default browser...
+start "" "{clean_server}"
 echo.
-"%PYTHON_CMD%" "%NANVI_DIR%\\nanvi_local_agent.py" --folder "!TARGET_FOLDER!" --replace-folders
+"%PYTHON_CMD%" "%NANVI_DIR%\\nanvi_local_agent.py" --server "{clean_server}" --token "{pairing_token}" --folder "!TARGET_FOLDER!" --replace-folders
 if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [!] Agent exited with error code %ERRORLEVEL%.

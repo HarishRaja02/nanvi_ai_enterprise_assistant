@@ -12,12 +12,14 @@ export interface LoginGatewayProps {
   error?: string;
   onLogin: (username: string, password: string, role: LocalAccountRole | string) => Promise<void> | void;
   loading?: boolean;
+  onBackToLanding?: () => void;
 }
 
 export function EnterpriseLoginGateway({
   error = "",
   onLogin,
   loading = false,
+  onBackToLanding,
 }: LoginGatewayProps) {
   const [view, setView] = useState<AuthGatewayView>("login");
   const [resetToken, setResetToken] = useState<string>("");
@@ -38,16 +40,45 @@ export function EnterpriseLoginGateway({
     setView("login");
   };
 
+  const isDesktop = typeof window !== "undefined" && (
+    window.location.protocol === "file:" ||
+    Boolean((window as any).electronAPI?.isDesktop)
+  );
+  const loginVideoSrc = isDesktop ? "./assets/login-network-loop.mp4" : "/assets/login-network-loop.mp4";
+
   return (
     <main className="role-login-page">
       <aside className="role-login-visual" aria-hidden="true">
         <video className="role-login-video" autoPlay muted loop playsInline preload="auto" tabIndex={-1}>
-          <source src="/assets/login-network-loop.mp4" type="video/mp4" />
+          <source src={loginVideoSrc} type="video/mp4" />
         </video>
         <div className="role-login-overlay" />
       </aside>
       <section className="role-login-content" aria-label="Nanvi sign in">
         <div className="role-login-panel">
+          {onBackToLanding && (
+            <button
+              type="button"
+              onClick={onBackToLanding}
+              style={{
+                alignSelf: "flex-start",
+                background: "none",
+                border: "none",
+                color: "#006583",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                marginBottom: "12px",
+                padding: "2px 0",
+              }}
+            >
+              ← Back to Product Overview
+            </button>
+          )}
+
           <header className="role-login-brand">
             <img src={LOGO_URL} alt="Nanvi" />
             <span>Enterprise assistant</span>
