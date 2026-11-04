@@ -15,6 +15,7 @@ export function CompanyFolderPicker({ api }: Props) {
   const [pairingToken, setPairingToken] = useState<string | null>(null);
   const [customLocalFolder, setCustomLocalFolder] = useState("");
   const [addingFolder, setAddingFolder] = useState(false);
+  const [browsingFolder, setBrowsingFolder] = useState(false);
   const [addFolderMsg, setAddFolderMsg] = useState<string | null>(null);
   const [downloadingAgent, setDownloadingAgent] = useState(false);
   const [showAdvancedCli, setShowAdvancedCli] = useState(false);
@@ -188,6 +189,27 @@ export function CompanyFolderPicker({ api }: Props) {
       setAddFolderMsg(`Error: ${err?.message || "Failed to add folder"}`);
     } finally {
       setAddingFolder(false);
+    }
+  };
+
+  const handleBrowseFolder = async () => {
+    if (!agentStatus?.is_online) {
+      setMessage({
+        text: "The Nanvi Assistant agent is not currently connected. Please download and double-click Nanvi_Assistant.bat first so it can launch the Windows Explorer dialog.",
+        type: "error",
+      });
+      return;
+    }
+    setBrowsingFolder(true);
+    setAddFolderMsg(null);
+    try {
+      const res = await api.browseLocalFolder();
+      setAddFolderMsg(res.message || "✓ Windows Explorer Folder Picker launched! Please select any folder on your computer screen.");
+      triggerRapidPoll();
+    } catch (err: any) {
+      setAddFolderMsg(`Error opening folder browser: ${err?.message || "Failed to trigger folder browser"}`);
+    } finally {
+      setTimeout(() => setBrowsingFolder(false), 5000);
     }
   };
 
@@ -474,27 +496,53 @@ export function CompanyFolderPicker({ api }: Props) {
               No Folders Connected Yet
             </div>
             <p style={{ margin: "0 auto 16px", maxWidth: "520px", fontSize: "0.9rem", color: "#64748b", lineHeight: 1.5 }}>
-              The system is configured to ONLY access folders from your local Windows computer via the BAT file.
-              Download and run <strong>Nanvi_Assistant.bat</strong> to connect your documents folder.
+              {isOnline
+                ? "Your Windows local agent is connected and online! Click below to select any folder from Windows Explorer."
+                : "The system is configured to ONLY access folders from your local Windows computer via the BAT file. Download and run Nanvi_Assistant.bat to connect your documents folder."}
             </p>
-            <button
-              type="button"
-              className="folder-picker-btn"
-              onClick={handleDownloadAgent}
-              disabled={downloadingAgent}
-              style={{
-                padding: "9px 20px",
-                fontSize: "0.9rem",
-                fontWeight: 700,
-                background: "#0284c7",
-                color: "#ffffff",
-                border: "none",
-                borderRadius: "8px",
-                cursor: "pointer",
-              }}
-            >
-              Download Nanvi_Assistant.bat
-            </button>
+            {isOnline ? (
+              <button
+                type="button"
+                className="folder-picker-btn"
+                onClick={handleBrowseFolder}
+                disabled={browsingFolder}
+                style={{
+                  padding: "11px 24px",
+                  fontSize: "0.95rem",
+                  fontWeight: 700,
+                  background: "#0284c7",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.25)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                📁 Browse Folder on This PC (Windows Explorer)
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="folder-picker-btn"
+                onClick={handleDownloadAgent}
+                disabled={downloadingAgent}
+                style={{
+                  padding: "9px 20px",
+                  fontSize: "0.9rem",
+                  fontWeight: 700,
+                  background: "#0284c7",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+              >
+                Download Nanvi_Assistant.bat
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -512,9 +560,56 @@ export function CompanyFolderPicker({ api }: Props) {
         <div style={{ fontSize: "1.02rem", fontWeight: 700, color: "#0f172a", marginBottom: "6px" }}>
           Select Folders for Nanvi to Search on Your Machine:
         </div>
-        <p style={{ margin: "0 0 14px", fontSize: "0.86rem", color: "#64748b" }}>
-          Choose a 1-click preset folder or paste any custom folder path from your computer.
+        <p style={{ margin: "0 0 16px", fontSize: "0.86rem", color: "#64748b" }}>
+          Browse any folder using native Windows Explorer, pick a 1-click preset, or paste a folder path.
         </p>
+
+        {/* Primary Windows Explorer Browse Button */}
+        <div style={{ marginBottom: "18px" }}>
+          <button
+            type="button"
+            className="folder-picker-btn"
+            onClick={handleBrowseFolder}
+            disabled={browsingFolder}
+            style={{
+              width: "100%",
+              padding: "13px 20px",
+              background: isOnline ? "#0284c7" : "#64748b",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "1rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              cursor: isOnline ? "pointer" : "not-allowed",
+              boxShadow: isOnline ? "0 4px 12px rgba(2, 132, 199, 0.25)" : "none",
+              transition: "all 0.2s ease",
+            }}
+            title={isOnline ? "Open standard Windows Explorer folder picker on your computer" : "Start Nanvi Assistant BAT agent to enable"}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+            </svg>
+            {browsingFolder
+              ? "Opening Windows Explorer Dialog on your PC..."
+              : "📁 Browse Folder on This PC (Windows Explorer)"}
+          </button>
+          <div style={{ textAlign: "center", marginTop: "6px", fontSize: "0.82rem", color: "#64748b" }}>
+            {isOnline
+              ? "Opens native Windows folder dialog on your screen — no manual typing or path copying required!"
+              : "Starts native Windows folder picker once Nanvi_Assistant.bat is running on your PC."}
+          </div>
+        </div>
+
+        <div style={{ position: "relative", textAlign: "center", margin: "16px 0 14px" }}>
+          <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: "1px", background: "#e2e8f0" }} />
+          <span style={{ position: "relative", background: "#f8fafc", padding: "0 12px", fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>
+            OR CHOOSE PRESET / PASTE PATH
+          </span>
+        </div>
 
         {/* 1-Click Quick Presets */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "16px" }}>

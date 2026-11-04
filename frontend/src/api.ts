@@ -824,6 +824,12 @@ if (!response.ok) {
     });
   }
 
+  browseLocalFolder() {
+    return this.request<{ status: string; message: string }>("/local-agent/browse-folder", {
+      method: "POST",
+    });
+  }
+
   removeLocalFolder(folderId: string) {
     return this.request<{ status: string; message: string }>(`/local-agent/folders/${encodeURIComponent(folderId)}`, {
       method: "DELETE",

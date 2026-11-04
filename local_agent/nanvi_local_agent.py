@@ -51,6 +51,13 @@ SUPPORTED_EXTENSIONS = {
     ".doc", ".xls", ".ppt", ".rtf", ".log", ".html", ".xml",
 }
 
+IGNORED_DIR_NAMES = {
+    "node_modules", ".git", ".svn", ".hg", "venv", ".venv", "env", ".env",
+    "__pycache__", "appdata", "local settings", "temp", "tmp", "bin", "obj",
+    "build", "dist", ".cache", ".idea", ".vscode", "packages", ".nuget",
+    "my games", "$recycle.bin", "system volume information",
+}
+
 BLOCKED_SYSTEM_PATHS = [
     Path(os.environ.get("SystemRoot", "C:\\Windows")).resolve(),
     Path(os.environ.get("ProgramFiles", "C:\\Program Files")).resolve(),
@@ -347,8 +354,11 @@ class NanviLocalAgent:
             all_chunks: list[dict[str, Any]] = []
 
             for root, dirs, files in os.walk(folder_path):
-                # Filter hidden directories
-                dirs[:] = [d for d in dirs if not d.startswith(".") and not d.startswith("$")]
+                # Filter hidden and junk developer/system directories
+                dirs[:] = [
+                    d for d in dirs
+                    if not d.startswith(".") and not d.startswith("$") and d.casefold() not in IGNORED_DIR_NAMES
+                ]
 
                 for fname in files:
                     if fname.startswith(".") or fname.startswith("~$"):
@@ -364,12 +374,22 @@ class NanviLocalAgent:
                         rel_path = str(file_p.relative_to(folder_path)).replace("\\", "/")
                         stat = file_p.stat()
 
+                        file_text = ""
                         if stat.st_size > MAX_FILE_SIZE_BYTES:
-                            logger.info("Skipping oversized file (%d MB): %s", stat.st_size // (1024 * 1024), rel_path)
-                            continue
+                            if ext in {".csv", ".tsv", ".txt", ".log", ".json"}:
+                                logger.info("Sampling preview of large dataset (%d MB): %s", stat.st_size // (1024 * 1024), rel_path)
+                                try:
+                                    with open(file_p, "r", encoding="utf-8", errors="ignore") as f:
+                                        file_text = f.read(250_000)
+                                except Exception:
+                                    continue
+                            else:
+                                logger.info("Skipping oversized binary file (%d MB): %s", stat.st_size // (1024 * 1024), rel_path)
+                                continue
+                        else:
+                            file_text = self._extract_text(file_p)
 
                         mtime_iso = datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat()
-                        file_text = self._extract_text(file_p)
                         chunks = self.chunk_text(file_text, rel_path, fname, display_name, mtime_iso, max_chunks=50)
 
                         all_chunks.extend(chunks)
@@ -568,6 +588,16 @@ class NanviLocalAgent:
                                             print("nanvi-agent> ", end="", flush=True)
                                     except Exception as exc:
                                         logger.warning("Could not open file: %s", exc)
+                            elif cmd.get("command") == "browse_folder":
+                                logger.info("Opening Windows Folder Picker requested from Web UI...")
+                                try:
+                                    selected_folder = self._open_gui_folder_picker()
+                                    if selected_folder:
+                                        p = self.add_folder(selected_folder)
+                                        print(f"\n[Nanvi Web] Connected folder from Windows Explorer: {p}")
+                                        print("nanvi-agent> ", end="", flush=True)
+                                except Exception as err:
+                                    logger.warning("Error opening folder picker: %s", err)
                     except Exception as parse_err:
                         logger.debug("Heartbeat response parse error: %s", parse_err)
                     return True
@@ -575,6 +605,37 @@ class NanviLocalAgent:
         except Exception as exc:
             logger.debug("Heartbeat error: %s", exc)
             return False
+
+    def _open_gui_folder_picker(self) -> str | None:
+        """Open native Windows Folder Picker dialog via Tkinter or PowerShell."""
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            selected = filedialog.askdirectory(title="Select Company Folder for Nanvi AI Assistant")
+            root.destroy()
+            if selected and selected.strip():
+                return selected.strip()
+        except Exception:
+            pass
+
+        try:
+            import subprocess
+            ps_cmd = (
+                "Add-Type -AssemblyName System.Windows.Forms; "
+                "$f = New-Object System.Windows.Forms.FolderBrowserDialog; "
+                "$f.Description = 'Select Company Folder for Nanvi AI Assistant'; "
+                "$f.ShowNewFolderButton = $true; "
+                "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }"
+            )
+            out = subprocess.check_output(["powershell", "-NoProfile", "-Command", ps_cmd], text=True).strip()
+            if out:
+                return out
+        except Exception:
+            pass
+        return None
 
     # -----------------------------------------------------------------------
     # Background Daemon & File Watching

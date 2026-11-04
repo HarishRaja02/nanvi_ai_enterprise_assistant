@@ -98,6 +98,28 @@ async def local_agent_open_file(
     }
 
 
+@router.post("/browse-folder")
+async def local_agent_browse_folder(
+    user: UserIdentity | None = Depends(get_optional_current_user),
+    service: LocalAgentService = Depends(get_local_agent_service),
+) -> dict[str, Any]:
+    """Trigger the native Windows folder picker dialog on the user's connected PC."""
+    t_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
+    u_id = getattr(user, "subject", None) or "default"
+    cmd_id = service.queue_command(t_id, u_id, "browse_folder", {})
+    if u_id != "default":
+        try:
+            service.queue_command(t_id, "default", "browse_folder", {})
+        except Exception:
+            pass
+    return {
+        "status": "ok",
+        "message": "Opening folder picker on your Windows PC...",
+        "queued": True,
+        "command_id": cmd_id,
+    }
+
+
 @router.get("/document-content")
 async def get_document_content(
     path: str = Query(..., description="File path or relative path to view"),

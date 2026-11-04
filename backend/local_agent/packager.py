@@ -91,29 +91,48 @@ if not "!TARGET_FOLDER!"=="" goto VALIDATE_FOLDER
 
 :PROMPT_LOOP
 echo -------------------------------------------------------------------
-echo  CONFIGURE ACTIVE COMPANY FOLDER
+echo  SELECT COMPANY FOLDER FOR NANVI AI
 echo -------------------------------------------------------------------
 if not "!CURRENT_FOLDER!"=="" (
     echo  Currently active folder:
     echo    !CURRENT_FOLDER!
     echo.
-    echo  Press ENTER to continue with this folder, OR
-    echo  Enter a new folder path to switch to a different folder:
+    echo  [ENTER] Press Enter to continue with this folder
+    echo  [B]     Open Windows Explorer folder picker to choose a different folder
+    echo.
+    set /p "USER_CHOICE=Choice (Press Enter to continue, or B to browse): "
+    if "!USER_CHOICE!"=="" (
+        set "TARGET_FOLDER=!CURRENT_FOLDER!"
+        goto VALIDATE_FOLDER
+    )
+    if /i "!USER_CHOICE!"=="b" goto OPEN_BROWSER_PICKER
+    set "TARGET_FOLDER=!USER_CHOICE!"
+    goto VALIDATE_FOLDER
 )
-if "!CURRENT_FOLDER!"=="" (
-    echo  Please enter or paste the full path of the company folder
-    echo  you want Nanvi AI to access. Example: C:\MyCompanyFiles or D:\Projects
-)
+
+:OPEN_BROWSER_PICKER
 echo.
+echo Opening Windows Folder Picker dialog... Please select your folder in the window.
+for /f "usebackq delims=" %%D in (`"%PYTHON_CMD%" -c "import tkinter as tk; from tkinter import filedialog; root = tk.Tk(); root.withdraw(); root.attributes('-topmost', True); path = filedialog.askdirectory(title='Select Company Folder for Nanvi AI Assistant'); print(path if path else '')" 2^>nul`) do (
+    set "TARGET_FOLDER=%%D"
+)
+if not "!TARGET_FOLDER!"=="" goto VALIDATE_FOLDER
+
+for /f "usebackq delims=" %%D in (`powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Select Company Folder for Nanvi AI Assistant'; $f.ShowNewFolderButton = $true; if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }" 2^>nul`) do (
+    set "TARGET_FOLDER=%%D"
+)
+if not "!TARGET_FOLDER!"=="" goto VALIDATE_FOLDER
+
+echo.
+echo [!] No folder was selected from the window.
+echo You can enter or paste the folder path manually:
 set /p "USER_INPUT=Folder Path: "
 if "!USER_INPUT!"=="" (
     if not "!CURRENT_FOLDER!"=="" (
         set "TARGET_FOLDER=!CURRENT_FOLDER!"
         goto VALIDATE_FOLDER
     )
-    echo.
     echo [!] Folder path cannot be empty.
-    echo.
     goto PROMPT_LOOP
 )
 set "TARGET_FOLDER=!USER_INPUT!"
