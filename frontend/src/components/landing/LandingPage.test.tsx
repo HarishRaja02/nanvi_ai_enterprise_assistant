@@ -11,7 +11,7 @@ describe("LandingPage", () => {
     expect(screen.getByRole("heading", { level: 1, name: /The Secure Enterprise AI Assistant/i })).toBeInTheDocument();
 
     // Primary Action Buttons
-    expect(screen.getAllByText(/Download for Windows/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Download Desktop App/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Launch Web Assistant/i).length).toBeGreaterThan(0);
 
     // Capabilities Section
@@ -21,7 +21,7 @@ describe("LandingPage", () => {
 
     // Dual Architecture Section
     expect(screen.getByText(/Both Web Service & Local Application/i)).toBeInTheDocument();
-    expect(screen.getByText(/Local Windows Application/i)).toBeInTheDocument();
+    expect(screen.getByText(/Local Windows Desktop Application/i)).toBeInTheDocument();
     expect(screen.getByText(/Enterprise Cloud Web Portal/i)).toBeInTheDocument();
   });
 

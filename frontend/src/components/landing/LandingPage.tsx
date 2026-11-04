@@ -87,22 +87,36 @@ const SAMPLE_QUERIES: SampleQuery[] = [
 export function LandingPage({ onLaunchWebApp }: Props) {
   const notify = useToast();
   const [downloading, setDownloading] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<"bat" | "zip">("bat");
+  const [downloadFormat, setDownloadFormat] = useState<"exe" | "bat" | "zip">("exe");
   const [activeQueryIdx, setActiveQueryIdx] = useState(0);
   const [copiedPath, setCopiedPath] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(false);
 
   const activeSample = SAMPLE_QUERIES[activeQueryIdx];
 
-  const handleDownload = async (format: "bat" | "zip" = "bat") => {
+  const handleDownload = async (format: "exe" | "bat" | "zip" = "exe") => {
     setDownloading(true);
     try {
       const isDesktopOrigin =
         typeof window !== "undefined" &&
         (window.location.protocol === "file:" || Boolean((window as any).electronAPI?.isDesktop));
       const base = isDesktopOrigin ? "http://127.0.0.1:8000/api" : "/api";
-
       const url = `${base}/local-agent/download?format=${format}`;
+
+      if (format === "exe") {
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "Nanvi AI Assistant-Setup-0.1.0.exe";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        notify(
+          "Downloading Nanvi AI Assistant Setup (.exe)... Once downloaded, run the installer to set up the desktop application on your computer.",
+          "success"
+        );
+        return;
+      }
+
       const res = await fetch(url);
       if (!res.ok) throw new Error("Download request failed");
 
@@ -121,7 +135,6 @@ export function LandingPage({ onLaunchWebApp }: Props) {
         "success"
       );
     } catch {
-      // Direct browser fallback
       window.location.href = `/api/local-agent/download?format=${format}`;
       notify("Download initiated.", "info");
     } finally {
@@ -166,7 +179,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               How It Works
             </a>
             <a href="#downloads" className="landing-nav-link">
-              Download
+              Download App
             </a>
           </nav>
 
@@ -174,12 +187,12 @@ export function LandingPage({ onLaunchWebApp }: Props) {
             <button
               type="button"
               className="btn-landing-secondary"
-              onClick={() => handleDownload("bat")}
-              title="Download Windows Local Runner"
+              onClick={() => handleDownload("exe")}
+              title="Download Nanvi Windows Desktop Application (.exe)"
               style={{ padding: "8px 16px", fontSize: "13.5px" }}
             >
               <Download size={14} />
-              <span>Download for Windows</span>
+              <span>Download Desktop App (.exe)</span>
             </button>
             <button
               type="button"
@@ -199,7 +212,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
       <section className="landing-hero" aria-label="Hero Introduction">
         <div className="landing-pill">
           <Sparkles size={14} className="text-green-600" />
-          <span>Hybrid Architecture • Zero Confidential Cloud Leak • Windows Local PC & Web Service</span>
+          <span>Windows Desktop Application & Enterprise Cloud Web Platform</span>
         </div>
 
         <h1 className="landing-hero-title">
@@ -209,19 +222,19 @@ export function LandingPage({ onLaunchWebApp }: Props) {
 
         <p className="landing-hero-subtitle">
           Instantly query vendor records, analyze financial ledgers, audit complex contracts, and search across thousands of
-          local business documents — powered by in-memory ephemeral previews, native desktop launching, and zero cloud retention.
+          local business documents — available as a standalone Windows desktop application and a secure cloud web service.
         </p>
 
         <div className="landing-hero-ctas">
           <button
             type="button"
             className="btn-landing-primary"
-            onClick={() => handleDownload("bat")}
+            onClick={() => handleDownload("exe")}
             disabled={downloading}
             style={{ fontSize: "16px", padding: "14px 28px" }}
           >
             <Download size={18} />
-            <span>{downloading ? "Preparing Download..." : "Download for Windows (.bat)"}</span>
+            <span>{downloading ? "Preparing Download..." : "Download Desktop App for Windows (.exe)"}</span>
           </button>
 
           <button
@@ -236,30 +249,34 @@ export function LandingPage({ onLaunchWebApp }: Props) {
         </div>
 
         <div className="landing-hero-meta">
-          <span>⚡ Windows 10 & 11 Compatible</span>
+          <span>⚡ Official Windows Application (.exe Installer - 144 MB)</span>
           <span>•</span>
-          <span>🔒 1-Click Self-Contained Runner</span>
+          <span>🔒 Air-Gapped Local Folder Indexing</span>
           <span>•</span>
-          <span>🌐 Zero-Install Web Service Available</span>
+          <span>🌐 Zero-Install Web Service Also Available</span>
         </div>
 
         {/* ── Badges Strip ────────────────────────────────────────────── */}
         <div className="landing-badges-strip">
           <div className="landing-badge-item">
+            <Laptop size={16} />
+            <span>Native Windows Desktop App</span>
+          </div>
+          <div className="landing-badge-item">
             <Lock size={16} />
             <span>Ephemeral RAM Previews</span>
           </div>
           <div className="landing-badge-item">
-            <Laptop size={16} />
-            <span>Local PC Hard Drive Indexing</span>
+            <Folder size={16} />
+            <span>Local Hard Drive Indexing</span>
           </div>
           <div className="landing-badge-item">
             <ShieldCheck size={16} />
-            <span>Role-Based Access (RBAC)</span>
+            <span>Enterprise RBAC & Security</span>
           </div>
           <div className="landing-badge-item">
             <Mic size={16} />
-            <span>Neural Voice Core Integration</span>
+            <span>Neural Voice Integration</span>
           </div>
         </div>
 
@@ -597,21 +614,21 @@ export function LandingPage({ onLaunchWebApp }: Props) {
         <div className="landing-arch-grid">
           {/* Local Windows Application Card */}
           <div className="arch-card featured">
-            <span className="arch-badge-ribbon">Local PC Workstation</span>
+            <span className="arch-badge-ribbon">Windows Desktop App</span>
             <div className="arch-card-header">
               <div className="arch-icon">
                 <Laptop size={26} />
               </div>
-              <h3 className="arch-card-title">Local Windows Application</h3>
+              <h3 className="arch-card-title">Local Windows Desktop Application</h3>
               <p className="arch-card-desc">
-                Ideal for finance, engineering, and procurement workstations with sensitive local hard drive storage.
+                Full standalone application that installs on your PC. Works directly with Windows File Explorer, Excel, and local hard drives.
               </p>
             </div>
 
             <ul className="arch-feature-list">
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Runs directly on Windows 10 & 11 via 1-click batch runner or Electron app</span>
+                <span>Installs on Windows 10 & 11 as a dedicated desktop software (Nanvi AI Assistant.exe)</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
@@ -619,7 +636,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>1-click file opening launches Microsoft Excel, Word, Acrobat, or Notepad</span>
+                <span>1-click file opening launches Microsoft Excel, Word, Acrobat, or Notepad natively</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
@@ -627,20 +644,38 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Automatic pairing with cloud web assistant via secure token</span>
+                <span>Built-in local Python agent with real-time filesystem monitoring</span>
               </li>
             </ul>
 
-            <button
-              type="button"
-              className="btn-landing-primary"
-              onClick={() => handleDownload("bat")}
-              disabled={downloading}
-              style={{ width: "100%", justifyContent: "center" }}
-            >
-              <Download size={16} />
-              <span>Download for Windows (.bat)</span>
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <button
+                type="button"
+                className="btn-landing-primary"
+                onClick={() => handleDownload("exe")}
+                disabled={downloading}
+                style={{ width: "100%", justifyContent: "center" }}
+              >
+                <Download size={16} />
+                <span>Download Desktop App (.exe Installer)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownload("bat")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#006583",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  padding: "4px",
+                }}
+              >
+                Or download lightweight 1-click runner (.bat)
+              </button>
+            </div>
           </div>
 
           {/* Cloud Web Service Card */}
@@ -700,17 +735,17 @@ export function LandingPage({ onLaunchWebApp }: Props) {
           <span className="landing-eyebrow">Simple Workflow</span>
           <h2 className="landing-section-title">Up and Running in 3 Steps</h2>
           <p className="landing-section-sub">
-            No database migration, no complex installations, and no command-line hassle.
+            Install the desktop application, select your company folder, and query your business data with AI.
           </p>
         </div>
 
         <div className="landing-steps-row">
           <div className="landing-step-card">
             <span className="step-num-badge">1</span>
-            <h3 className="step-card-title">Download & Run</h3>
+            <h3 className="step-card-title">Download & Install</h3>
             <p className="step-card-desc">
-              Download <strong>Nanvi_Assistant.bat</strong> and double-click to run on your Windows PC.
-              The application window and terminal assistant appear immediately.
+              Download <strong>Nanvi AI Assistant Setup.exe</strong> and run the installer.
+              The application installs on your Windows PC and places a shortcut on your Desktop.
             </p>
           </div>
 
@@ -738,9 +773,10 @@ export function LandingPage({ onLaunchWebApp }: Props) {
       <section id="downloads" className="landing-section" aria-label="Download Center">
         <div className="download-center-banner">
           <div className="download-banner-left">
-            <h2>Get Started with Nanvi AI Enterprise Assistant</h2>
+            <h2>Download Nanvi AI Assistant for Windows</h2>
             <p>
-              Download the 1-click Windows package to query your local folders, or launch the cloud web service directly in your browser.
+              Get the official desktop application installed on your PC to index local business folders with maximum privacy,
+              or launch the cloud web service directly in your browser.
             </p>
 
             <div className="download-banner-actions">
@@ -753,7 +789,13 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               >
                 <Download size={18} className="text-teal-800" />
                 <span style={{ color: "#0f172a" }}>
-                  {downloading ? "Downloading..." : `Download for Windows (.${downloadFormat})`}
+                  {downloading
+                    ? "Downloading..."
+                    : downloadFormat === "exe"
+                    ? "Download Desktop App (.exe)"
+                    : downloadFormat === "bat"
+                    ? "Download Fast Runner (.bat)"
+                    : "Download Agent Package (.zip)"}
                 </span>
               </button>
 
@@ -768,47 +810,56 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               </button>
             </div>
 
-            <div style={{ marginTop: "16px", fontSize: "13px", color: "#cbd5e1", display: "flex", gap: "14px", alignItems: "center" }}>
-              <span>Download format:</span>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+            <div style={{ marginTop: "18px", fontSize: "13px", color: "#cbd5e1", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 600 }}>Choose Download Package:</span>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "exe" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "exe" ? 700 : 400 }}>
+                <input
+                  type="radio"
+                  name="downloadFormat"
+                  checked={downloadFormat === "exe"}
+                  onChange={() => setDownloadFormat("exe")}
+                />
+                🖥️ Desktop App (.exe Installer - 144 MB)
+              </label>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "bat" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "bat" ? 700 : 400 }}>
                 <input
                   type="radio"
                   name="downloadFormat"
                   checked={downloadFormat === "bat"}
                   onChange={() => setDownloadFormat("bat")}
                 />
-                1-Click BAT (Recommended)
+                ⚡ Fast Runner (.bat - 66 KB)
               </label>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer" }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "zip" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "zip" ? 700 : 400 }}>
                 <input
                   type="radio"
                   name="downloadFormat"
                   checked={downloadFormat === "zip"}
                   onChange={() => setDownloadFormat("zip")}
                 />
-                ZIP Archive
+                📦 Portable ZIP
               </label>
             </div>
           </div>
 
           <div className="download-banner-right">
-            <h4>Quick Launch Instructions:</h4>
+            <h4>Installation & Setup Guide:</h4>
             <ul className="download-steps-mini">
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>1. Click Download to save <code>Nanvi_Assistant.bat</code></span>
+                <span>1. Download <code>Nanvi AI Assistant-Setup-0.1.0.exe</code></span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>2. Run the file on your Windows computer</span>
+                <span>2. Run the installer to install Nanvi onto your computer</span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>3. Nanvi Assistant automatically launches in your browser</span>
+                <span>3. Double-click the desktop shortcut to launch Nanvi</span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>4. Select your folder and start querying immediately</span>
+                <span>4. Select your folder & start asking questions immediately</span>
               </li>
             </ul>
           </div>
@@ -847,4 +898,3 @@ export function LandingPage({ onLaunchWebApp }: Props) {
 }
 
 export default LandingPage;
-

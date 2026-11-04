@@ -505,6 +505,42 @@ async def download_agent_package(
             pairing_token = "nanvi-local-token"
             display_name = "Company User"
 
+    if format == "exe":
+        import os
+        from starlette.responses import FileResponse, RedirectResponse
+
+        desktop_download_url = os.environ.get("DESKTOP_DOWNLOAD_URL", "").strip()
+        if desktop_download_url:
+            return RedirectResponse(url=desktop_download_url, status_code=302)
+
+        candidate_exes = [
+            Path(__file__).resolve().parents[2] / "frontend" / "release" / "Nanvi AI Assistant-Setup-0.1.0.exe",
+            Path(__file__).resolve().parents[1] / "frontend" / "release" / "Nanvi AI Assistant-Setup-0.1.0.exe",
+            Path.cwd() / "frontend" / "release" / "Nanvi AI Assistant-Setup-0.1.0.exe",
+            Path(__file__).resolve().parents[2] / "frontend" / "release" / "win-unpacked" / "Nanvi AI Assistant.exe",
+        ]
+        for exe_path in candidate_exes:
+            if exe_path.exists() and exe_path.is_file():
+                return FileResponse(
+                    path=str(exe_path),
+                    media_type="application/vnd.microsoft.portable-executable",
+                    filename="Nanvi AI Assistant-Setup-0.1.0.exe",
+                    headers={
+                        "Content-Disposition": 'attachment; filename="Nanvi AI Assistant-Setup-0.1.0.exe"',
+                        "Cache-Control": "public, max-age=3600",
+                    },
+                )
+
+        bat_content = generate_agent_bat(server_url, pairing_token, display_name)
+        return Response(
+            content=bat_content.encode("utf-8"),
+            media_type="application/x-bat",
+            headers={
+                "Content-Disposition": 'attachment; filename="Nanvi_Assistant_Setup.bat"',
+                "Cache-Control": "no-store",
+            },
+        )
+
     if format == "zip":
         zip_bytes = generate_agent_zip(server_url, pairing_token, display_name)
         return Response(
