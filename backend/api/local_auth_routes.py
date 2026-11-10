@@ -127,6 +127,40 @@ def _require_account_manager(user: UserIdentity) -> bool:
     return bool(user.roles & ADMINISTRATIVE_ROLES)
 
 
+@router.get("/db-status")
+def get_db_status():
+    """Diagnostic endpoint to verify database connectivity and accounts table."""
+    dsn = settings.supabase_database_url or settings.database_url or ""
+    sanitized_dsn = ""
+    if dsn:
+        import urllib.parse
+        try:
+            parsed = urllib.parse.urlsplit(dsn)
+            sanitized_dsn = f"{parsed.scheme}://{parsed.username}:***@{parsed.hostname}:{parsed.port}{parsed.path}"
+        except Exception:
+            sanitized_dsn = "invalid-url"
+
+    pg_status = {"configured": bool(dsn), "url": sanitized_dsn, "connected": False, "error": None, "account_count": None}
+    if dsn:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+            with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=10) as conn:
+                pg_status["connected"] = True
+                row = conn.execute("SELECT COUNT(*) AS total FROM public.nanvi_local_accounts;").fetchone()
+                pg_status["account_count"] = row["total"] if row else 0
+        except Exception as exc:
+            pg_status["error"] = f"{type(exc).__name__}: {exc}"
+
+    return {
+        "status": "ok",
+        "app_env": settings.app_env,
+        "is_production": settings.is_production,
+        "is_vercel": bool(os.getenv("VERCEL")),
+        "postgres": pg_status,
+    }
+
+
 @router.post("/login")
 def local_login(body: LocalLoginRequest, store: LocalAccountStore = Depends(get_local_account_store)) -> dict[str, object]:
     _ensure_local_auth_enabled()

@@ -110,29 +110,76 @@ class LocalAccountStore:
     def _table(self) -> str:
         return "public.nanvi_local_accounts" if self._dsn else "local_accounts"
 
+    def _is_pg(self, conn: Any) -> bool:
+        return not isinstance(conn, sqlite3.Connection)
+
+    def _table_for(self, conn: Any) -> str:
+        return "public.nanvi_local_accounts" if self._is_pg(conn) else "local_accounts"
+
+    def _placeholder_for(self, conn: Any) -> str:
+        return "%s" if self._is_pg(conn) else "?"
+
+    def _reset_table_for(self, conn: Any) -> str:
+        return "public.nanvi_password_reset_tokens" if self._is_pg(conn) else "password_reset_tokens"
+
+    def _ensure_sqlite_schema(self, conn: sqlite3.Connection) -> None:
+        try:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS local_accounts (
+                    id TEXT PRIMARY KEY,
+                    tenant_id TEXT NOT NULL,
+                    username TEXT NOT NULL,
+                    password_salt TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    email TEXT,
+                    department TEXT,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (tenant_id, username)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    token_hash TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    used INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_reset_tokens_acc ON password_reset_tokens(tenant_id, account_id);")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_accounts_email ON local_accounts(tenant_id, LOWER(email));")
+            except Exception:
+                pass
+            conn.commit()
+        except Exception:
+            pass
+
     @contextmanager
     def _connect(self):
         if self._dsn:
             try:
-                if self._pool is not None:
-                    with self._pool.connection(timeout=3) as conn:
-                        yield conn
-                    return
+                if not (os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME")):
+                    if self._pool is not None:
+                        with self._pool.connection(timeout=8) as conn:
+                            yield conn
+                        return
                 import psycopg
                 from psycopg.rows import dict_row
-                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=3) as conn:
+                with psycopg.connect(self._dsn, row_factory=dict_row, connect_timeout=8) as conn:
                     yield conn
                 return
             except Exception as exc:
                 import logging
                 logging.getLogger(__name__).warning("Could not connect to PostgreSQL/Supabase (%s). Using local SQLite/memory fallback.", exc)
-                self._dsn = ""
-                if self._pool is not None:
-                    try:
-                        self._pool.close(timeout=0.5)
-                    except Exception:
-                        pass
-                    self._pool = None
 
         conn = None
         try:
@@ -151,6 +198,8 @@ class LocalAccountStore:
             conn.execute("PRAGMA journal_mode=WAL")
         except Exception:
             pass
+
+        self._ensure_sqlite_schema(conn)
 
         try:
             with conn:
@@ -255,11 +304,12 @@ class LocalAccountStore:
     def _ensure_admin_account(self) -> None:
         """Guarantee that the master admin account [user: admin, pass: admin@company] always exists."""
         try:
-            placeholder = "%s" if self._dsn else "?"
             tenant_id = settings.local_auth_tenant_id or "enterprise-tenant"
             with self._connect() as connection:
+                table = self._table_for(connection)
+                placeholder = self._placeholder_for(connection)
                 admin_row = connection.execute(
-                    f"SELECT id, role FROM {self._table} WHERE tenant_id = {placeholder} AND LOWER(username) = 'admin'",
+                    f"SELECT id, role FROM {table} WHERE tenant_id = {placeholder} AND LOWER(username) = 'admin'",
                     (tenant_id,),
                 ).fetchone()
                 if not admin_row:
@@ -275,7 +325,7 @@ class LocalAccountStore:
                     )
                 elif admin_row["role"] != Role.ADMIN.value:
                     connection.execute(
-                        f"UPDATE {self._table} SET role = {placeholder} WHERE tenant_id = {placeholder} AND LOWER(username) = 'admin'",
+                        f"UPDATE {table} SET role = {placeholder} WHERE tenant_id = {placeholder} AND LOWER(username) = 'admin'",
                         (Role.ADMIN.value, tenant_id),
                     )
                     connection.commit()
@@ -346,10 +396,11 @@ class LocalAccountStore:
         else:
             email_clean = f"{normalized_username}@{tenant_id}.local"
 
-        placeholder = "%s" if self._dsn else "?"
         with self._connect() as connection:
+            table = self._table_for(connection)
+            placeholder = self._placeholder_for(connection)
             dup_email = connection.execute(
-                f"SELECT id FROM {self._table} WHERE tenant_id = {placeholder} AND LOWER(COALESCE(email, '')) = {placeholder}",
+                f"SELECT id FROM {table} WHERE tenant_id = {placeholder} AND LOWER(COALESCE(email, '')) = {placeholder}",
                 (tenant_id, email_clean),
             ).fetchone()
             if dup_email:
@@ -367,13 +418,15 @@ class LocalAccountStore:
             salt_hex, digest_hex = hash_password(password)
 
         account_id = str(uuid.uuid4())
-        sql = (
-            f"INSERT INTO {self._table} "
-            "(id, tenant_id, username, password_salt, password_hash, role, display_name, email, department, active) "
-            f"VALUES ({', '.join([placeholder] * 10)})"
-        )
         try:
             with self._connect() as connection:
+                table = self._table_for(connection)
+                placeholder = self._placeholder_for(connection)
+                sql = (
+                    f"INSERT INTO {table} "
+                    "(id, tenant_id, username, password_salt, password_hash, role, display_name, email, department, active) "
+                    f"VALUES ({', '.join([placeholder] * 10)})"
+                )
                 connection.execute(sql, (
                     account_id, tenant_id, normalized_username, salt_hex, digest_hex,
                     role, display_name.strip(), email_clean, department, True,
@@ -422,10 +475,13 @@ class LocalAccountStore:
                 "active": True,
             }
 
-        placeholder = "%s" if self._dsn else "?"
         with self._connect() as connection:
+            table = self._table_for(connection)
+            placeholder = self._placeholder_for(connection)
+            is_pg = self._is_pg(connection)
+            active_clause = "active = TRUE" if is_pg else "active = 1"
             account = connection.execute(
-                f"SELECT * FROM {self._table} WHERE tenant_id = {placeholder} AND (LOWER(username) = {placeholder} OR LOWER(COALESCE(email, '')) = {placeholder}) AND active = {('TRUE' if self._dsn else '1')}",
+                f"SELECT * FROM {table} WHERE tenant_id = {placeholder} AND (LOWER(username) = {placeholder} OR LOWER(COALESCE(email, '')) = {placeholder}) AND {active_clause}",
                 (tenant_id, ident, ident),
             ).fetchone()
 
