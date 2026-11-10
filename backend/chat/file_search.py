@@ -219,6 +219,32 @@ def _get_all_disk_files(cds: Any) -> tuple[Path | None, list[Path]]:
             repo_root = None
 
     if not repo_root:
+        try:
+            from backend.integrations.files.company_data.persistence import get_persisted_folder
+            persisted = get_persisted_folder()
+            if persisted and persisted.exists() and persisted.is_dir():
+                repo_root = persisted
+                cds.update_root(persisted)
+        except Exception:
+            pass
+
+    if not repo_root:
+        try:
+            from backend.local_agent.service import get_local_agent_service
+            l_svc = get_local_agent_service()
+            for (_, _), val in list(l_svc.store._data.items()):
+                for f_info in val.get("folders", {}).values():
+                    cand_p = Path(f_info.get("folder_path", ""))
+                    if cand_p.exists() and cand_p.is_dir():
+                        repo_root = cand_p
+                        cds.update_root(cand_p)
+                        break
+                if repo_root:
+                    break
+        except Exception:
+            pass
+
+    if not repo_root:
         default_data = project_dir / "backend" / "CompanyData"
         if default_data.exists() and default_data.is_dir():
             repo_root = default_data
@@ -399,8 +425,15 @@ def execute_file_search(
                         hits = local_svc.search_local_chunks(t_id, u_id, specific_phrase, top_k=max_results * 2)
                     if not hits and primary_tokens:
                         hits = local_svc.search_local_chunks(t_id, u_id, " ".join(primary_tokens), top_k=max_results * 2)
-                    if not hits and any(k in clean_q.lower() for k in ("folder", "local", "file", "document", "what")):
-                        agent_files = local_svc.get_all_local_files(t_id, u_id)
+                    if not hits:
+                        all_local = local_svc.get_all_local_files(t_id, u_id)
+                        if all_local:
+                            match_tokens = [t.lower() for t in (primary_tokens or [clean_q]) if len(t) >= 2]
+                            matched = [
+                                f for f in all_local
+                                if any(t in f["name"].lower() or t in f.get("display_path", "").lower() for t in match_tokens)
+                            ]
+                            agent_files = matched if matched else all_local[:max_results]
 
                     seen_agent_files = set()
                     for h in hits:

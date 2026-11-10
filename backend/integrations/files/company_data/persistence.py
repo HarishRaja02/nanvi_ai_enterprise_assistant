@@ -9,41 +9,66 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_FOLDERS_FILE = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "active_folders.json"
-ACTIVE_FOLDER_FILE = Path(__file__).resolve().parent.parent.parent.parent / "storage" / "active_folder.json"
+PROJECT_STORAGE_FILE = Path(__file__).resolve().parents[4] / "storage" / "active_folders.json"
+BACKEND_STORAGE_FILE = Path(__file__).resolve().parents[3] / "storage" / "active_folders.json"
+ACTIVE_FOLDERS_FILE = PROJECT_STORAGE_FILE
+ACTIVE_FOLDER_FILE = Path(__file__).resolve().parents[4] / "storage" / "active_folder.json"
+BACKEND_ACTIVE_FOLDER_FILE = Path(__file__).resolve().parents[3] / "storage" / "active_folder.json"
+
+
+def _is_valid_dir(path_str: str | None) -> bool:
+    if not path_str or not isinstance(path_str, str):
+        return False
+    norm = path_str.replace("\\", "/").lower()
+    if "/var/task" in norm or "var/task" in norm or "pytest" in norm or not path_str.strip():
+        return False
+    try:
+        p = Path(path_str).resolve()
+        return p.exists() and p.is_dir()
+    except Exception:
+        return False
 
 
 def get_persisted_folder(tenant_id: str = "default") -> Path | None:
     """Read the last chosen active folder path for the given tenant from persistent storage."""
     t_id = (tenant_id or "default").strip()
-    try:
-        if ACTIVE_FOLDERS_FILE.exists():
-            data = json.loads(ACTIVE_FOLDERS_FILE.read_text(encoding="utf-8"))
-            tenant_data = data.get(t_id)
-            if tenant_data:
-                saved = tenant_data.get("path")
-                if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
-                    return Path(saved).resolve()
-            if t_id != "default":
-                default_data = data.get("default")
-                if default_data:
-                    saved = default_data.get("path")
-                    if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
-                        return Path(saved).resolve()
+    candidate_files = [PROJECT_STORAGE_FILE, BACKEND_STORAGE_FILE, ACTIVE_FOLDER_FILE, BACKEND_ACTIVE_FOLDER_FILE]
 
-            # Fallback to the latest saved folder from any tenant
-            for _, tinfo in sorted(data.items(), key=lambda item: item[1].get("updated_at", ""), reverse=True):
-                saved = tinfo.get("path")
-                if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
-                    return Path(saved).resolve()
+    for f in candidate_files:
+        try:
+            if not f.exists():
+                continue
+            data = json.loads(f.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                continue
 
-        if ACTIVE_FOLDER_FILE.exists():
-            data = json.loads(ACTIVE_FOLDER_FILE.read_text(encoding="utf-8"))
-            saved = data.get("path")
-            if saved and "/var/task" not in str(saved).replace("\\", "/").lower() and Path(saved).exists() and Path(saved).is_dir():
-                return Path(saved).resolve()
-    except Exception as exc:
-        logger.warning("Could not read persisted folder path for tenant '%s': %s", t_id, exc)
+            # 1. Direct tenant match
+            t_data = data.get(t_id)
+            if isinstance(t_data, dict) and _is_valid_dir(t_data.get("path")):
+                return Path(t_data["path"]).resolve()
+
+            # 2. enterprise-tenant match
+            ent_data = data.get("enterprise-tenant")
+            if isinstance(ent_data, dict) and _is_valid_dir(ent_data.get("path")):
+                return Path(ent_data["path"]).resolve()
+
+            # 3. Default tenant match
+            def_data = data.get("default")
+            if isinstance(def_data, dict) and _is_valid_dir(def_data.get("path")):
+                return Path(def_data["path"]).resolve()
+
+            # 4. Top-level path object (e.g. active_folder.json)
+            top_path = data.get("path")
+            if _is_valid_dir(top_path):
+                return Path(top_path).resolve()
+
+            # 5. Fallback to newest valid folder across all tenants
+            for _, tinfo in sorted(data.items(), key=lambda item: item[1].get("updated_at", "") if isinstance(item[1], dict) else "", reverse=True):
+                if isinstance(tinfo, dict) and _is_valid_dir(tinfo.get("path")):
+                    return Path(tinfo["path"]).resolve()
+        except Exception as exc:
+            logger.debug("Could not read persisted folder file %s: %s", f, exc)
+
     return None
 
 
@@ -51,31 +76,40 @@ def set_persisted_folder(path: Path | str, tenant_id: str = "default") -> None:
     """Save active folder path for the given tenant to persistent storage."""
     t_id = (tenant_id or "default").strip()
     try:
-        path_str = str(Path(path).resolve())
-        ACTIVE_FOLDERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        all_data: dict[str, Any] = {}
-        if ACTIVE_FOLDERS_FILE.exists():
-            try:
-                all_data = json.loads(ACTIVE_FOLDERS_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                all_data = {}
+        resolved = Path(path).resolve()
+        path_str = str(resolved)
         now_iso = datetime.now(timezone.utc).isoformat()
-        all_data[t_id] = {
-            "path": path_str,
-            "updated_at": now_iso,
-        }
-        all_data["default"] = {
-            "path": path_str,
-            "updated_at": now_iso,
-        }
-        ACTIVE_FOLDERS_FILE.write_text(json.dumps(all_data, indent=2), encoding="utf-8")
-        try:
-            ACTIVE_FOLDER_FILE.write_text(
-                json.dumps({"path": path_str, "updated_at": now_iso}, indent=2),
-                encoding="utf-8",
-            )
-        except Exception:
-            pass
-        logger.info("Persisted active company data folder for tenant '%s': %s", t_id, path)
+
+        for target_file in (PROJECT_STORAGE_FILE, BACKEND_STORAGE_FILE):
+            try:
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                all_data: dict[str, Any] = {}
+                if target_file.exists():
+                    try:
+                        all_data = json.loads(target_file.read_text(encoding="utf-8"))
+                        if not isinstance(all_data, dict):
+                            all_data = {}
+                    except Exception:
+                        all_data = {}
+
+                record = {"path": path_str, "updated_at": now_iso}
+                all_data[t_id] = record
+                all_data["default"] = record
+                all_data["enterprise-tenant"] = record
+                target_file.write_text(json.dumps(all_data, indent=2), encoding="utf-8")
+            except Exception as e:
+                logger.debug("Could not write to %s: %s", target_file, e)
+
+        for single_file in (ACTIVE_FOLDER_FILE, BACKEND_ACTIVE_FOLDER_FILE):
+            try:
+                single_file.parent.mkdir(parents=True, exist_ok=True)
+                single_file.write_text(
+                    json.dumps({"path": path_str, "updated_at": now_iso}, indent=2),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+
+        logger.info("Persisted active company data folder for tenant '%s': %s", t_id, path_str)
     except Exception as exc:
         logger.warning("Could not persist active folder path for tenant '%s': %s", t_id, exc)

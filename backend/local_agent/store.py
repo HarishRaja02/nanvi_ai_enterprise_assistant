@@ -303,14 +303,32 @@ class LocalAgentStore:
             self._save_key(tenant_id, user_id, val)
             return requested_folders, cmds
 
+    def clear_disconnected(self, folder_path: str) -> None:
+        """Clear a folder path and any matching ancestor or descendant from disconnected_folders across all tenants."""
+        norm = str(folder_path).replace("\\", "/").rstrip("/").lower()
+        base = norm.split("/")[-1] if "/" in norm else norm
+        with self._lock:
+            for k, val in list(self._data.items()):
+                disconn = val.get("disconnected_folders", [])
+                if not disconn:
+                    continue
+                new_disconn = [
+                    d for d in disconn
+                    if d != norm and d != base and not norm.startswith(d + "/") and not d.startswith(norm + "/")
+                ]
+                if len(new_disconn) != len(disconn):
+                    val["disconnected_folders"] = new_disconn
+                    self._save_key(k[0], k[1], val)
+
     def request_folder(self, tenant_id: str, user_id: str, folder_path: str) -> None:
         """User from Web UI requested a folder to be indexed by their local agent."""
         k = self._key(tenant_id, user_id)
+        clean_path = str(folder_path).strip()
+        norm_path = clean_path.replace("\\", "/").rstrip("/").lower()
+        self.clear_disconnected(clean_path)
         with self._lock:
             val = self._load_key(tenant_id, user_id)
             reqs = val.setdefault("requested_folders", [])
-            clean_path = str(folder_path).strip()
-            norm_path = clean_path.replace("\\", "/").rstrip("/").lower()
             if clean_path and clean_path not in reqs:
                 reqs.append(clean_path)
             # Remove from disconnected list so it can be re-added
@@ -344,9 +362,7 @@ class LocalAgentStore:
             for f_dict in val.get("folders", {}).values():
                 fid = str(f_dict.get("folder_id") or "").replace("\\", "/").rstrip("/").lower()
                 fpath = str(f_dict.get("folder_path") or "").replace("\\", "/").rstrip("/").lower()
-                fbase = fpath.split("/")[-1] if "/" in fpath else fpath
-                if (fid in disconn or fpath in disconn or fbase in disconn or
-                    any(d in fid or d in fpath or fid in d or fpath in d for d in disconn if d)):
+                if fid in disconn or fpath in disconn:
                     continue
                 total_files += f_dict.get("file_count", 0)
                 folders.append(LocalFolderInfo(**f_dict))
@@ -367,9 +383,7 @@ class LocalAgentStore:
                     for f_dict in def_folders.values():
                         fid = str(f_dict.get("folder_id") or "").replace("\\", "/").rstrip("/").lower()
                         fpath = str(f_dict.get("folder_path") or "").replace("\\", "/").rstrip("/").lower()
-                        fbase = fpath.split("/")[-1] if "/" in fpath else fpath
-                        if (fid in combined_disconn or fpath in combined_disconn or fbase in combined_disconn or
-                            any(d in fid or d in fpath or fid in d or fpath in d for d in combined_disconn if d)):
+                        if fid in combined_disconn or fpath in combined_disconn:
                             continue
                         folders.append(LocalFolderInfo(**f_dict))
                     total_files = sum(f.file_count for f in folders)
@@ -384,6 +398,42 @@ class LocalAgentStore:
                     if str(c.get("folder_id", "")).replace("\\", "/").rstrip("/").lower() not in disconn
                     and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in disconn
                 ])
+
+            # Persistence auto-restore: if no folders in memory, check active_folders.json on disk
+            if not folders:
+                try:
+                    from backend.integrations.files.company_data.persistence import get_persisted_folder
+                    persisted = (
+                        get_persisted_folder(tenant_id)
+                        or get_persisted_folder("enterprise-tenant")
+                        or get_persisted_folder("default")
+                    )
+                    if persisted and persisted.exists() and persisted.is_dir():
+                        p_str = str(persisted)
+                        p_norm = p_str.replace("\\", "/").rstrip("/").lower()
+                        if p_norm not in disconn:
+                            f_count = 0
+                            try:
+                                for _, _, flist in os.walk(persisted):
+                                    f_count += len([f for f in flist if not f.startswith(".") and not f.startswith("~$")])
+                            except Exception:
+                                f_count = 1
+                            restored = LocalFolderInfo(
+                                folder_id=p_str,
+                                folder_path=p_str,
+                                display_name=persisted.name or p_str,
+                                file_count=f_count,
+                                chunk_count=0,
+                                status="ready",
+                                last_synced_at=datetime.now(timezone.utc).isoformat(),
+                            )
+                            folders.append(restored)
+                            val.setdefault("folders", {})[p_str] = restored.model_dump()
+                            total_files = f_count
+                            is_online = True
+                            self._save_key(tenant_id, user_id, val)
+                except Exception as exc:
+                    logger.debug("Could not auto-restore persisted folder in get_agent_status: %s", exc)
 
             # Local computer resilience: if folders physically exist on local disk, local storage is active
             if not is_online and folders:
@@ -421,13 +471,11 @@ class LocalAgentStore:
                 val["chunks"] = []
 
             # 1. Update folder registry
-            # Do not resync if this folder was disconnected
+            # Do not resync if this exact folder was disconnected
             disconn = set(val.get("disconnected_folders", []))
             fid_norm = str(fid).replace("\\", "/").rstrip("/").lower()
             fpath_norm = str(payload.folder_path).replace("\\", "/").rstrip("/").lower()
-            fbase_norm = fpath_norm.split("/")[-1] if "/" in fpath_norm else fpath_norm
-            if (fid_norm in disconn or fpath_norm in disconn or fbase_norm in disconn or
-                any(d in fid_norm or d in fpath_norm or fid_norm in d or fpath_norm in d for d in disconn if d)):
+            if fid_norm in disconn or fpath_norm in disconn:
                 return
 
             folders = val.setdefault("folders", {})
@@ -734,6 +782,54 @@ class LocalAgentStore:
                     "source": "local",
                     "content_snippet": (c.get("text") or "")[:350],
                 })
+
+            # Disk fallback: if no chunks are synced yet, discover files directly from connected folders on disk
+            if not files:
+                folders_map = dict(val.get("folders", {}))
+                if not folders_map and user_id != "default":
+                    folders_map = dict(self._load_key(tenant_id, "default").get("folders", {}))
+                if not folders_map:
+                    for (t, u), d in list(self._data.items()):
+                        if d.get("folders"):
+                            folders_map = dict(d.get("folders", {}))
+                            break
+
+                for f_info in folders_map.values():
+                    fp = f_info.get("folder_path")
+                    if fp:
+                        p_dir = Path(fp)
+                        if p_dir.exists() and p_dir.is_dir():
+                            for root, _, flist in os.walk(p_dir):
+                                for fn in flist:
+                                    if fn.startswith(".") or fn.startswith("~$"):
+                                        continue
+                                    f_p = Path(root) / fn
+                                    try:
+                                        rel = str(f_p.relative_to(p_dir)).replace("\\", "/")
+                                    except Exception:
+                                        rel = fn
+                                    key = (fn.lower(), rel.lower())
+                                    if key in seen:
+                                        continue
+                                    seen.add(key)
+                                    full_p = str(f_p)
+                                    disp = f"{p_dir.name}/{rel}"
+                                    mtime_iso = ""
+                                    try:
+                                        mtime_iso = datetime.fromtimestamp(f_p.stat().st_mtime, tz=timezone.utc).isoformat()
+                                    except Exception:
+                                        pass
+                                    files.append({
+                                        "name": fn,
+                                        "path": full_p,
+                                        "full_path": full_p,
+                                        "display_path": disp,
+                                        "type": f_p.suffix.lstrip("."),
+                                        "modified_at": mtime_iso,
+                                        "open_url": full_p,
+                                        "source": "local",
+                                        "content_snippet": "",
+                                    })
             return files
 
     def search_chunks(

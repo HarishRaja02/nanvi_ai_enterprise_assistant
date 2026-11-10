@@ -214,17 +214,32 @@ async def get_company_folder(
             file_count=status_data.total_files,
         )
 
-    # Check if a custom valid directory was set (e.g. in test suite)
+    # Check if a custom valid directory was set (e.g. in test suite or CompanyDataService)
     from backend.integrations.files.company_data_service import CompanyDataService
+    from backend.integrations.files.company_data.persistence import get_persisted_folder
+
     cds = CompanyDataService.for_tenant(user.tenant_id)
     root_str = str(cds.root).replace("\\", "/")
-    if root_str and "/var/task" not in root_str.lower() and cds.root.exists() and cds.root.is_dir() and len(cds.files) > 0:
+    if root_str and "/var/task" not in root_str.lower() and cds.root.exists() and cds.root.is_dir():
         stats = _folder_stats(str(cds.root))
+        cnt = len(cds.files) or stats["file_count"]
         return CompanyFolderResponse(
             path=str(cds.root),
             exists=stats["exists"],
-            folder_count=stats["folder_count"],
-            file_count=len(cds.files),
+            folder_count=stats["folder_count"] or 1,
+            file_count=cnt,
+        )
+
+    # Persistence fallback: restore persisted directory if available on local disk
+    persisted = get_persisted_folder(tenant_id) or get_persisted_folder("enterprise-tenant") or get_persisted_folder("default")
+    if persisted and persisted.exists() and persisted.is_dir():
+        cds.update_root(persisted)
+        stats = _folder_stats(str(persisted))
+        return CompanyFolderResponse(
+            path=str(persisted),
+            exists=True,
+            folder_count=stats["folder_count"] or 1,
+            file_count=stats["file_count"],
         )
 
     return CompanyFolderResponse(

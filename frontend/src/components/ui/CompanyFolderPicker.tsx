@@ -222,8 +222,15 @@ export function CompanyFolderPicker({ api }: Props) {
     setAddFolderMsg(null);
     try {
       const res = await api.addLocalFolder(clean);
-      setAddFolderMsg(res.message || `✓ Folder '${clean}' added. Starting indexing...`);
+      const addedPath = (res as any).folder_path || clean;
+      const fileCnt = (res as any).file_count || 1;
+      setAddFolderMsg(res.message || `✓ Folder '${addedPath}' connected.`);
       setCustomLocalFolder("");
+      window.dispatchEvent(
+        new CustomEvent("nanvi:company-folder-updated", {
+          detail: { path: addedPath, exists: true, folder_count: 1, file_count: fileCnt },
+        })
+      );
       await fetchStatus();
       triggerRapidPoll();
     } catch (err: any) {
@@ -244,7 +251,14 @@ export function CompanyFolderPicker({ api }: Props) {
           setCustomLocalFolder(selected);
           setAddingFolder(true);
           const res = await api.addLocalFolder(selected);
-          setAddFolderMsg(res.message || `✓ Folder '${selected}' linked to Nanvi Assistant.`);
+          const addedPath = (res as any).folder_path || selected;
+          const fileCnt = (res as any).file_count || 1;
+          setAddFolderMsg(res.message || `✓ Folder '${addedPath}' linked to Nanvi Assistant.`);
+          window.dispatchEvent(
+            new CustomEvent("nanvi:company-folder-updated", {
+              detail: { path: addedPath, exists: true, folder_count: 1, file_count: fileCnt },
+            })
+          );
           await fetchStatus();
           triggerRapidPoll();
         }
@@ -265,6 +279,11 @@ export function CompanyFolderPicker({ api }: Props) {
       if (res.status === "ok" && res.folder_path) {
         setCustomLocalFolder(res.folder_path);
         setAddFolderMsg(res.message || `✓ Folder '${res.folder_path}' linked to Nanvi Assistant.`);
+        window.dispatchEvent(
+          new CustomEvent("nanvi:company-folder-updated", {
+            detail: { path: res.folder_path, exists: true, folder_count: 1, file_count: (res as any).file_count || 1 },
+          })
+        );
         await fetchStatus();
         triggerRapidPoll();
       } else if (res.status === "canceled") {

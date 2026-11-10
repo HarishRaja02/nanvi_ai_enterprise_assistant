@@ -154,28 +154,75 @@ class LocalAgentService:
         try:
             expanded = Path(os.path.expandvars(os.path.expanduser(cleaned))).resolve()
             if expanded.exists() and expanded.is_dir():
+                folder_str = str(expanded)
+                display_name = expanded.name or folder_str
+                self.store.clear_disconnected(folder_str)
+
+                # Quick file count
+                quick_count = 0
+                try:
+                    for _, _, files in os.walk(expanded):
+                        quick_count += len([f for f in files if not f.startswith(".") and not f.startswith("~$")])
+                except Exception:
+                    quick_count = 1
+
                 from .models import LocalAgentHeartbeat
                 hb = LocalAgentHeartbeat(
                     agent_version="desktop-direct-1.0.0",
                     platform=sys.platform,
                     hostname=socket.gethostname(),
                 )
+
+                # 1. Immediately register the folder in LocalAgentStore
+                now_iso = datetime.now(timezone.utc).isoformat()
                 for tid in (tenant_id, "default", "enterprise-tenant"):
                     for uid in (user_id, "default"):
                         try:
                             self.store.record_heartbeat_and_pop_commands(tid, uid, hb)
-                        except Exception:
-                            pass
+                            val = self.store._load_key(tid, uid)
+                            val.setdefault("folders", {})[folder_str] = {
+                                "folder_id": folder_str,
+                                "folder_path": folder_str,
+                                "display_name": display_name,
+                                "file_count": quick_count,
+                                "chunk_count": 0,
+                                "status": "ready",
+                                "last_synced_at": now_iso,
+                            }
+                            self.store._save_key(tid, uid, val)
+                        except Exception as e:
+                            logger.debug("Immediate folder register error: %s", e)
 
+                # 2. Immediately persist folder across restarts
+                try:
+                    from backend.integrations.files.company_data.persistence import set_persisted_folder
+                    set_persisted_folder(folder_str, tenant_id=tenant_id)
+                    set_persisted_folder(folder_str, tenant_id="default")
+                    set_persisted_folder(folder_str, tenant_id="enterprise-tenant")
+                except Exception as exc:
+                    logger.warning("Could not persist folder %s: %s", folder_str, exc)
+
+                # 3. Immediately update CompanyDataService root for instant chat search
+                try:
+                    from backend.integrations.files.company_data_service import CompanyDataService
+                    for tid in (tenant_id, "default", "enterprise-tenant"):
+                        cds = CompanyDataService.for_tenant(tid)
+                        cds.update_root(expanded)
+                except Exception as exc:
+                    logger.warning("Could not update CompanyDataService root: %s", exc)
+
+                # 4. Launch background deep chunk indexing
                 threading.Thread(
                     target=self._index_local_directory,
                     args=(tenant_id, user_id, expanded),
                     daemon=True,
                 ).start()
+
                 return {
                     "status": "ok",
-                    "folder_path": str(expanded),
-                    "message": f"✓ Folder '{expanded}' found on this computer. Local indexing started!",
+                    "folder_path": folder_str,
+                    "file_count": quick_count,
+                    "message": f"✓ Connected folder '{display_name}' ({quick_count} files). Ready!",
                 }
         except Exception as e:
             logger.debug("Could not resolve local folder %s: %s", cleaned, e)
@@ -264,18 +311,13 @@ class LocalAgentService:
                 chunks=all_chunks,
                 replace_all=False,
             )
-            # 1. Sync across target user and default tenant keys
-            self.sync_folder(tenant_id, user_id, payload)
-            if tenant_id != "default" or user_id != "default":
-                try:
-                    self.sync_folder("default", "default", payload)
-                except Exception:
-                    pass
-            if tenant_id != "enterprise-tenant":
-                try:
-                    self.sync_folder("enterprise-tenant", "default", payload)
-                except Exception:
-                    pass
+            # 1. Sync across all active tenant and user identities
+            for tid in (tenant_id, "enterprise-tenant", "default"):
+                for uid in (user_id, "default"):
+                    try:
+                        self.sync_folder(tid, uid, payload)
+                    except Exception:
+                        pass
 
             # 2. Persist active folder for server restart resilience
             try:
