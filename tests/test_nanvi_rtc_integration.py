@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
 from backend.nanvi_rtc.arbitrator import InterruptionArbitrator, InterruptionDecision
 from backend.nanvi_rtc.providers.base import Capabilities, LLMProvider
 from backend.nanvi_rtc.providers.registry import registry
@@ -94,7 +93,7 @@ def test_interruption_arbitrator_classification():
     assert InterruptionArbitrator.classify(real_user_question, agent_text=agent_speech) == InterruptionDecision.CUT_AND_RESPOND
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_false_interrupt_backchannel_resumes_paused_agent(mock_sink):
     sentences = [
         "First point about enterprise revenue.",
@@ -130,9 +129,10 @@ async def test_false_interrupt_backchannel_resumes_paused_agent(mock_sink):
     user_turns = [t for t in session.conversation.turns if t.role == "user"]
     assert len(user_turns) == 1
     assert user_turns[0].text == "Give me the status report"
+    session.close()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_valid_interrupt_cuts_off_old_and_answers_new_question(mock_sink):
     sentences = [
         "First point about enterprise revenue.",
@@ -163,9 +163,10 @@ async def test_valid_interrupt_cuts_off_old_and_answers_new_question(mock_sink):
     new_user_turn = session.conversation.turns[2]
     assert new_user_turn.text == "Wait, how much tax did we pay?"
     assert any(e.get("type") == "interrupted" for e in mock_sink.events)
+    session.close()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_hold_command_keeps_session_paused(mock_sink):
     sentences = ["Point one.", "Point two."]
     llm = SimpleScriptedLLM(sentences)
@@ -179,6 +180,7 @@ async def test_hold_command_keeps_session_paused(mock_sink):
     assert session.checkpoint.status == ResponseStatus.PAUSED
     assert session.is_paused
     assert any(e.get("type") == "holding" for e in mock_sink.events)
+    session.close()
 
 
 def test_registry_has_nanvi_enterprise_provider():
@@ -190,6 +192,7 @@ def test_registry_has_nanvi_enterprise_provider():
 
 
 def test_live_voice_demo_endpoint():
+    from backend.main import app
     client = TestClient(app)
     resp = client.get("/api/voice/live/demo")
     assert resp.status_code == 200
@@ -197,6 +200,7 @@ def test_live_voice_demo_endpoint():
 
 
 def test_live_voice_tts_endpoint():
+    from backend.main import app
     client = TestClient(app)
     resp = client.get("/api/voice/live/tts?text=Hello+testing+voice+playback")
     assert resp.status_code == 200
@@ -205,6 +209,7 @@ def test_live_voice_tts_endpoint():
 
 
 def test_live_voice_websocket_roundtrip():
+    from backend.main import app
     client = TestClient(app)
     with client.websocket_connect("/api/voice/live") as ws:
         ready = ws.receive_json()

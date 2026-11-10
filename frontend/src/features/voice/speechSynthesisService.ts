@@ -286,13 +286,12 @@ class SpeechSynthesisService {
     // Use session-locked profile to prevent voice switches mid-session
     const lockId = this.sessionVoiceProfileId || profile.id;
 
-    if (this.sessionBrowserVoices.has(lockId)) {
+    if (this.sessionBrowserVoices.has(lockId) && this.sessionBrowserVoices.get(lockId) !== null) {
       return this.sessionBrowserVoices.get(lockId) ?? null;
     }
     this.refreshVoices();
     const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
     if (!voices || voices.length === 0) {
-      this.sessionBrowserVoices.set(lockId, null);
       return null;
     }
 
@@ -301,9 +300,10 @@ class SpeechSynthesisService {
 
     const sorted = [...pool].sort((a, b) => this.scoreVoice(b, lockId) - this.scoreVoice(a, lockId));
     const selected = sorted[0] || null;
-    this.sessionBrowserVoices.set(lockId, selected);
-    // Lock the profile for the rest of this session
-    this.sessionVoiceProfileId = lockId;
+    if (selected) {
+      this.sessionBrowserVoices.set(lockId, selected);
+      this.sessionVoiceProfileId = lockId;
+    }
     return selected;
   }
 
@@ -442,6 +442,21 @@ class SpeechSynthesisService {
     audio.src = url;
     this.currentAudioElement = audio;
 
+    audio.onloadedmetadata = () => {
+      if (audio.duration > 0 && audio.duration < 0.35) {
+        if (sessionId === this.activeSessionId) {
+          errorHandled = true;
+          this.stopAmplitudeLoop();
+          this.isSpeaking = false;
+          this.currentAudioElement = null;
+          if (this.activeBlobUrl) URL.revokeObjectURL(this.activeBlobUrl);
+          this.activeBlobUrl = null;
+          try { audio.pause(); } catch {}
+          events.onError?.("Dummy silence audio frame");
+        }
+      }
+    };
+
     audio.onplaying = () => {
       if (sessionId !== this.activeSessionId) return;
       this.isSpeaking = true;
@@ -513,6 +528,13 @@ class SpeechSynthesisService {
       return;
     }
 
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch {}
+
     const utterance = new SpeechSynthesisUtterance(clean);
     const voice = this.pickVoice(profile);
     if (voice) {
@@ -524,6 +546,18 @@ class SpeechSynthesisService {
     utterance.pitch = Math.max(0.98, Math.min(1.04, profile.pitch));
     utterance.volume = 1.0;
 
+    let ended = false;
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      if (sessionId !== this.activeSessionId) return;
+      this.stopAmplitudeLoop();
+      this.isSpeaking = false;
+      this.activeUtterance = null;
+      events.onAmplitude?.(0);
+      events.onEnd?.();
+    };
+
     utterance.onstart = () => {
       if (sessionId !== this.activeSessionId) return;
       this.isSpeaking = true;
@@ -531,25 +565,14 @@ class SpeechSynthesisService {
       this.startSynthesizedAmplitudeLoop(events.onAmplitude);
     };
 
-    utterance.onend = () => {
-      if (sessionId !== this.activeSessionId) return;
-      this.stopAmplitudeLoop();
-      this.isSpeaking = false;
-      this.activeUtterance = null;
-      events.onAmplitude?.(0);
-      events.onEnd?.();
-    };
+    utterance.onend = finish;
 
     utterance.onerror = (e) => {
       if (sessionId !== this.activeSessionId) return;
-      this.stopAmplitudeLoop();
-      this.isSpeaking = false;
-      this.activeUtterance = null;
-      events.onAmplitude?.(0);
       if (e.error !== "canceled" && e.error !== "interrupted") {
         events.onError?.(`Speech synthesis error: ${e.error}`);
       }
-      events.onEnd?.();
+      finish();
     };
 
     utterance.onboundary = () => {
@@ -558,6 +581,9 @@ class SpeechSynthesisService {
 
     this.activeUtterance = utterance;
     window.speechSynthesis.speak(utterance);
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
   }
 
   private startRealtimeAmplitudeLoop(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from typing import Awaitable, Callable, Optional, Protocol
 
 from .arbitrator import InterruptionArbitrator, InterruptionDecision
@@ -49,19 +50,33 @@ class AgentSession:
         self.window, self.is_continue = window, is_continue
         self.arbitrator = arbitrator or InterruptionArbitrator()
         self.conversation = Conversation(system_prompt)
-        self._clock = clock or asyncio.get_event_loop().time
+        self._clock = clock or time.monotonic
         self._gen: Optional[str] = None
         self._task: Optional[asyncio.Task] = None
         self._cp: Optional[ResponseCheckpoint] = None
         self._paused: bool = False
         self._auto_resume_task: Optional[asyncio.Task] = None
-        self._pump_lock = asyncio.Lock()
+        self._pump_lock: Optional[asyncio.Lock] = None
         self.metrics: list[dict] = []
+
+    def _get_pump_lock(self) -> asyncio.Lock:
+        if self._pump_lock is None:
+            self._pump_lock = asyncio.Lock()
+        return self._pump_lock
 
     # ---- public API -------------------------------------------------------
     def set_llm(self, llm: LLMProvider) -> None:
         """Swap provider. Context lives in Conversation, so nothing is lost; applies next generation."""
         self.llm = llm
+
+    def close(self) -> None:
+        """Cancel background tasks and clean up session resources."""
+        if self._auto_resume_task and not self._auto_resume_task.done():
+            self._auto_resume_task.cancel()
+            self._auto_resume_task = None
+        if self._task and not self._task.done():
+            self._task.cancel()
+            self._task = None
 
     @property
     def checkpoint(self) -> Optional[ResponseCheckpoint]:
@@ -99,6 +114,7 @@ class AgentSession:
         """Resume playback of the paused response from where it was paused."""
         if self._auto_resume_task and not self._auto_resume_task.done():
             self._auto_resume_task.cancel()
+            self._auto_resume_task = None
         cp, gen = self._cp, self._gen
         if cp is None or gen is None or cp.status not in (ResponseStatus.PAUSED, ResponseStatus.SPEAKING):
             return False
@@ -128,9 +144,15 @@ class AgentSession:
                 return
 
             if decision is InterruptionDecision.HOLD:
-                # User asked to wait/hold -> stay paused
+                # User asked to wait/hold -> stay paused without auto-resuming
+                if self._auto_resume_task and not self._auto_resume_task.done():
+                    self._auto_resume_task.cancel()
+                    self._auto_resume_task = None
                 if cp.status is not ResponseStatus.PAUSED:
                     await self.pause("user_hold")
+                    if self._auto_resume_task and not self._auto_resume_task.done():
+                        self._auto_resume_task.cancel()
+                        self._auto_resume_task = None
                 await self.sink.emit({"type": "holding", "input": text, "checkpoint": cp.summary()})
                 return
 
@@ -170,6 +192,9 @@ class AgentSession:
             return False
         t0 = self._clock()
         self._paused = False
+        if self._auto_resume_task and not self._auto_resume_task.done():
+            self._auto_resume_task.cancel()
+            self._auto_resume_task = None
         self._gen = None  # from here on, nothing for `gen` may be emitted
         task, self._task = self._task, None
         if task and not task.done():
@@ -253,7 +278,7 @@ class AgentSession:
                 await self._maybe_complete(cp, gen)
 
     async def _pump(self, gen: str) -> None:
-        async with self._pump_lock:
+        async with self._get_pump_lock():
             cp = self._cp
             while cp is not None and gen == self._gen and not self._paused:
                 inflight = sum(1 for c in cp.chunks if c.sent and not c.confirmed)

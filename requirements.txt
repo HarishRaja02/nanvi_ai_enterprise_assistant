@@ -90,3 +90,11 @@ xxhash==4.0.1
 yarl==1.25.1
 zstandard==0.25.0
 rapidfuzz==3.14.6
+streamlit>=1.40
+pandas
+rapidocr-onnxruntime
+pymupdf
+python-docx
+openpyxl
+python-pptx
+pillow

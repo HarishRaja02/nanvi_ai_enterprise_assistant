@@ -24,12 +24,15 @@ if %errorlevel% neq 0 (
 
 :: 2. Launch Desktop Application
 echo [2/2] Launching Nanvi Desktop Application...
-if exist "%~dp0frontend\release\win-unpacked\Nanvi AI Assistant.exe" (
+if exist "%~dp0frontend\release-dist\win-unpacked\Nanvi AI Assistant.exe" (
+    start "" "%~dp0frontend\release-dist\win-unpacked\Nanvi AI Assistant.exe"
+    echo Done!
+) else if exist "%~dp0frontend\release\win-unpacked\Nanvi AI Assistant.exe" (
     start "" "%~dp0frontend\release\win-unpacked\Nanvi AI Assistant.exe"
     echo Done!
 ) else (
     echo ERROR: Could not find desktop executable at:
-    echo   frontend\release\win-unpacked\Nanvi AI Assistant.exe
+    echo   frontend\release-dist\win-unpacked\Nanvi AI Assistant.exe
     echo.
     pause
     exit /b 1

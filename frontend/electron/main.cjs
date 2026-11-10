@@ -28,7 +28,7 @@ function findProjectRoot() {
     path.resolve(__dirname, '../../../../..'),
     path.resolve(__dirname, '../../../..'),
     path.resolve(__dirname, '../../..'),
-    'C:\\Users\\haris\\Desktop\\nanvi_ai_enterprise_assistant',
+    process.env.NANVI_PROJECT_ROOT || '',
   ].filter(Boolean);
 
   for (const seed of seeds) {

@@ -1,50 +1,296 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nanvi RTC · Live Voice Assistant</title><link rel="stylesheet" href="style.css"></head>
-<body><main>
-<nav><a href="index.html">Audio room</a><a href="agent.html" aria-current="page">Live Voice Agent</a></nav>
-<h1>Live Hands-Free Voice Agent</h1>
-<p class="lead">Hands-free live voice conversation. Speak naturally anytime—the assistant answers with real voice audio. Built-in echo suppression prevents self-hearing.</p>
-<div class="panel"><div class="row">
-<input id="url" aria-label="Agent gateway URL">
-<select id="prov" aria-label="Model provider"></select>
-<span class="status"><span class="dot" id="dot"></span><span id="state">Disconnected</span></span></div></div>
-<div class="panel">
-<div class="log" id="log" aria-live="polite"></div>
-<div class="row" style="margin-top:12px">
-<input id="text" placeholder="Speak freely, or type here…" aria-label="Message">
-<button id="send">Send</button>
-<button id="mic" class="ghost" aria-pressed="true" style="font-weight:600;border-color:#10b981;color:#10b981;">🎙️ Hands-Free: ON</button>
-<button id="testAudio" class="ghost" style="font-weight:500;">🔊 Test Voice</button>
-<button id="stop" class="ghost">Interrupt</button>
-</div>
-<p class="status" id="hint">Hands-Free Mode Active: Speak anytime. Real voice synthesis will read all answers aloud.</p>
-</div>
-<script>
-const $=id=>document.getElementById(id);
-$('url').value=(location.protocol==='https:'?'wss://':'ws://')+(location.hostname||'localhost')+':8765';
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nanvi RTC · Live Voice Assistant</title>
+  <link rel="stylesheet" href="/api/voice/live/style.css">
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #131a26;
+      --card: #182232;
+      --border: #223046;
+      --fg: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --emerald: #10b981;
+      --red: #ef4444;
+      --cyan: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      max-width: 760px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+      flex: 1;
+    }
+    nav {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      padding-bottom: 4px;
+      transition: color 0.15s ease;
+    }
+    nav a[aria-current="page"] {
+      color: var(--cyan);
+      border-bottom: 2px solid var(--cyan);
+      font-weight: 600;
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 6px;
+      color: #f8fafc;
+    }
+    p.lead {
+      color: var(--muted);
+      margin: 0 0 20px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    input, select, button {
+      font: inherit;
+      color: inherit;
+    }
+    input, select {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 12px;
+      min-width: 0;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+    }
+    input#url {
+      flex: 2 1 240px;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    select#prov {
+      flex: 1 1 120px;
+      background: var(--card);
+      cursor: pointer;
+    }
+    input#text {
+      flex: 1 1 200px;
+    }
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 16px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.15s ease, transform 0.05s ease;
+    }
+    button:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    button.ghost {
+      background: var(--card);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+    button.ghost:hover:not(:disabled) {
+      background: var(--border);
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      margin-left: auto;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--muted);
+      transition: background 0.2s ease, box-shadow 0.2s ease;
+    }
+    .dot.on {
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+    }
+    .dot.connecting {
+      background: #f59e0b;
+      box-shadow: 0 0 8px #f59e0b;
+    }
+    .dot.err {
+      background: var(--red);
+    }
+    .log {
+      height: 280px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .msg {
+      padding: 10px 14px;
+      border-radius: 10px;
+      max-width: 82%;
+      font-size: 14px;
+      line-height: 1.45;
+      background: #1f2c42;
+      border: 1px solid var(--border);
+      color: #f1f5f9;
+      word-break: break-word;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: #1e3a8a;
+      border-color: #2563eb;
+      color: #fff;
+    }
+    .msg.sys {
+      align-self: center;
+      font-size: 12px;
+      color: var(--muted);
+      background: transparent;
+      border: none;
+      padding: 4px 8px;
+    }
+    .heard { color: var(--fg); }
+    .unheard { color: var(--muted); opacity: 0.6; }
+    p.hint {
+      margin: 10px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <nav>
+    <a href="index.html">Audio room</a>
+    <a href="agent.html" aria-current="page">Live Voice Agent</a>
+  </nav>
 
-let ws, gen=null, bubble=null, epoch=0, rec=null;
-let speaking=false, paused=false, handsFree=true, isStartingRec=false;
-let micStream=null, currentPlayingChunk=null, currentAudioElement=null;
+  <h1>Live Hands-Free Voice Agent</h1>
+  <p class="lead">Hands-free live voice conversation. Speak naturally anytime—the assistant answers with real voice audio. Built-in echo suppression prevents self-hearing.</p>
+
+  <div class="panel">
+    <div class="row">
+      <input id="url" aria-label="Agent gateway URL" spellcheck="false">
+      <select id="prov" aria-label="Model provider">
+        <option value="nanvi">nanvi (Enterprise)</option>
+        <option value="mock">mock (Instant)</option>
+      </select>
+      <div class="status-badge">
+        <span class="dot" id="dot"></span>
+        <span id="state">Connecting…</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="log" id="log" aria-live="polite"></div>
+    <div class="row" style="margin-top:14px">
+      <input id="text" placeholder="Speak freely, or type here…" aria-label="Message">
+      <button id="send">Send</button>
+      <button id="mic" class="ghost" aria-pressed="true" style="font-weight:600;border-color:var(--emerald);color:var(--emerald);">🎙️ Hands-Free: ON</button>
+      <button id="testAudio" class="ghost" style="font-weight:500;">🔊 Test Voice</button>
+      <button id="stop" class="ghost">Interrupt</button>
+    </div>
+    <p class="hint" id="hint">Hands-Free Mode Active: Speak anytime. Real voice synthesis reads answers aloud.</p>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Automatically detect correct WebSocket endpoint
+(function initDefaultUrl() {
+  const loc = window.location;
+  const isHttps = loc.protocol === 'https:';
+  const wsProto = isHttps ? 'wss://' : 'ws://';
+  let defaultWsUrl;
+
+  if (loc.pathname.includes('/voice') || loc.port === '8000') {
+    defaultWsUrl = wsProto + loc.host + '/api/voice/live';
+  } else if (loc.port === '8765') {
+    defaultWsUrl = wsProto + loc.host;
+  } else {
+    defaultWsUrl = wsProto + (loc.hostname || 'localhost') + ':8000/api/voice/live';
+  }
+  $('url').value = defaultWsUrl;
+})();
+
+let ws = null, gen = null, bubble = null, epoch = 0, rec = null;
+let speaking = false, paused = false, handsFree = true, isStartingRec = false;
+let micStream = null, currentPlayingChunk = null, currentAudioElement = null;
 let spokenHistory = []; // { text: string, timestamp: number }
 
 let lastUserUtteranceTime = 0;
 let lastUserUtteranceText = '';
-let currentAssistantFirstChunkTime = 0;
+let reconnectTimer = null;
 
 const EXPLICIT_STOPS = new Set(['stop', 'wait', 'pause', 'cancel', 'hold', 'hold on', 'quiet', 'shut up', 'silence']);
 
-const log=(cls,html)=>{
-  const d=document.createElement('div');
-  d.className='msg '+cls;
-  d.innerHTML=html;
+const log = (cls, html) => {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.innerHTML = html;
   $('log').appendChild(d);
-  $('log').scrollTop=1e9;
+  $('log').scrollTop = 1e9;
   return d;
 };
-const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const send=m=>ws&&ws.readyState===1&&ws.send(JSON.stringify(m));
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const send = m => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
 
 // Pre-load voices on startup
 if (typeof speechSynthesis !== 'undefined') {
@@ -55,13 +301,14 @@ if (typeof speechSynthesis !== 'undefined') {
 function unlockAudioPolicy() {
   try {
     const silent = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA');
-    silent.play().catch(()=>{});
+    silent.play().catch(() => {});
   } catch(e) {}
   if (typeof speechSynthesis !== 'undefined' && speechSynthesis.paused) {
     speechSynthesis.resume();
   }
 }
-window.addEventListener('click', unlockAudioPolicy, { once: true });
+window.addEventListener('click', unlockAudioPolicy);
+window.addEventListener('keydown', unlockAudioPolicy);
 
 // ---- Dual-Engine Speech Output: Server Neural Audio + Browser SpeechSynthesis ----
 
@@ -69,44 +316,72 @@ function playAudioOutput(text, onStart, onEnd) {
   unlockAudioPolicy();
   speaking = true;
 
+  let ended = false;
+  const finish = () => {
+    if (ended) return;
+    ended = true;
+    speaking = false;
+    currentAudioElement = null;
+    if (onEnd) onEnd();
+  };
+
   // Determine server TTS endpoint URL
   let serverTtsUrl = null;
   try {
-    const wsUrl = new URL($('url').value);
-    const host = wsUrl.host;
-    const proto = wsUrl.protocol === 'wss:' ? 'https:' : 'http:';
-    // If running on FastAPI server (port 8000 or has /api/voice/live)
-    if (wsUrl.pathname.includes('/voice/live') || wsUrl.port === '8000') {
-      serverTtsUrl = `${proto}//${host}/api/voice/live/tts?text=${encodeURIComponent(text)}`;
+    const wsVal = $('url').value.trim();
+    const wsUrl = new URL(wsVal.startsWith('ws') ? wsVal.replace(/^ws/, 'http') : wsVal);
+    if (wsUrl.pathname.includes('/voice') || wsUrl.port === '8000') {
+      serverTtsUrl = `${wsUrl.protocol}//${wsUrl.host}/api/voice/live/tts?text=${encodeURIComponent(text)}`;
     }
   } catch(e) {}
 
   if (serverTtsUrl) {
-    const audio = new Audio(serverTtsUrl);
+    const audio = new Audio();
     currentAudioElement = audio;
+
+    let fallbackTriggered = false;
+    const triggerBrowserFallback = () => {
+      if (fallbackTriggered || ended) return;
+      fallbackTriggered = true;
+      currentAudioElement = null;
+      fallbackBrowserSpeech(text, onStart, finish);
+    };
+
+    audio.onloadedmetadata = () => {
+      // If server returns fallback dummy silence (duration < 0.35s), use local browser speech
+      if (audio.duration > 0 && audio.duration < 0.35) {
+        triggerBrowserFallback();
+      }
+    };
     audio.onplay = () => {
       if (onStart) onStart();
     };
     audio.onended = () => {
-      currentAudioElement = null;
-      speaking = false;
-      if (onEnd) onEnd();
+      finish();
     };
-    audio.onerror = (err) => {
-      console.warn('Server TTS stream failed, using browser speech synthesis:', err);
-      currentAudioElement = null;
-      fallbackBrowserSpeech(text, onStart, onEnd);
+    audio.onerror = () => {
+      triggerBrowserFallback();
     };
-    audio.play().catch(err => {
-      console.warn('Audio play() rejected, trying browser speech synthesis:', err);
-      currentAudioElement = null;
-      fallbackBrowserSpeech(text, onStart, onEnd);
+
+    // Safety watchdog: If server TTS does not play within 2.5s, fall back to browser speech immediately
+    const ttsTimer = setTimeout(() => {
+      if (!audio.currentTime || audio.paused) {
+        try { audio.pause(); } catch(e) {}
+        triggerBrowserFallback();
+      }
+    }, 2500);
+
+    audio.src = serverTtsUrl;
+    audio.play().then(() => {
+      clearTimeout(ttsTimer);
+    }).catch(() => {
+      clearTimeout(ttsTimer);
+      triggerBrowserFallback();
     });
     return;
   }
 
-  // Standalone gateway on port 8765: use browser SpeechSynthesis
-  fallbackBrowserSpeech(text, onStart, onEnd);
+  fallbackBrowserSpeech(text, onStart, finish);
 }
 
 function fallbackBrowserSpeech(text, onStart, onEnd) {
@@ -116,9 +391,12 @@ function fallbackBrowserSpeech(text, onStart, onEnd) {
     return;
   }
 
-  if (speechSynthesis.paused) {
-    speechSynthesis.resume();
-  }
+  try {
+    speechSynthesis.cancel();
+    if (speechSynthesis.paused) {
+      speechSynthesis.resume();
+    }
+  } catch(e) {}
 
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'en-US';
@@ -126,36 +404,49 @@ function fallbackBrowserSpeech(text, onStart, onEnd) {
   u.pitch = 1.0;
   u.volume = 1.0;
 
-  // Prefer guaranteed local system voices to avoid cloud network failure
   const voices = speechSynthesis.getVoices();
-  const voice = voices.find(v => v.lang.startsWith('en') && v.localService)
-             || voices.find(v => v.lang.startsWith('en'))
-             || voices[0];
-  if (voice) u.voice = voice;
+  if (voices && voices.length > 0) {
+    const voice = voices.find(v => v.lang.startsWith('en') && v.localService)
+               || voices.find(v => v.lang.startsWith('en'))
+               || voices[0];
+    if (voice) u.voice = voice;
+  }
 
-  // Retain window reference to avoid V8 garbage collection dropping utterance
   window._activeUtterance = u;
 
+  let started = false;
   u.onstart = () => {
+    started = true;
     speaking = true;
     if (onStart) onStart();
   };
 
-  u.onend = () => {
+  let ended = false;
+  const onComplete = () => {
+    if (ended) return;
+    ended = true;
     speaking = false;
     window._activeUtterance = null;
     if (onEnd) onEnd();
   };
 
+  u.onend = onComplete;
   u.onerror = (e) => {
-    console.error('SpeechSynthesis error:', e.error);
-    speaking = false;
-    window._activeUtterance = null;
-    $('hint').textContent = 'Note: Speech error (' + e.error + '). Click "Test Voice" or click the page to enable audio.';
-    if (onEnd) onEnd();
+    console.warn('SpeechSynthesis error:', e.error);
+    onComplete();
   };
 
   speechSynthesis.speak(u);
+  if (speechSynthesis.paused) {
+    speechSynthesis.resume();
+  }
+
+  const approxDurationMs = Math.max(2000, Math.min(15000, text.split(/\s+/).length * 450));
+  setTimeout(() => {
+    if (!ended && window._activeUtterance === u) {
+      onComplete();
+    }
+  }, approxDurationMs + 3000);
 }
 
 function cancelPlayback() {
@@ -198,86 +489,123 @@ function isSelfEcho(transcript) {
   return (matches / tWords.length) >= 0.40;
 }
 
-function connect(){
-  ws=new WebSocket($('url').value);
-  ws.onopen=()=>{
-    $('dot').className='dot on';
-    $('state').textContent='Connected';
-    if(handsFree && !rec) startHandsFree();
+function setStatus(status, label) {
+  const dot = $('dot');
+  const state = $('state');
+  dot.className = 'dot';
+  if (status === 'connected') {
+    dot.classList.add('on');
+    state.textContent = label || 'Connected';
+  } else if (status === 'connecting') {
+    dot.classList.add('connecting');
+    state.textContent = label || 'Connecting…';
+  } else {
+    dot.classList.add('err');
+    state.textContent = label || 'Disconnected';
+  }
+}
+
+function connect() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (ws) {
+    try { ws.close(); } catch(e) {}
+    ws = null;
+  }
+
+  const url = $('url').value.trim();
+  setStatus('connecting', 'Connecting…');
+
+  try {
+    ws = new WebSocket(url);
+  } catch(e) {
+    console.warn('WebSocket init failed:', e);
+    setStatus('error', 'Connection error');
+    reconnectTimer = setTimeout(connect, 3000);
+    return;
+  }
+
+  ws.onopen = () => {
+    setStatus('connected', 'Connected');
+    if (handsFree && !rec) startHandsFree();
   };
-  ws.onclose=()=>{
-    $('dot').className='dot';
-    $('state').textContent='Disconnected — retrying';
-    setTimeout(connect, 2000);
+
+  ws.onclose = () => {
+    setStatus('error', 'Disconnected — retrying');
+    reconnectTimer = setTimeout(connect, 2500);
   };
-  ws.onmessage=ev=>{
-    const m=JSON.parse(ev.data);
-    if(m.type==='ready'){
-      $('prov').innerHTML=m.providers.map(p=>`<option ${p===m.provider?'selected':''}>${p}</option>`).join('');
+
+  ws.onerror = (err) => {
+    console.warn('WebSocket error:', err);
+    setStatus('error', 'Connection error');
+  };
+
+  ws.onmessage = ev => {
+    let m;
+    try {
+      m = JSON.parse(ev.data);
+    } catch(e) {
+      return;
     }
-    else if(m.type==='speak'){
+
+    if (m.type === 'ready') {
+      if (Array.isArray(m.providers)) {
+        $('prov').innerHTML = m.providers.map(p => `<option value="${p}" ${p === m.provider ? 'selected' : ''}>${p}</option>`).join('');
+      }
+    } else if (m.type === 'speak') {
       speakChunk(m);
-    }
-    else if(m.type==='stop'){
+    } else if (m.type === 'stop') {
       cancelPlayback();
-    }
-    else if(m.type==='paused'){
-      paused=true;
+    } else if (m.type === 'paused') {
+      paused = true;
       cancelPlayback();
-      log('sys','Paused (listening for instruction...)');
-    }
-    else if(m.type==='holding'){
-      paused=true;
+      log('sys', 'Paused (listening for instruction...)');
+    } else if (m.type === 'holding') {
+      paused = true;
       cancelPlayback();
-      log('sys','Holding (waiting for your instruction)...');
-    }
-    else if(m.type==='interrupted'){
-      paused=false;
+      log('sys', 'Holding (waiting for your instruction)...');
+    } else if (m.type === 'interrupted') {
+      paused = false;
       cancelPlayback();
-      log('sys','Interrupted after sentence '+(m.checkpoint.confirmed_index+1)+'.');
-    }
-    else if(m.type==='resumed'){
-      paused=false;
-      log('sys','Resumed (continuing response)...');
-      if(currentPlayingChunk && !currentPlayingChunk.confirmed) {
+      log('sys', 'Interrupted after sentence ' + ((m.checkpoint?.confirmed_index ?? 0) + 1) + '.');
+    } else if (m.type === 'resumed') {
+      paused = false;
+      log('sys', 'Resumed (continuing response)...');
+      if (currentPlayingChunk && !currentPlayingChunk.confirmed) {
         speakChunk(currentPlayingChunk);
       }
-    }
-    else if(m.type==='response_done'){
-      paused=false;
-      currentPlayingChunk=null;
-    }
-    else if(m.type==='provider'){
-      log('sys','Switched to '+m.provider+'. Conversation kept.');
-    }
-    else if(m.type==='error'){
-      log('sys','Error ('+m.where+'): '+esc(m.message));
+    } else if (m.type === 'response_done') {
+      paused = false;
+      currentPlayingChunk = null;
+    } else if (m.type === 'provider') {
+      log('sys', 'Switched to provider: ' + m.provider);
+    } else if (m.type === 'error') {
+      log('sys', 'Error (' + m.where + '): ' + esc(m.message));
     }
   };
 }
 
-function speakChunk(m){
-  paused=false;
+function speakChunk(m) {
+  paused = false;
   currentPlayingChunk = m;
-  if(m.generation_id!==gen){
-    gen=m.generation_id;
-    bubble=log('','');
-    bubble.dataset.resp=m.response_id;
-    currentAssistantFirstChunkTime = Date.now();
+  if (m.generation_id !== gen) {
+    gen = m.generation_id;
+    bubble = log('', '');
+    bubble.dataset.resp = m.response_id;
   }
-  if(m.response_id!==bubble.dataset.resp){
-    bubble=log('','');
-    bubble.dataset.resp=m.response_id;
+  if (bubble && m.response_id !== bubble.dataset.resp) {
+    bubble = log('', '');
+    bubble.dataset.resp = m.response_id;
   }
-  const span=document.createElement('span');
-  span.className='unheard';
-  span.textContent=m.text+' ';
-  span.dataset.i=m.index;
-  bubble.appendChild(span);
-  
-  // Track for acoustic echo suppression
-  spokenHistory.push({ text: m.text, timestamp: Date.now() });
+  const span = document.createElement('span');
+  span.className = 'unheard';
+  span.textContent = m.text + ' ';
+  span.dataset.i = m.index;
+  if (bubble) bubble.appendChild(span);
 
+  spokenHistory.push({ text: m.text, timestamp: Date.now() });
   const myEpoch = ++epoch;
 
   playAudioOutput(
@@ -286,40 +614,62 @@ function speakChunk(m){
       span.style.color = '#38bdf8';
     },
     () => {
-      if(myEpoch !== epoch) return;
+      if (myEpoch !== epoch) return;
       span.className = 'heard';
       span.style.color = '';
-      if(currentPlayingChunk && currentPlayingChunk.index === m.index) {
+      if (currentPlayingChunk && currentPlayingChunk.index === m.index) {
         currentPlayingChunk.confirmed = true;
       }
-      send({type:'chunk_ack', response_id:m.response_id, generation_id:m.generation_id, index:m.index});
+      send({ type: 'chunk_ack', response_id: m.response_id, generation_id: m.generation_id, index: m.index });
     }
   );
 }
 
-function userSays(t){
+function userSays(t) {
   const clean = t.trim();
-  if(!clean || /^[.,!?;:\-_*]+$/.test(clean)){
-    if(paused){send({type:'user_text',text:''})}
+  if (!clean || /^[.,!?;:\-_*]+$/.test(clean)) {
+    if (paused) send({ type: 'user_text', text: '' });
     return;
   }
   lastUserUtteranceTime = Date.now();
   lastUserUtteranceText = clean.toLowerCase();
   log('user', esc(clean));
-  send({type:'user_text', text:clean});
+
+  if (!ws || ws.readyState !== 1) {
+    $('hint').textContent = 'Cannot send: Gateway connecting. Please wait a moment...';
+    connect();
+    return;
+  }
+  send({ type: 'user_text', text: clean });
 }
 
-$('send').onclick=()=>{userSays($('text').value);$('text').value=''};
-$('text').onkeydown=e=>{if(e.key==='Enter')$('send').click()};
-$('stop').onclick=()=>{cancelPlayback();send({type:'interrupt'})};
-$('prov').onchange=()=>send({type:'set_provider',name:$('prov').value});
-$('url').onchange=()=>{ws&&ws.close()};
+$('send').onclick = () => {
+  unlockAudioPolicy();
+  userSays($('text').value);
+  $('text').value = '';
+};
+$('text').onkeydown = e => {
+  if (e.key === 'Enter') {
+    unlockAudioPolicy();
+    $('send').click();
+  }
+};
+$('stop').onclick = () => {
+  cancelPlayback();
+  send({ type: 'interrupt' });
+};
+$('prov').onchange = () => send({ type: 'set_provider', name: $('prov').value });
+$('url').onchange = () => connect();
 
-$('testAudio').onclick=()=>{
+$('testAudio').onclick = () => {
   unlockAudioPolicy();
   cancelPlayback();
-  playAudioOutput('Hello! Nanvi voice playback is active and working properly.');
-  $('hint').textContent = 'Playing voice audio test...';
+  $('hint').textContent = 'Testing voice audio output...';
+  playAudioOutput('Hello! Nanvi live voice audio is active and speaking clearly.', () => {
+    $('hint').textContent = 'Voice audio is playing!';
+  }, () => {
+    $('hint').textContent = 'Voice audio test finished successfully.';
+  });
 };
 
 // ---- Hands-Free Speech Recognition Pipeline ----
@@ -338,69 +688,45 @@ async function ensureAecStream() {
 
 function restartRecognition() {
   if (!handsFree) return;
-  if (isStartingRec) return;
-  isStartingRec = true;
+  if (rec) {
+    try { rec.abort(); } catch(e) {}
+    rec = null;
+  }
   setTimeout(() => {
-    isStartingRec = false;
-    if (!handsFree) return;
-    try {
-      if (rec) {
-        try { rec.abort(); } catch(e) {}
-        rec = null;
-      }
-      createAndStartRecognition();
-    } catch(err) {
-      console.warn('Recognition restart retry:', err);
-      setTimeout(restartRecognition, 300);
-    }
-  }, 120);
+    if (handsFree && !rec) createAndStartRecognition();
+  }, 350);
 }
 
 function createAndStartRecognition() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    $('hint').textContent = 'Speech recognition is not supported in this browser. Use Chrome or Edge.';
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) {
+    $('hint').textContent = 'Browser SpeechRecognition not supported. Use text input to speak with the agent.';
     return;
   }
+  if (rec) {
+    try { rec.abort(); } catch(e) {}
+    rec = null;
+  }
 
-  const r = new SR();
+  const r = new SpeechRec();
   r.continuous = true;
   r.interimResults = true;
   r.lang = 'en-US';
 
-  r.onresult = e => {
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const res = e.results[i];
+  r.onresult = ev => {
+    for (let i = ev.resultIndex; i < ev.results.length; ++i) {
+      const res = ev.results[i];
       const rawText = res[0].transcript.trim();
       if (!rawText) continue;
 
-      const now = Date.now();
-
-      // 1. Trailing speech guard: Ignore speech within 1200ms of user dispatching a query
-      if (now - lastUserUtteranceTime < 1200) {
-        continue;
-      }
-      if (lastUserUtteranceText && (lastUserUtteranceText.includes(rawText.toLowerCase()) || rawText.toLowerCase().includes(lastUserUtteranceText))) {
-        continue;
-      }
-
-      // 2. Speaker echo guard: Ignore if laptop speaker output
       if (isSelfEcho(rawText)) {
-        $('hint').textContent = 'Speaker echo ignored: "' + esc(rawText) + '"';
         continue;
       }
 
-      // 3. New assistant speech guard: Don't allow interruption within the first 600ms of assistant starting
-      if (speaking && (now - currentAssistantFirstChunkTime < 600)) {
-        continue;
-      }
-
-      // 4. Sensitivity filter: Require at least 2 distinct words or explicit stop keyword
-      const cleanWords = rawText.toLowerCase().replace(/[^\w\s]/g, '').trim().split(/\s+/).filter(w => w.length > 1);
+      const cleanWords = rawText.split(/\s+/).filter(w => w.length > 1);
       const isStopWord = EXPLICIT_STOPS.has(rawText.toLowerCase().replace(/[^\w\s]/g, '').trim());
       const hasMeaningfulSpeech = cleanWords.length >= 2 || isStopWord;
 
-      // Only pause assistant if user produced meaningful intentional speech
       if (speaking && !paused && hasMeaningfulSpeech) {
         paused = true;
         cancelPlayback();
@@ -408,7 +734,6 @@ function createAndStartRecognition() {
         $('hint').textContent = 'Listening to user instruction...';
       }
 
-      // 5. Final transcript ready -> send query automatically
       if (res.isFinal) {
         if (cleanWords.length >= 1) {
           userSays(rawText);
@@ -420,9 +745,7 @@ function createAndStartRecognition() {
   };
 
   r.onerror = e => {
-    if (e.error === 'no-speech' || e.error === 'network') {
-      return;
-    }
+    if (e.error === 'no-speech' || e.error === 'network') return;
     console.warn('SpeechRecognition error:', e.error);
   };
 
@@ -435,9 +758,13 @@ function createAndStartRecognition() {
     }
   };
 
-  r.start();
-  rec = r;
-  updateMicUI(true);
+  try {
+    r.start();
+    rec = r;
+    updateMicUI(true);
+  } catch(err) {
+    console.warn('Recognition start failed:', err);
+  }
 }
 
 async function startHandsFree() {
@@ -463,14 +790,14 @@ function updateMicUI(active) {
   if (active) {
     $('mic').textContent = '🎙️ Hands-Free: ON';
     $('mic').setAttribute('aria-pressed', 'true');
-    $('mic').style.borderColor = '#10b981';
-    $('mic').style.color = '#10b981';
-    $('hint').textContent = 'Hands-Free Mode Active: Speak anytime. Real voice synthesis will read all answers aloud.';
+    $('mic').style.borderColor = 'var(--emerald)';
+    $('mic').style.color = 'var(--emerald)';
+    $('hint').textContent = 'Hands-Free Mode Active: Speak anytime. Real voice synthesis reads answers aloud.';
   } else {
     $('mic').textContent = '🔇 Mic: Muted';
     $('mic').setAttribute('aria-pressed', 'false');
-    $('mic').style.borderColor = '#ef4444';
-    $('mic').style.color = '#ef4444';
+    $('mic').style.borderColor = 'var(--red)';
+    $('mic').style.color = 'var(--red)';
     $('hint').textContent = 'Mic muted. Click "Mic: Muted" to resume hands-free listening.';
   }
 }
@@ -484,5 +811,8 @@ $('mic').onclick = () => {
   }
 };
 
+// Start connection
 connect();
-</script></main></body></html>
+</script>
+</body>
+</html>

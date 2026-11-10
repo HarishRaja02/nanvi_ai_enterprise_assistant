@@ -15,6 +15,9 @@ from backend.security.dependencies import get_current_user
 from backend.security.local_accounts import LocalAccountStore, get_local_account_store
 from backend.security.mailer import send_password_reset_email
 from backend.security.models import UserIdentity
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -88,6 +91,32 @@ def _ensure_local_auth_enabled() -> None:
         raise HTTPException(status_code=503, detail="Local sign-in is not configured.")
 
 
+def _check_uecp_status(organization_id: str | None = None, is_admin_exempt: bool = False) -> None:
+    """Enforce UECP control plane freeze/revocation status on local account operations."""
+    if is_admin_exempt:
+        return
+    try:
+        from backend.uecp import get_uecp_config, get_uecp_service
+        cfg = get_uecp_config()
+        if not cfg.enabled:
+            return
+        service = get_uecp_service()
+        state = service.check_access(organization_id=organization_id or settings.local_auth_tenant_id)
+        if not state.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "access_denied",
+                    "reason": state.reason or "credential_frozen",
+                    "message": "Access unavailable: Your organization's Nanvi access is currently frozen in the UECP control plane. Please contact your administrator.",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning(f"UECP check encountered error: {exc}")
+
+
 def _require_account_manager(user: UserIdentity) -> bool:
     if user.subject == "admin" or (user.email and user.email.lower() == "admin@company.com"):
         return True
@@ -107,8 +136,10 @@ def local_login(body: LocalLoginRequest, store: LocalAccountStore = Depends(get_
 
     now = int(time.time())
     user_role = account["role"]
-    if account.get("username", "").lower() == "admin" or (account.get("email") and account["email"].lower() == "admin@company.com"):
+    is_admin = account.get("username", "").lower() == "admin" or (account.get("email") and account["email"].lower() == "admin@company.com")
+    if is_admin:
         user_role = "Admin"
+    _check_uecp_status(organization_id=settings.local_auth_tenant_id, is_admin_exempt=is_admin)
 
     payload = {
         "sub": account["id"],
@@ -147,6 +178,7 @@ def create_local_account(
     user: UserIdentity = Depends(get_current_user),
     store: LocalAccountStore = Depends(get_local_account_store),
 ) -> LocalAccountResponse:
+    _check_uecp_status(organization_id=user.tenant_id, is_admin_exempt=user.subject == "admin")
     is_superior = _require_account_manager(user) and (user.subject == "admin" or bool(user.roles & {Role.SUPERIOR, Role.CEO}))
     if not is_superior and body.role not in SUPERVISOR_MANAGED_ROLES:
         raise HTTPException(status_code=403, detail="Supervisors can create Project Engineer and Employee accounts only.")

@@ -44,6 +44,7 @@ test = ["pytest==9.0.2", "PyYAML==6.0.3"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+asyncio_mode = "auto"
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

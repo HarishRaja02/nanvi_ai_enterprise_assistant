@@ -21,6 +21,22 @@ import {
   Cpu,
   Mic,
   Server,
+  Store,
+  MessageSquare,
+  BarChart3,
+  Users,
+  Mail,
+  Database,
+  AlertTriangle,
+  Zap,
+  BookOpen,
+  Settings,
+  Activity,
+  FolderSearch,
+  BrainCircuit,
+  HardDrive,
+  CloudOff,
+  MonitorSmartphone,
 } from "lucide-react";
 import { LOGO_URL } from "../../lib/config";
 import { useToast } from "../ui/Toast";
@@ -41,48 +57,51 @@ interface SampleQuery {
 
 const SAMPLE_QUERIES: SampleQuery[] = [
   {
-    title: "Vendor Invoice Search",
-    query: "Sri Ganesh ReadyMix find this vendor in invoice",
+    title: "Invoice Search",
+    query: "Find all unpaid invoices for Sri Ganesh ReadyMix above ₹2 lakhs",
     fileName: "invoice_register.csv",
     filePath: "C:\\CompanyData\\08_Finance\\Invoices\\invoice_register.csv",
     fileType: "CSV Spreadsheet",
-    summary: "Found 1 matching invoice document in Local Storage for vendor 'Sri Ganesh ReadyMix'.",
+    summary: "Found 3 matching invoices for vendor 'Sri Ganesh ReadyMix' with outstanding amount above ₹2,00,000.",
     details: [
-      { label: "Invoice No", value: "INV-2024-8841" },
-      { label: "Vendor", value: "Sri Ganesh ReadyMix" },
-      { label: "Amount Due", value: "₹4,85,000" },
-      { label: "Payment Status", value: "Approved / Pending Release" },
+      { label: "Invoices Found", value: "3 records" },
+      { label: "Total Outstanding", value: "₹8,45,000" },
+      { label: "Oldest Due Date", value: "18-Sep-2024" },
+      { label: "Payment Status", value: "Pending Release" },
     ],
   },
   {
-    title: "Payment Aging Audit",
-    query: "Show aging breakdown for pending supplier payments",
-    fileName: "invoice_aging.xlsx",
-    filePath: "C:\\CompanyData\\08_Finance\\Invoices\\invoice_aging.xlsx",
-    fileType: "Excel Workbook",
-    summary: "Identified 4 overdue invoices past 60 days in Bridge Construction finance records.",
-    details: [
-      { label: "Total Overdue", value: "₹18,42,500" },
-      { label: "Over 90 Days", value: "2 Suppliers (₹7,15,000)" },
-      { label: "Action", value: "Priority review required by Accounts" },
-      { label: "Department", value: "Finance & Accounts" },
-    ],
-  },
-  {
-    title: "Contract Specifications",
-    query: "Summarize contract terms and warranty liabilities in bridge agreement",
-    fileName: "Mock_Contract_Agreement.pdf",
-    filePath: "C:\\CompanyData\\10_Contracts\\Mock_Contract_Agreement.pdf",
+    title: "Contract Audit",
+    query: "What are the warranty and liability terms in the highway bridge contract?",
+    fileName: "Bridge_Contract_Agreement.pdf",
+    filePath: "C:\\CompanyData\\10_Contracts\\Bridge_Contract_Agreement.pdf",
     fileType: "PDF Document",
-    summary: "Verified 24-month defect liability period and 5% retention guarantee clause.",
+    summary: "Extracted key contract clauses: 24-month defect liability, 5% performance security, and arbitration terms.",
     details: [
-      { label: "Project", value: "National Highway Bridge Section 4" },
-      { label: "Liability Term", value: "24 months post-commissioning" },
-      { label: "Bank Guarantee", value: "5% Performance Security valid to 2026" },
-      { label: "Arbitration", value: "New Delhi Jurisdiction" },
+      { label: "Liability Period", value: "24 months post-handover" },
+      { label: "Performance Guarantee", value: "5% Bank Guarantee" },
+      { label: "Penalty Clause", value: "0.5% per week of delay" },
+      { label: "Jurisdiction", value: "High Court, Chennai" },
+    ],
+  },
+  {
+    title: "Payment Report",
+    query: "Generate aging report for all supplier payments overdue by 60+ days",
+    fileName: "supplier_payments.xlsx",
+    filePath: "C:\\CompanyData\\08_Finance\\Payments\\supplier_payments.xlsx",
+    fileType: "Excel Workbook",
+    summary: "Generated aging breakdown: 4 suppliers with payments overdue beyond 60 days totaling ₹18.4L.",
+    details: [
+      { label: "60-90 Days Overdue", value: "₹11,27,500 (2 vendors)" },
+      { label: "90+ Days Overdue", value: "₹7,15,000 (2 vendors)" },
+      { label: "Action Required", value: "Immediate escalation" },
+      { label: "Department", value: "Accounts Payable" },
     ],
   },
 ];
+
+// Microsoft Store link for Nanvi AI Enterprise Assistant
+const MS_STORE_URL = "https://apps.microsoft.com/detail/9NZMM1MV9XX4?hl=en-us&gl=IN&ocid=pdpshare";
 
 export function LandingPage({ onLaunchWebApp }: Props) {
   const notify = useToast();
@@ -91,6 +110,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
   const [activeQueryIdx, setActiveQueryIdx] = useState(0);
   const [copiedPath, setCopiedPath] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [showExeWarning, setShowExeWarning] = useState(false);
 
   const activeSample = SAMPLE_QUERIES[activeQueryIdx];
 
@@ -100,18 +120,20 @@ export function LandingPage({ onLaunchWebApp }: Props) {
       const isDesktopOrigin =
         typeof window !== "undefined" &&
         (window.location.protocol === "file:" || Boolean((window as any).electronAPI?.isDesktop));
-      const base = isDesktopOrigin ? "http://127.0.0.1:8000/api" : "/api";
+      const base = isDesktopOrigin
+        ? "http://127.0.0.1:8000/api"
+        : (import.meta as any).env?.VITE_API_BASE_URL || "/api";
       const url = `${base}/local-agent/download?format=${format}`;
 
       if (format === "exe") {
         const a = document.createElement("a");
         a.href = url;
-        a.download = "Nanvi AI Assistant-Setup-0.1.0.exe";
+        a.download = "Nanvi AI Assistant-Setup-0.1.1.exe";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         notify(
-          "Downloading Nanvi AI Assistant Setup (.exe)... Once downloaded, run the installer to set up the desktop application on your computer.",
+          "Downloading Nanvi AI Assistant Setup (.exe)... Note: Windows Smart App Control may block the installer since it is not code-signed. For a hassle-free install, use the Microsoft Store version.",
           "success"
         );
         return;
@@ -169,39 +191,40 @@ export function LandingPage({ onLaunchWebApp }: Props) {
           </div>
 
           <nav className="landing-nav-links" aria-label="Main Navigation">
-            <a href="#capabilities" className="landing-nav-link">
-              What We Do
-            </a>
-            <a href="#architecture" className="landing-nav-link">
-              Web & Desktop
+            <a href="#features" className="landing-nav-link">
+              Features
             </a>
             <a href="#how-it-works" className="landing-nav-link">
               How It Works
             </a>
+            <a href="#architecture" className="landing-nav-link">
+              Web & Desktop
+            </a>
             <a href="#downloads" className="landing-nav-link">
-              Download App
+              Get the App
             </a>
           </nav>
 
           <div className="landing-nav-actions">
+            <a
+              href={MS_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-landing-primary"
+              title="Get Nanvi AI from Microsoft Store"
+              style={{ padding: "8px 16px", fontSize: "13.5px" }}
+            >
+              <Store size={14} />
+              <span>Get from Microsoft Store</span>
+            </a>
             <button
               type="button"
               className="btn-landing-secondary"
-              onClick={() => handleDownload("exe")}
-              title="Download Nanvi Windows Desktop Application (.exe)"
-              style={{ padding: "8px 16px", fontSize: "13.5px" }}
-            >
-              <Download size={14} />
-              <span>Download Desktop App (.exe)</span>
-            </button>
-            <button
-              type="button"
-              className="btn-landing-primary"
               onClick={onLaunchWebApp}
               title="Launch Web Assistant in Browser"
               style={{ padding: "8px 18px", fontSize: "13.5px" }}
             >
-              <span>Launch Web Assistant</span>
+              <span>Launch Web App</span>
               <ArrowRight size={14} />
             </button>
           </div>
@@ -211,31 +234,33 @@ export function LandingPage({ onLaunchWebApp }: Props) {
       {/* ── Hero Section ──────────────────────────────────────────────── */}
       <section className="landing-hero" aria-label="Hero Introduction">
         <div className="landing-pill">
-          <Sparkles size={14} className="text-green-600" />
-          <span>Windows Desktop Application & Enterprise Cloud Web Platform</span>
+          <ShieldCheck size={14} className="text-green-600" />
+          <span>Available on Microsoft Store & Web — No Installation Hassle</span>
         </div>
 
         <h1 className="landing-hero-title">
-          The Secure Enterprise AI Assistant for <span className="highlight-teal">Corporate Documents</span>,{" "}
-          <span className="highlight-green">Invoices</span> & Operations
+          Ask Questions About Your <span className="highlight-teal">Business Documents</span>,{" "}
+          <span className="highlight-green">Invoices</span> & Company Data
         </h1>
 
         <p className="landing-hero-subtitle">
-          Instantly query vendor records, analyze financial ledgers, audit complex contracts, and search across thousands of
-          local business documents — available as a standalone Windows desktop application and a secure cloud web service.
+          Nanvi AI reads your local files — invoices, contracts, spreadsheets, PDFs — and answers
+          your questions in plain English. No manual searching. No uploading to cloud servers.
+          Your documents stay on your computer.
         </p>
 
         <div className="landing-hero-ctas">
-          <button
-            type="button"
+          {/* Microsoft Store - PRIMARY */}
+          <a
+            href={MS_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-landing-primary"
-            onClick={() => handleDownload("exe")}
-            disabled={downloading}
             style={{ fontSize: "16px", padding: "14px 28px" }}
           >
-            <Download size={18} />
-            <span>{downloading ? "Preparing Download..." : "Download Desktop App for Windows (.exe)"}</span>
-          </button>
+            <Store size={18} />
+            <span>Get it from Microsoft Store</span>
+          </a>
 
           <button
             type="button"
@@ -244,44 +269,44 @@ export function LandingPage({ onLaunchWebApp }: Props) {
             style={{ fontSize: "16px", padding: "14px 28px" }}
           >
             <Globe size={18} />
-            <span>Launch Web Assistant</span>
+            <span>Open Web App (No Install)</span>
           </button>
         </div>
 
         <div className="landing-hero-meta">
-          <span>⚡ Official Windows Application (.exe Installer - 144 MB)</span>
+          <span>✅ Microsoft Store Verified — Installs Without Warnings</span>
           <span>•</span>
-          <span>🔒 Air-Gapped Local Folder Indexing</span>
+          <span>🌐 Web Version Works in Any Browser</span>
           <span>•</span>
-          <span>🌐 Zero-Install Web Service Also Available</span>
+          <span>🔒 Your Files Never Leave Your Computer</span>
         </div>
 
-        {/* ── Badges Strip ────────────────────────────────────────────── */}
+        {/* ── Trust Badges Strip ────────────────────────────────────────── */}
         <div className="landing-badges-strip">
           <div className="landing-badge-item">
-            <Laptop size={16} />
-            <span>Native Windows Desktop App</span>
+            <MessageSquare size={16} />
+            <span>AI Chat for Business Docs</span>
           </div>
           <div className="landing-badge-item">
-            <Lock size={16} />
-            <span>Ephemeral RAM Previews</span>
-          </div>
-          <div className="landing-badge-item">
-            <Folder size={16} />
-            <span>Local Hard Drive Indexing</span>
-          </div>
-          <div className="landing-badge-item">
-            <ShieldCheck size={16} />
-            <span>Enterprise RBAC & Security</span>
+            <FolderSearch size={16} />
+            <span>Local File Search & Indexing</span>
           </div>
           <div className="landing-badge-item">
             <Mic size={16} />
-            <span>Neural Voice Integration</span>
+            <span>Voice Assistant</span>
+          </div>
+          <div className="landing-badge-item">
+            <Users size={16} />
+            <span>Multi-User Roles (Admin, Manager, Employee)</span>
+          </div>
+          <div className="landing-badge-item">
+            <BarChart3 size={16} />
+            <span>Reports & Analytics</span>
           </div>
         </div>
 
         {/* ── Interactive Live Product Showcase Mockup ────────────────── */}
-        <div className="landing-mockup-wrapper" aria-label="Product Interface Mockup">
+        <div className="landing-mockup-wrapper" aria-label="Product Interface Demo">
           <div className="landing-mockup-topbar">
             <div className="mockup-traffic-lights">
               <span className="mockup-light red" />
@@ -294,7 +319,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
             </div>
             <div style={{ display: "flex", gap: "6px" }}>
               <span className="mockup-badge-verified">
-                <CheckCircle2 size={12} /> Local Storage Verified
+                <CheckCircle2 size={12} /> Local Files Indexed
               </span>
             </div>
           </div>
@@ -303,7 +328,7 @@ export function LandingPage({ onLaunchWebApp }: Props) {
             {/* Query selector pills */}
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
               <span style={{ fontSize: "12px", fontWeight: 700, color: "#64748b", textTransform: "uppercase" }}>
-                Try Enterprise Sample Queries:
+                Try These Examples:
               </span>
               {SAMPLE_QUERIES.map((sq, i) => (
                 <button
@@ -365,17 +390,17 @@ export function LandingPage({ onLaunchWebApp }: Props) {
                       fontWeight: 600,
                     }}
                   >
-                    Document Search
+                    {activeSample.fileType}
                   </span>
                 </div>
-                <span style={{ fontSize: "12px", color: "#64748b" }}>Found in local indexed folders</span>
+                <span style={{ fontSize: "12px", color: "#64748b" }}>Results from your local files</span>
               </div>
 
               <p style={{ margin: "0 0 14px", fontSize: "14px", color: "#334155", lineHeight: 1.5 }}>
                 {activeSample.summary}
               </p>
 
-              {/* File Results Interactive Table Mockup */}
+              {/* File Results Card */}
               <div
                 style={{
                   background: "#ffffff",
@@ -397,8 +422,8 @@ export function LandingPage({ onLaunchWebApp }: Props) {
                     justifyContent: "space-between",
                   }}
                 >
-                  <span>1 MATCHING COMPANY DOCUMENT</span>
-                  <span>🔒 In-Memory Ephemeral RAM Preview</span>
+                  <span>📄 SOURCE DOCUMENT</span>
+                  <span>🔒 Data Stays on Your PC</span>
                 </div>
                 <div
                   style={{
@@ -459,36 +484,12 @@ export function LandingPage({ onLaunchWebApp }: Props) {
                       }}
                     >
                       <Eye size={12} />
-                      <span>{previewExpanded ? "Hide Preview" : "Preview"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleCopyMockPath();
-                        notify(`Opened ${activeSample.fileName} in Windows default application`, "success");
-                      }}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        background: "#006583",
-                        border: "1px solid #004d63",
-                        color: "#ffffff",
-                        borderRadius: "6px",
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <ExternalLink size={12} />
-                      <span>Open in Excel/App</span>
+                      <span>{previewExpanded ? "Hide Details" : "View Details"}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Simulated In-Memory Ephemeral Preview Drawer */}
+                {/* Expanded Preview */}
                 {previewExpanded && (
                   <div
                     style={{
@@ -507,9 +508,8 @@ export function LandingPage({ onLaunchWebApp }: Props) {
                       }}
                     >
                       <span style={{ fontSize: "12px", fontWeight: 700, color: "#166534" }}>
-                        🔒 In-Memory Ephemeral Data View (Decoded in Browser RAM):
+                        📊 Extracted Data (processed locally on your device):
                       </span>
-                      <span style={{ fontSize: "11px", color: "#64748b" }}>Zero Cloud Persistence</span>
                     </div>
 
                     <div
@@ -542,177 +542,316 @@ export function LandingPage({ onLaunchWebApp }: Props) {
         </div>
       </section>
 
-      {/* ── Section: What We Do & What Is The Use Of It ───────────────── */}
-      <section id="capabilities" className="landing-section" aria-label="Capabilities">
+      {/* ── Section: Key Features ─────────────────────────────────────── */}
+      <section id="features" className="landing-section" aria-label="Features">
         <div className="landing-section-head">
-          <span className="landing-eyebrow">Enterprise Value Proposition</span>
-          <h2 className="landing-section-title">What Nanvi AI Does & What You Use It For</h2>
+          <span className="landing-eyebrow">What You Can Do With Nanvi AI</span>
+          <h2 className="landing-section-title">Built for Real Business Work, Not Just Demos</h2>
           <p className="landing-section-sub">
-            Traditional corporate search forces employees to browse complex network drives and read endless files.
-            Nanvi AI bridges local business folders and enterprise cloud intelligence into a single conversation.
+            Nanvi AI connects to your actual business files on your Windows PC or company network.
+            Ask questions in plain English and get answers with source citations from your own documents.
           </p>
         </div>
 
         <div className="landing-grid-4">
           <div className="landing-card">
             <div className="landing-card-icon">
+              <Search size={22} />
+            </div>
+            <h3 className="landing-card-title">Search Your Company Files</h3>
+            <p className="landing-card-desc">
+              Point Nanvi to any folder on your PC — invoices, contracts, HR documents, project files.
+              It indexes everything and lets you search by asking questions like
+              "Find the cement bill from July" or "Show me all pending approvals."
+            </p>
+          </div>
+
+          <div className="landing-card">
+            <div className="landing-card-icon">
               <FileSpreadsheet size={22} />
             </div>
-            <h3 className="landing-card-title">Invoice & Ledger Auditing</h3>
+            <h3 className="landing-card-title">Invoice & Payment Tracking</h3>
             <p className="landing-card-desc">
-              Instantly track invoices, vendor dues, tax amounts, and aging cycles across thousands of spreadsheet and CSV files
-              without manual lookup.
+              Query thousands of invoices, purchase orders, and payment records instantly.
+              Ask things like "How much do we owe to vendor X?" or "Which invoices are overdue by 90 days?"
+              and get exact amounts with file references.
             </p>
           </div>
 
           <div className="landing-card">
             <div className="landing-card-icon">
-              <Folder size={22} />
+              <FileText size={22} />
             </div>
-            <h3 className="landing-card-title">Private Local PC Indexing</h3>
+            <h3 className="landing-card-title">Contract & Document Analysis</h3>
             <p className="landing-card-desc">
-              Connect your local Windows folders (`CompanyData`, `Invoices`, network drives). Indexing runs locally so confidential
-              files never leave your computer.
+              Upload or index PDF contracts, agreements, and policy documents.
+              Nanvi extracts key clauses, warranty terms, penalty conditions, and deadline dates
+              so you don't have to read 50-page documents manually.
             </p>
           </div>
 
           <div className="landing-card">
             <div className="landing-card-icon">
-              <Eye size={22} />
+              <BarChart3 size={22} />
             </div>
-            <h3 className="landing-card-title">In-Memory Ephemeral Previews</h3>
+            <h3 className="landing-card-title">Reports & Analytics</h3>
             <p className="landing-card-desc">
-              Inspect full spreadsheet tables, contracts, and PDFs directly in browser memory. No temporary copies are saved on cloud
-              servers.
+              Generate summary reports from your data — aging analysis, vendor-wise breakdowns,
+              department spending, and project cost tracking. Export to Excel or view directly
+              in the app.
             </p>
           </div>
 
           <div className="landing-card">
             <div className="landing-card-icon">
-              <ExternalLink size={22} />
+              <Mic size={22} />
             </div>
-            <h3 className="landing-card-title">Native Windows App Launching</h3>
+            <h3 className="landing-card-title">Voice Assistant</h3>
             <p className="landing-card-desc">
-              One-click opening launches documents directly in native Windows apps (Excel, Word, Notepad, Acrobat) and copies the path
-              to your clipboard.
+              Speak your questions instead of typing. Nanvi's built-in voice mode lets you
+              ask queries hands-free — useful when you're reviewing physical documents
+              or on a call and need quick answers.
+            </p>
+          </div>
+
+          <div className="landing-card">
+            <div className="landing-card-icon">
+              <Users size={22} />
+            </div>
+            <h3 className="landing-card-title">Team Roles & Access Control</h3>
+            <p className="landing-card-desc">
+              Set up your team with different access levels — Admin, Supervisor, Project Engineer,
+              and Employee roles. Control who can see what data, manage users, and view audit logs
+              of all queries made.
+            </p>
+          </div>
+
+          <div className="landing-card">
+            <div className="landing-card-icon">
+              <Mail size={22} />
+            </div>
+            <h3 className="landing-card-title">Email Integration</h3>
+            <p className="landing-card-desc">
+              Connect your work email to search through correspondence alongside your documents.
+              Find emails related to specific vendors, projects, or transactions without
+              switching between applications.
+            </p>
+          </div>
+
+          <div className="landing-card">
+            <div className="landing-card-icon">
+              <HardDrive size={22} />
+            </div>
+            <h3 className="landing-card-title">100% Private — Files Stay Local</h3>
+            <p className="landing-card-desc">
+              Your documents are never uploaded to any cloud server. All file indexing
+              and search happens on your own computer. Only your typed questions go to the AI —
+              not your actual files. Complete data privacy by design.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ── Section: Dual Architecture (Web vs Local App) ─────────────── */}
+      {/* ── Section: How It Works ─────────────────────────────────────── */}
+      <section id="how-it-works" className="landing-section" aria-label="How It Works">
+        <div className="landing-section-head">
+          <span className="landing-eyebrow">Getting Started</span>
+          <h2 className="landing-section-title">Start Querying Your Business Data in 3 Minutes</h2>
+          <p className="landing-section-sub">
+            Install from the Microsoft Store, point to your company folder, and start asking questions.
+            No complex setup. No cloud configuration.
+          </p>
+        </div>
+
+        <div className="landing-steps-row">
+          <div className="landing-step-card">
+            <span className="step-num-badge">1</span>
+            <h3 className="step-card-title">Install from Microsoft Store</h3>
+            <p className="step-card-desc">
+              Search "<strong>Nanvi AI Enterprise Assistant</strong>" in the Microsoft Store
+              or click the download button above. Installs in one click — no warnings,
+              no admin permissions needed. Works on Windows 10 and 11.
+            </p>
+          </div>
+
+          <div className="landing-step-card">
+            <span className="step-num-badge">2</span>
+            <h3 className="step-card-title">Select Your Company Folder</h3>
+            <p className="step-card-desc">
+              Point Nanvi to the folder where your business files are stored — 
+              <code>C:\CompanyData</code>, network drives, or any folder with your invoices,
+              contracts, and documents. Nanvi indexes them locally on your machine.
+            </p>
+          </div>
+
+          <div className="landing-step-card">
+            <span className="step-num-badge">3</span>
+            <h3 className="step-card-title">Ask Questions, Get Answers</h3>
+            <p className="step-card-desc">
+              Type or speak your question in plain English. Nanvi searches your files,
+              extracts the relevant data, and shows you the answer with a direct link
+              to the source document. Click to open in Excel, Word, or your default app.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Section: Web vs Desktop ───────────────────────────────────── */}
       <section id="architecture" className="landing-section" style={{ background: "#f1f5f9", borderRadius: "20px" }}>
         <div className="landing-section-head">
-          <span className="landing-eyebrow">Deployment Flexibility</span>
-          <h2 className="landing-section-title">Both Web Service & Local Application</h2>
+          <span className="landing-eyebrow">Two Ways to Use Nanvi AI</span>
+          <h2 className="landing-section-title">Desktop App for Local Files, Web App for Remote Access</h2>
           <p className="landing-section-sub">
-            Nanvi AI gives you the best of both worlds: a private Windows local application for secure workstation files,
-            plus a modern cloud web service for browser access anywhere.
+            Use the Windows desktop app when you need to search files stored on your local computer.
+            Use the web app when you're away from your workstation or need browser-only access.
           </p>
         </div>
 
         <div className="landing-arch-grid">
-          {/* Local Windows Application Card */}
+          {/* Desktop Application Card */}
           <div className="arch-card featured">
-            <span className="arch-badge-ribbon">Windows Desktop App</span>
+            <span className="arch-badge-ribbon">Desktop App — Microsoft Store</span>
             <div className="arch-card-header">
               <div className="arch-icon">
                 <Laptop size={26} />
               </div>
-              <h3 className="arch-card-title">Local Windows Desktop Application</h3>
+              <h3 className="arch-card-title">Windows Desktop Application</h3>
               <p className="arch-card-desc">
-                Full standalone application that installs on your PC. Works directly with Windows File Explorer, Excel, and local hard drives.
+                Full Windows app that runs on your PC. Indexes your local files and lets
+                you query them with AI. No files are uploaded to the cloud.
               </p>
             </div>
 
             <ul className="arch-feature-list">
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Installs on Windows 10 & 11 as a dedicated desktop software (Nanvi AI Assistant.exe)</span>
+                <span>Install from Microsoft Store — verified, no security warnings</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Connects to local folders (`C:\CompanyData`, `Invoices`, mapped drives)</span>
+                <span>Index local folders: invoices, contracts, HR docs, project files</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>1-click file opening launches Microsoft Excel, Word, Acrobat, or Notepad natively</span>
+                <span>Open results directly in Excel, Word, Acrobat with one click</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Zero confidential file uploads — indexing and hashing stay on your PC</span>
+                <span>Voice assistant — ask questions by speaking</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Built-in local Python agent with real-time filesystem monitoring</span>
+                <span>Works offline for indexed files — no internet required after setup</span>
               </li>
             </ul>
 
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <button
-                type="button"
+              <a
+                href={MS_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn-landing-primary"
-                onClick={() => handleDownload("exe")}
-                disabled={downloading}
-                style={{ width: "100%", justifyContent: "center" }}
+                style={{ width: "100%", justifyContent: "center", textDecoration: "none" }}
               >
-                <Download size={16} />
-                <span>Download Desktop App (.exe Installer)</span>
-              </button>
+                <Store size={16} />
+                <span>Get from Microsoft Store (Recommended)</span>
+              </a>
               <button
                 type="button"
-                onClick={() => handleDownload("bat")}
+                onClick={() => setShowExeWarning(!showExeWarning)}
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#006583",
+                  color: "#64748b",
                   fontSize: "12.5px",
-                  fontWeight: 600,
+                  fontWeight: 500,
                   cursor: "pointer",
                   textDecoration: "underline",
                   padding: "4px",
                 }}
               >
-                Or download lightweight 1-click runner (.bat)
+                Or download .exe installer (advanced users)
               </button>
+              {showExeWarning && (
+                <div
+                  style={{
+                    background: "#fffbeb",
+                    border: "1px solid #fcd34d",
+                    borderRadius: "8px",
+                    padding: "12px",
+                    fontSize: "13px",
+                    color: "#92400e",
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <div>
+                    <strong>Windows Smart App Control may block the .exe installer</strong> because it is
+                    not code-signed. You may need to click "More info" → "Run anyway" to proceed.
+                    For a hassle-free experience, use the Microsoft Store version above.
+                    <br />
+                    <button
+                      type="button"
+                      onClick={() => handleDownload("exe")}
+                      disabled={downloading}
+                      style={{
+                        marginTop: "8px",
+                        background: "#f59e0b",
+                        color: "#ffffff",
+                        border: "none",
+                        borderRadius: "6px",
+                        padding: "6px 14px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Download size={12} /> {downloading ? "Downloading..." : "Download .exe Anyway"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Cloud Web Service Card */}
           <div className="arch-card">
             <span className="arch-badge-ribbon" style={{ background: "#eff6ff", color: "#1e40af", borderColor: "#bfdbfe" }}>
-              Cloud Web Service
+              Web App — Zero Install
             </span>
             <div className="arch-card-header">
               <div className="arch-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>
                 <Globe size={26} />
               </div>
-              <h3 className="arch-card-title">Enterprise Cloud Web Portal</h3>
+              <h3 className="arch-card-title">Cloud Web Application</h3>
               <p className="arch-card-desc">
-                Ideal for remote executives, project managers, and mobile reviews with zero local setup needed.
+                Access Nanvi AI from any browser — no installation needed. Ideal for teams working
+                remotely or managers who need quick access from any device.
               </p>
             </div>
 
             <ul className="arch-feature-list">
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Accessible on any modern web browser at your enterprise URL</span>
+                <span>Works on any device with a modern web browser</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Role-based access control (Supervisor, Project Engineer, Employee, Admin)</span>
+                <span>Role-based access: Admin, Supervisor, Project Engineer, Employee</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Live agent status monitoring and real-time synchronization</span>
+                <span>Full chat history, audit logs, and query export</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Comprehensive conversation history and audit log exports</span>
+                <span>Admin dashboard with user management and analytics</span>
               </li>
               <li className="arch-feature-item">
                 <CheckCircle2 size={16} />
-                <span>Zero installation required — just sign in and ask</span>
+                <span>No installation — just sign in and start asking</span>
               </li>
             </ul>
 
@@ -723,81 +862,91 @@ export function LandingPage({ onLaunchWebApp }: Props) {
               style={{ width: "100%", justifyContent: "center" }}
             >
               <ExternalLink size={16} />
-              <span>Launch Web Service</span>
+              <span>Open Web App</span>
             </button>
           </div>
         </div>
       </section>
 
-      {/* ── Section: How It Works ─────────────────────────────────────── */}
-      <section id="how-it-works" className="landing-section" aria-label="How It Works">
+      {/* ── Section: Who Uses Nanvi AI ────────────────────────────────── */}
+      <section className="landing-section" aria-label="Use Cases">
         <div className="landing-section-head">
-          <span className="landing-eyebrow">Simple Workflow</span>
-          <h2 className="landing-section-title">Up and Running in 3 Steps</h2>
+          <span className="landing-eyebrow">Who Is This For</span>
+          <h2 className="landing-section-title">Built for Teams That Work With Documents Daily</h2>
           <p className="landing-section-sub">
-            Install the desktop application, select your company folder, and query your business data with AI.
+            If your team spends time searching for invoices, reading contracts, or tracking payments
+            across spreadsheets — Nanvi AI saves hours every week.
           </p>
         </div>
 
-        <div className="landing-steps-row">
-          <div className="landing-step-card">
-            <span className="step-num-badge">1</span>
-            <h3 className="step-card-title">Download & Install</h3>
-            <p className="step-card-desc">
-              Download <strong>Nanvi AI Assistant Setup.exe</strong> and run the installer.
-              The application installs on your Windows PC and places a shortcut on your Desktop.
+        <div className="landing-grid-4">
+          <div className="landing-card">
+            <div className="landing-card-icon" style={{ background: "#eff6ff", color: "#2563eb" }}>
+              <BarChart3 size={22} />
+            </div>
+            <h3 className="landing-card-title">Accounts & Finance Teams</h3>
+            <p className="landing-card-desc">
+              Track pending payments, search vendor invoices, generate aging reports,
+              and verify tax amounts across thousands of records — all by asking in plain English.
             </p>
           </div>
 
-          <div className="landing-step-card">
-            <span className="step-num-badge">2</span>
-            <h3 className="step-card-title">Connect Business Folder</h3>
-            <p className="step-card-desc">
-              Point to your local documents folder (e.g. <code>companydata_bridge_construction</code> or <code>C:\CompanyData</code>).
-              Nanvi indexes and hashes your records securely.
+          <div className="landing-card">
+            <div className="landing-card-icon" style={{ background: "#fef3c7", color: "#d97706" }}>
+              <FileText size={22} />
+            </div>
+            <h3 className="landing-card-title">Legal & Contract Teams</h3>
+            <p className="landing-card-desc">
+              Search contract clauses, extract warranty periods, find penalty terms,
+              and compare agreement conditions across multiple documents without reading each one.
             </p>
           </div>
 
-          <div className="landing-step-card">
-            <span className="step-num-badge">3</span>
-            <h3 className="step-card-title">Ask Text or Voice Queries</h3>
-            <p className="step-card-desc">
-              Ask questions like <em>"Find unpaid invoices for Sri Ganesh ReadyMix"</em>.
-              Get exact answers, verified citations, in-memory table previews, and 1-click desktop opening.
+          <div className="landing-card">
+            <div className="landing-card-icon" style={{ background: "#f0fdf4", color: "#16a34a" }}>
+              <Settings size={22} />
+            </div>
+            <h3 className="landing-card-title">Project Managers</h3>
+            <p className="landing-card-desc">
+              Find project documents, track material purchase orders, check work orders
+              and site reports. Get quick summaries from project folders without opening dozens of files.
+            </p>
+          </div>
+
+          <div className="landing-card">
+            <div className="landing-card-icon" style={{ background: "#fdf2f8", color: "#db2777" }}>
+              <Shield size={22} />
+            </div>
+            <h3 className="landing-card-title">IT & Admin Teams</h3>
+            <p className="landing-card-desc">
+              Manage user access, view audit logs of all queries, set up role-based permissions,
+              and ensure sensitive documents are only accessible to authorized team members.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ── Section: Download Center & Cloud Web Access ───────────────── */}
+      {/* ── Section: Download Center ──────────────────────────────────── */}
       <section id="downloads" className="landing-section" aria-label="Download Center">
         <div className="download-center-banner">
           <div className="download-banner-left">
-            <h2>Download Nanvi AI Assistant for Windows</h2>
+            <h2>Get Nanvi AI for Your Team</h2>
             <p>
-              Get the official desktop application installed on your PC to index local business folders with maximum privacy,
-              or launch the cloud web service directly in your browser.
+              Install the desktop app from the Microsoft Store for the smoothest experience,
+              or launch the web version directly in your browser — no download needed.
             </p>
 
             <div className="download-banner-actions">
-              <button
-                type="button"
+              <a
+                href={MS_STORE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="btn-landing-primary"
-                onClick={() => handleDownload(downloadFormat)}
-                disabled={downloading}
-                style={{ background: "#ffffff", color: "#0f172a !important" }}
+                style={{ background: "#ffffff", color: "#0f172a", textDecoration: "none" }}
               >
-                <Download size={18} className="text-teal-800" />
-                <span style={{ color: "#0f172a" }}>
-                  {downloading
-                    ? "Downloading..."
-                    : downloadFormat === "exe"
-                    ? "Download Desktop App (.exe)"
-                    : downloadFormat === "bat"
-                    ? "Download Fast Runner (.bat)"
-                    : "Download Agent Package (.zip)"}
-                </span>
-              </button>
+                <Store size={18} className="text-teal-800" />
+                <span style={{ color: "#0f172a" }}>Get from Microsoft Store</span>
+              </a>
 
               <button
                 type="button"
@@ -806,60 +955,33 @@ export function LandingPage({ onLaunchWebApp }: Props) {
                 style={{ background: "rgba(255, 255, 255, 0.15)", color: "#ffffff !important", borderColor: "rgba(255, 255, 255, 0.3)" }}
               >
                 <Globe size={18} />
-                <span style={{ color: "#ffffff" }}>Launch Web Assistant</span>
+                <span style={{ color: "#ffffff" }}>Launch Web App</span>
               </button>
             </div>
 
-            <div style={{ marginTop: "18px", fontSize: "13px", color: "#cbd5e1", display: "flex", gap: "16px", alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontWeight: 600 }}>Choose Download Package:</span>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "exe" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "exe" ? 700 : 400 }}>
-                <input
-                  type="radio"
-                  name="downloadFormat"
-                  checked={downloadFormat === "exe"}
-                  onChange={() => setDownloadFormat("exe")}
-                />
-                🖥️ Desktop App (.exe Installer - 144 MB)
-              </label>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "bat" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "bat" ? 700 : 400 }}>
-                <input
-                  type="radio"
-                  name="downloadFormat"
-                  checked={downloadFormat === "bat"}
-                  onChange={() => setDownloadFormat("bat")}
-                />
-                ⚡ Fast Runner (.bat - 66 KB)
-              </label>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: "5px", cursor: "pointer", color: downloadFormat === "zip" ? "#ffffff" : "#cbd5e1", fontWeight: downloadFormat === "zip" ? 700 : 400 }}>
-                <input
-                  type="radio"
-                  name="downloadFormat"
-                  checked={downloadFormat === "zip"}
-                  onChange={() => setDownloadFormat("zip")}
-                />
-                📦 Portable ZIP
-              </label>
+            <div style={{ marginTop: "18px", fontSize: "13px", color: "#94a3b8" }}>
+              Available on Windows 10/11 via Microsoft Store. Web app works on all devices.
             </div>
           </div>
 
           <div className="download-banner-right">
-            <h4>Installation & Setup Guide:</h4>
+            <h4>Quick Start Guide:</h4>
             <ul className="download-steps-mini">
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>1. Download <code>Nanvi AI Assistant-Setup-0.1.0.exe</code></span>
+                <span>1. Install from Microsoft Store (or download .exe)</span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>2. Run the installer to install Nanvi onto your computer</span>
+                <span>2. Sign in with your company credentials</span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>3. Double-click the desktop shortcut to launch Nanvi</span>
+                <span>3. Select your business folder to index</span>
               </li>
               <li>
                 <CheckCircle2 size={16} className="text-green-400" />
-                <span>4. Select your folder & start asking questions immediately</span>
+                <span>4. Ask questions about your documents</span>
               </li>
             </ul>
           </div>
@@ -875,9 +997,14 @@ export function LandingPage({ onLaunchWebApp }: Props) {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
-            <span>🔒 Enterprise Grade</span>
-            <span>•</span>
-            <span>⚡ Windows 10/11 & Cloud</span>
+            <a
+              href={MS_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#006583", fontWeight: 600, textDecoration: "none", fontSize: "13px" }}
+            >
+              Microsoft Store
+            </a>
             <span>•</span>
             <button
               type="button"
@@ -886,6 +1013,8 @@ export function LandingPage({ onLaunchWebApp }: Props) {
             >
               Sign In to Web Portal
             </button>
+            <span>•</span>
+            <span>Windows 10/11 & Web</span>
           </div>
 
           <div>

@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://apps.microsoft.com/detail/9NZMM1MV9XX4?hl=en-us&gl=IN&ocid=pdpshare"><img src="https://img.shields.io/badge/Microsoft_Store-Get_it_from_MS_Store-0078D7?style=for-the-badge&logo=microsoft&logoColor=white" alt="Microsoft Store" /></a>
   <a href="#-system-architecture"><img src="https://img.shields.io/badge/Architecture-Multi--Agent%20LangGraph-7952B3?style=for-the-badge&logo=diagramsdotnet&logoColor=white" alt="LangGraph Architecture" /></a>
   <a href="#-security--zero-trust-governance"><img src="https://img.shields.io/badge/Security-Zero--Trust%20RBAC%2FABAC-critical?style=for-the-badge&logo=shield&logoColor=white" alt="Security RBAC" /></a>
   <a href="#-testing--verification"><img src="https://img.shields.io/badge/Tests-340%20Backend%20%7C%2056%20Frontend%20Passed-success?style=for-the-badge&logo=checkmarx&logoColor=white" alt="Tests Passed" /></a>
@@ -342,6 +343,14 @@ docker-compose -f docker-compose.yml up -d --build
 
 - **Nginx Reverse Proxy**: Pre-configured in [`deploy/nginx/nginx.conf`](deploy/nginx/nginx.conf) with rate-limiting, SSL termination, and static asset offloading.
 - **Database Schema**: Full PostgreSQL migration and seed scripts available in [`deploy/supabase_migration_and_seed.sql`](deploy/supabase_migration_and_seed.sql).
+
+### Strategy 3: Windows Desktop Application (Official Microsoft Store)
+
+Nanvi AI Enterprise Assistant is published directly on the official Microsoft Store for Windows 10 and 11:
+- 🛒 **Microsoft Store Listing**: [**Install Nanvi AI Enterprise Assistant**](https://apps.microsoft.com/detail/9NZMM1MV9XX4?hl=en-us&gl=IN&ocid=pdpshare) (`Product ID: 9NZMM1MV9XX4`)
+- **Package Architecture**: Windows Desktop Bridge (MSIX/AppX) cryptographically signed by Microsoft root authority — automatically bypassing Windows 11 Smart App Control.
+- **Direct Installer (.exe)**: Independent NSIS direct-download installer available on the portal.
+- **Documentation**: See [**Microsoft Store Distribution Guide**](docs/MICROSOFT_STORE_DISTRIBUTION.md) for full architecture and Partner Center configuration.
 
 ---
 

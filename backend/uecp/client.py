@@ -225,7 +225,7 @@ class UECPClient:
         url = f"{self._config.base_url}/api/v1/health"
         client = self._get_http_client()
         try:
-            resp = client.get(url, timeout=min(2.0, self._config.validation_timeout_seconds))
+            resp = client.get(url, timeout=min(5.0, self._config.validation_timeout_seconds))
             reachable = resp.status_code in {200, 204}
         except Exception:
             reachable = False

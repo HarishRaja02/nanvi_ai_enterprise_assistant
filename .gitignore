@@ -43,6 +43,7 @@ frontend/release/
 *.zip
 *.tar.gz
 *.tgz
+*.lnk
 project_for_deepseek.txt
 scratch/
 
