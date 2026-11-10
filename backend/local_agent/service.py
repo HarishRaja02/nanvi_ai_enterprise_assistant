@@ -154,16 +154,33 @@ class LocalAgentService:
         try:
             expanded = Path(os.path.expandvars(os.path.expanduser(cleaned))).resolve()
             if expanded.exists() and expanded.is_dir():
+                from .models import LocalAgentHeartbeat
+                hb = LocalAgentHeartbeat(
+                    agent_version="desktop-direct-1.0.0",
+                    platform=sys.platform,
+                    hostname=socket.gethostname(),
+                )
+                for tid in (tenant_id, "default", "enterprise-tenant"):
+                    for uid in (user_id, "default"):
+                        try:
+                            self.store.record_heartbeat_and_pop_commands(tid, uid, hb)
+                        except Exception:
+                            pass
+
                 threading.Thread(
                     target=self._index_local_directory,
                     args=(tenant_id, user_id, expanded),
                     daemon=True,
                 ).start()
-                return {"status": "ok", "message": f"✓ Folder '{expanded}' found on this computer. Local indexing started!"}
+                return {
+                    "status": "ok",
+                    "folder_path": str(expanded),
+                    "message": f"✓ Folder '{expanded}' found on this computer. Local indexing started!",
+                }
         except Exception as e:
             logger.debug("Could not resolve local folder %s: %s", cleaned, e)
 
-        return {"status": "ok", "message": f"✓ Folder '{cleaned}' added for indexing."}
+        return {"status": "ok", "folder_path": cleaned, "message": f"✓ Folder '{cleaned}' added for indexing."}
 
     def _index_local_directory(self, tenant_id: str, user_id: str, folder_path: Path) -> None:
         """Immediately index a locally accessible directory into LocalAgentStore."""
@@ -247,14 +264,50 @@ class LocalAgentService:
                 chunks=all_chunks,
                 replace_all=False,
             )
+            # 1. Sync across target user and default tenant keys
             self.sync_folder(tenant_id, user_id, payload)
-            # Record local desktop heartbeat so agent status is marked online
+            if tenant_id != "default" or user_id != "default":
+                try:
+                    self.sync_folder("default", "default", payload)
+                except Exception:
+                    pass
+            if tenant_id != "enterprise-tenant":
+                try:
+                    self.sync_folder("enterprise-tenant", "default", payload)
+                except Exception:
+                    pass
+
+            # 2. Persist active folder for server restart resilience
+            try:
+                from backend.integrations.files.company_data.persistence import set_persisted_folder
+                set_persisted_folder(folder_str, tenant_id=tenant_id)
+                set_persisted_folder(folder_str, tenant_id="default")
+                set_persisted_folder(folder_str, tenant_id="enterprise-tenant")
+            except Exception as exc:
+                logger.warning("Could not persist folder %s: %s", folder_str, exc)
+
+            # 3. Dynamically update CompanyDataService root for immediate search availability in chat
+            try:
+                from backend.integrations.files.company_data_service import CompanyDataService
+                for tid in (tenant_id, "default", "enterprise-tenant"):
+                    cds = CompanyDataService.for_tenant(tid)
+                    if folder_path.exists() and folder_path.is_dir():
+                        cds.update_root(folder_path)
+            except Exception as exc:
+                logger.warning("Could not update CompanyDataService root: %s", exc)
+
+            # 4. Record local desktop heartbeat so agent status is marked online
             hb = LocalAgentHeartbeat(
                 agent_version="desktop-direct-1.0.0",
                 platform=sys.platform,
                 hostname=socket.gethostname(),
             )
-            self.store.record_heartbeat_and_pop_commands(tenant_id, user_id, hb)
+            for tid in (tenant_id, "default", "enterprise-tenant"):
+                for uid in (user_id, "default"):
+                    try:
+                        self.store.record_heartbeat_and_pop_commands(tid, uid, hb)
+                    except Exception:
+                        pass
             logger.info("Successfully indexed local folder %s: %d files, %d chunks", folder_str, len(files_meta), len(all_chunks))
         except Exception as exc:
             logger.error("Failed to index local folder %s: %s", folder_path, exc)

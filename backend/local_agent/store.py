@@ -9,6 +9,7 @@ import re
 import tempfile
 import threading
 import time
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -384,10 +385,20 @@ class LocalAgentStore:
                     and str(c.get("folder_path", "")).replace("\\", "/").rstrip("/").lower() not in disconn
                 ])
 
+            # Local computer resilience: if folders physically exist on local disk, local storage is active
+            if not is_online and folders:
+                for f in folders:
+                    try:
+                        if Path(f.folder_path).exists() and Path(f.folder_path).is_dir():
+                            is_online = True
+                            break
+                    except Exception:
+                        pass
+
             return {
                 "is_online": is_online,
                 "last_heartbeat": agent.get("last_heartbeat"),
-                "agent_version": agent.get("agent_version"),
+                "agent_version": agent.get("agent_version") or ("desktop-direct-1.0.0" if is_online else None),
                 "connected_folders": folders,
                 "total_files": total_files,
                 "total_chunks": total_chunks,

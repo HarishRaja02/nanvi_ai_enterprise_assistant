@@ -117,14 +117,89 @@ async def local_agent_open_file(
     }
 
 
+def _launch_native_windows_folder_dialog(title: str = "Select Company Folder for Nanvi Assistant") -> str | None:
+    """Launch the native Windows Explorer folder selection dialog directly on this computer."""
+    import sys
+    from pathlib import Path
+
+    if sys.platform != "win32":
+        return None
+
+    # 1. Try Tkinter filedialog (built-in, lightweight)
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        selected = filedialog.askdirectory(title=title)
+        root.destroy()
+        if selected and Path(selected).exists():
+            return str(Path(selected).resolve())
+    except Exception as tk_exc:
+        logger.debug("Tkinter folder picker could not open: %s", tk_exc)
+
+    # 2. Try PowerShell FolderBrowserDialog
+    try:
+        import subprocess
+        ps_code = f"""
+Add-Type -AssemblyName System.Windows.Forms
+$dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+$dlg.Description = '{title}'
+$dlg.ShowNewFolderButton = $true
+$res = $dlg.ShowDialog()
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {{
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    Write-Output $dlg.SelectedPath
+}}
+"""
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_code],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if proc.returncode == 0:
+            out = proc.stdout.strip()
+            if out and Path(out).exists():
+                return str(Path(out).resolve())
+    except Exception as ps_exc:
+        logger.debug("PowerShell folder picker error: %s", ps_exc)
+
+    return None
+
+
 @router.post("/browse-folder")
 async def local_agent_browse_folder(
     user: UserIdentity | None = Depends(get_optional_current_user),
     service: LocalAgentService = Depends(get_local_agent_service),
 ) -> dict[str, Any]:
-    """Trigger the native Windows folder picker dialog on the user's connected PC."""
+    """Trigger the native Windows folder picker dialog on the host PC or connected agent."""
+    import sys
+    import asyncio
+
     t_id = getattr(user, "tenant_id", None) or "enterprise-tenant"
-    u_id = getattr(user, "subject", None) or "default"
+    u_id = getattr(user, "subject", None) or getattr(user, "user_id", None) or "default"
+
+    # If backend is running locally on Windows, open native Windows Explorer dialog directly
+    if sys.platform == "win32":
+        loop = asyncio.get_running_loop()
+        selected_path = await loop.run_in_executor(None, _launch_native_windows_folder_dialog)
+        if selected_path:
+            res = service.request_folder(t_id, u_id, selected_path)
+            return {
+                "status": "ok",
+                "folder_path": selected_path,
+                "message": res.get("message") or f"✓ Folder '{selected_path}' linked to Nanvi Assistant.",
+                "direct": True,
+            }
+        else:
+            return {
+                "status": "canceled",
+                "message": "Folder selection was canceled or no folder was chosen.",
+            }
+
+    # Remote agent fallback: queue command for connected PC agent
     cmd_id = service.queue_command(t_id, u_id, "browse_folder", {})
     if u_id != "default":
         try:
@@ -624,6 +699,23 @@ async def remove_local_folder(
     tenant_id = getattr(user, "tenant_id", None) or "default"
     user_id = _get_user_id(user)
     service.remove_folder(tenant_id, user_id, target_id)
+    # Also clear persistence and CompanyDataService if matching
+    try:
+        from backend.integrations.files.company_data.persistence import get_persisted_folder, ACTIVE_FOLDERS_FILE, ACTIVE_FOLDER_FILE
+        cur = get_persisted_folder(tenant_id)
+        if cur and (target_id.lower() in str(cur).lower() or str(cur).lower() in target_id.lower()):
+            if ACTIVE_FOLDERS_FILE.exists():
+                ACTIVE_FOLDERS_FILE.write_text("{}", encoding="utf-8")
+            if ACTIVE_FOLDER_FILE.exists():
+                ACTIVE_FOLDER_FILE.write_text("{}", encoding="utf-8")
+            from backend.integrations.files.company_data_service import CompanyDataService
+            for tid in (tenant_id, "default", "enterprise-tenant"):
+                cds = CompanyDataService.for_tenant(tid)
+                cds.files = []
+                cds.chunks = []
+    except Exception as exc:
+        logger.debug("Could not clear persisted folder on remove: %s", exc)
+
     return {"status": "ok", "message": f"Folder '{target_id}' disconnected."}
 
 

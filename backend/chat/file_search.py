@@ -699,10 +699,10 @@ def execute_file_search(
                     if not st.connected_folders and not repo_root:
                         answer = (
                             "**No Local Company Folder Connected**\n\n"
-                            "Nanvi AI accesses documents exclusively from the folder you specify in the Windows BAT file agent.\n\n"
+                            "Nanvi AI has not linked a local company folder yet.\n\n"
                             "👉 **To connect your folder:**\n"
-                            "1. Go to **Settings** → **Company Folder** and click **Download Nanvi_Assistant.bat**\n"
-                            "2. Double-click the downloaded file on your Windows computer and enter the folder path."
+                            "1. Go to **Settings** → **Company Folder**\n"
+                            "2. Click **📁 1-Click Browse** to pick any folder from Windows Explorer, or use **✍️ Manual Path Input** to enter your path directly (e.g. `C:\\Users\\Username\\Documents`)."
                         )
                         return answer, [], []
                 except Exception:

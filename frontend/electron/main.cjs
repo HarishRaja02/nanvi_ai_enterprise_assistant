@@ -21,10 +21,16 @@ function isBackendReachable(port = 8000) {
 }
 
 function findProjectRoot() {
+  const os = require('os');
+  const home = os.homedir();
   const seeds = [
     process.cwd(),
     __dirname,
     process.resourcesPath || '',
+    path.join(home, 'Desktop', 'nanvi_ai_enterprise_assistant'),
+    path.join(home, 'Downloads', 'nanvi_ai_enterprise_assistant'),
+    path.join(home, 'Documents', 'nanvi_ai_enterprise_assistant'),
+    path.join('C:', 'Users', path.basename(home), 'Desktop', 'nanvi_ai_enterprise_assistant'),
     path.resolve(__dirname, '../../../../..'),
     path.resolve(__dirname, '../../../..'),
     path.resolve(__dirname, '../../..'),
@@ -53,6 +59,7 @@ function findPythonAndProject() {
     path.join(projectDir, 'venv', 'Scripts', 'python.exe'),
     path.join(projectDir, '.venv', 'Scripts', 'python.exe'),
     path.join(projectDir, 'venv', 'bin', 'python'),
+    'C:\\Python313\\python.exe',
     'python.exe',
     'python',
   ];

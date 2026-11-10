@@ -224,6 +224,7 @@ export function CompanyFolderPicker({ api }: Props) {
       const res = await api.addLocalFolder(clean);
       setAddFolderMsg(res.message || `✓ Folder '${clean}' added. Starting indexing...`);
       setCustomLocalFolder("");
+      await fetchStatus();
       triggerRapidPoll();
     } catch (err: any) {
       setAddFolderMsg(`Error: ${err?.message || "Failed to add folder"}`);
@@ -233,7 +234,7 @@ export function CompanyFolderPicker({ api }: Props) {
   };
 
   const handleBrowseFolder = async () => {
-    // 1. Native Desktop File Picker (when running in the Desktop Application)
+    // 1. Native Desktop File Picker (when running in Electron Desktop Application)
     if (typeof window !== "undefined" && window.electronAPI?.selectFolder) {
       setBrowsingFolder(true);
       setAddFolderMsg(null);
@@ -244,6 +245,7 @@ export function CompanyFolderPicker({ api }: Props) {
           setAddingFolder(true);
           const res = await api.addLocalFolder(selected);
           setAddFolderMsg(res.message || `✓ Folder '${selected}' linked to Nanvi Assistant.`);
+          await fetchStatus();
           triggerRapidPoll();
         }
       } catch (err: any) {
@@ -255,24 +257,26 @@ export function CompanyFolderPicker({ api }: Props) {
       return;
     }
 
-    // 2. Web Browser Fallback (requires local agent script)
-    if (!agentStatus?.is_online) {
-      setMessage({
-        text: "The Nanvi Assistant agent is not currently connected. Please download and double-click Nanvi_Assistant.bat first so it can launch the Windows Explorer dialog.",
-        type: "error",
-      });
-      return;
-    }
+    // 2. Direct Local Windows Explorer dialog via backend (zero BAT file required)
     setBrowsingFolder(true);
     setAddFolderMsg(null);
     try {
       const res = await api.browseLocalFolder();
-      setAddFolderMsg(res.message || "✓ Windows Explorer Folder Picker launched! Please select any folder on your computer screen.");
-      triggerRapidPoll();
+      if (res.status === "ok" && res.folder_path) {
+        setCustomLocalFolder(res.folder_path);
+        setAddFolderMsg(res.message || `✓ Folder '${res.folder_path}' linked to Nanvi Assistant.`);
+        await fetchStatus();
+        triggerRapidPoll();
+      } else if (res.status === "canceled") {
+        setAddFolderMsg(res.message || "Folder selection was canceled.");
+      } else {
+        setAddFolderMsg(res.message || "✓ Windows Explorer Folder Picker launched. Please choose your folder.");
+        triggerRapidPoll();
+      }
     } catch (err: any) {
-      setAddFolderMsg(`Error opening folder browser: ${err?.message || "Failed to trigger folder browser"}`);
+      setAddFolderMsg(`Error opening folder browser: ${err?.message || "Failed to trigger folder browser. Please use Method 2 (Manual Path Input)."}`);
     } finally {
-      setTimeout(() => setBrowsingFolder(false), 5000);
+      setTimeout(() => setBrowsingFolder(false), 2000);
     }
   };
 
@@ -460,17 +464,17 @@ export function CompanyFolderPicker({ api }: Props) {
           <div>
             <div style={{ fontSize: "1.05rem", fontWeight: 700, color: isDesktop ? "#0369a1" : isOnline ? "#166534" : "#1e293b" }}>
               {isDesktop
-                ? "🖥️ Nanvi Desktop Mode: Local Computer Access Active"
+                ? "🖥️ Nanvi Desktop Mode: Direct Local Computer Access Active"
                 : isOnline
-                ? "Connected to Your Windows Computer"
-                : "Ready to Connect Folders"}
+                ? "🟢 Local Computer Storage Active & Connected"
+                : "Ready to Connect Local Folders"}
             </div>
             <div style={{ fontSize: "0.85rem", color: isDesktop ? "#0284c7" : isOnline ? "#15803d" : "#64748b", marginTop: "2px" }}>
               {isDesktop
-                ? "Standard Windows Explorer folder picker and direct path entry ready. Zero complex BAT files needed."
+                ? "Direct 1-Click Windows Explorer folder picker and manual path input ready. Zero BAT files required."
                 : isOnline
-                ? "Agent online • Syncing approved folders from your PC • Heartbeat active"
-                : "Choose 1-Click Browse, Manual Path entry, or run Nanvi_Assistant.bat to connect folders."}
+                ? "Local filesystem ready • Direct 1-Click Explorer folder picker and manual path entry active • Zero BAT files required"
+                : "Connect any local folder via 1-Click Windows Explorer picker or manual path input."}
             </div>
           </div>
         </div>
@@ -805,12 +809,8 @@ export function CompanyFolderPicker({ api }: Props) {
               {browsingFolder ? "Opening Windows Explorer on your PC..." : "Open Windows Explorer & Select Folder"}
             </button>
 
-            <div style={{ marginTop: "12px", fontSize: "0.82rem", color: "#64748b" }}>
-              {isDesktop
-                ? "✓ Running in Nanvi Desktop App: Folder dialog opens directly on your computer."
-                : isOnline
-                ? "✓ Local agent online: Explorer dialog opens on your computer screen."
-                : "💡 Running in web browser? Double-click Nanvi_Assistant.bat or use Tab 2 (Manual Path) if browse does not open."}
+            <div style={{ marginTop: "12px", fontSize: "0.84rem", color: "#0369a1", fontWeight: 500 }}>
+              ✓ Direct 1-Click Access: Windows Explorer folder dialog opens directly on your computer screen. No BAT file required.
             </div>
           </div>
         )}
